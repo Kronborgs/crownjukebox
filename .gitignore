@@ -1,0 +1,28 @@
+node_modules/
+dist/
+.env
+*.local
+
+# Backend build output
+backend/crownjukebox
+backend/*.exe
+
+# SQLite database
+*.db
+*.db-wal
+*.db-shm
+
+# Artwork cache
+artwork_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+*.swp
+
+# Docker
+.dockerignore

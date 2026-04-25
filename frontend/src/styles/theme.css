@@ -1,0 +1,344 @@
+/* ═══════════════════════════════════════════════
+   CrownJukebox — Retro Jukebox CSS Theme
+   Inspired by 1960s/70s jukeboxes: chrome, wood,
+   neon tubes, warm amber, deep purple nights.
+   ═══════════════════════════════════════════════ */
+
+:root {
+  /* Colour palette */
+  --bg-base:        #0d0520;
+  --bg-panel:       #150a2e;
+  --bg-card:        #1c1040;
+  --bg-card-hover:  #261558;
+
+  --neon-primary:   #bf00ff;
+  --neon-accent:    #ff2d78;
+  --neon-teal:      #00e5ff;
+  --neon-amber:     #ffb300;
+  --neon-green:     #39ff14;
+
+  --chrome:         #c8c8d4;
+  --chrome-bright:  #f0f0ff;
+  --chrome-dark:    #6a6a80;
+
+  --wood-dark:      #3b1f0a;
+  --wood-mid:       #5c2e0d;
+  --wood-light:     #8b4513;
+
+  --text-primary:   #f5f0ff;
+  --text-secondary: #a090c0;
+  --text-dim:       #5a4a78;
+
+  /* Glow effects */
+  --glow-primary:   0 0 8px #bf00ff88, 0 0 24px #bf00ff44;
+  --glow-accent:    0 0 8px #ff2d7888, 0 0 24px #ff2d7844;
+  --glow-teal:      0 0 8px #00e5ff88, 0 0 24px #00e5ff44;
+  --glow-amber:     0 0 8px #ffb30088, 0 0 24px #ffb30044;
+
+  /* Sizing */
+  --radius-sm:  6px;
+  --radius-md:  12px;
+  --radius-lg:  20px;
+  --radius-xl:  32px;
+
+  /* Typography */
+  --font-display: 'Georgia', 'Times New Roman', serif;
+  --font-body:    system-ui, -apple-system, sans-serif;
+  --font-mono:    'Courier New', monospace;
+
+  /* Transitions */
+  --transition-fast:   150ms ease;
+  --transition-normal: 250ms ease;
+  --transition-slow:   400ms ease;
+}
+
+/* ─── Reset ─────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  height: 100%;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  height: 100%;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  overflow: hidden;
+}
+
+#root {
+  height: 100%;
+}
+
+/* ─── Scrollbar styling ───────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg-panel);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--neon-primary);
+  border-radius: 3px;
+}
+
+/* ─── Neon text utilities ─────────────────── */
+.neon-text-primary {
+  color: var(--neon-primary);
+  text-shadow: var(--glow-primary);
+}
+.neon-text-accent {
+  color: var(--neon-accent);
+  text-shadow: var(--glow-accent);
+}
+.neon-text-teal {
+  color: var(--neon-teal);
+  text-shadow: var(--glow-teal);
+}
+.neon-text-amber {
+  color: var(--neon-amber);
+  text-shadow: var(--glow-amber);
+}
+
+/* ─── Chrome border effect ─────────────────── */
+.chrome-border {
+  border: 1px solid var(--chrome-dark);
+  box-shadow:
+    inset 0 1px 0 var(--chrome-bright),
+    0 1px 0 #00000080;
+}
+
+/* ─── Glass card ───────────────────────────── */
+.glass-card {
+  background: rgba(21, 10, 46, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(191, 0, 255, 0.2);
+  border-radius: var(--radius-md);
+}
+
+/* ─── Buttons ──────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--neon-primary), #7700cc);
+  color: #fff;
+  box-shadow: var(--glow-primary);
+}
+.btn-primary:hover {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
+}
+.btn-primary:active {
+  transform: translateY(0);
+  filter: brightness(0.95);
+}
+
+.btn-accent {
+  background: linear-gradient(135deg, var(--neon-accent), #cc002a);
+  color: #fff;
+  box-shadow: var(--glow-accent);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--text-dim);
+}
+.btn-ghost:hover {
+  border-color: var(--neon-primary);
+  color: var(--neon-primary);
+}
+
+.btn-icon {
+  padding: 10px;
+  border-radius: 50%;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none !important;
+  filter: none !important;
+}
+
+/* ─── SKÅLE / Party Button ─────────────────── */
+.btn-party {
+  background: linear-gradient(135deg, #ff2d78, #ff8c00, #ffb300);
+  color: #fff;
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: 2px;
+  padding: 16px 32px;
+  border-radius: var(--radius-xl);
+  box-shadow:
+    0 0 20px #ff2d7888,
+    0 0 40px #ffb30044,
+    inset 0 1px 0 rgba(255,255,255,0.3);
+  animation: party-pulse 2s ease-in-out infinite;
+}
+
+@keyframes party-pulse {
+  0%, 100% { box-shadow: 0 0 20px #ff2d7888, 0 0 40px #ffb30044; }
+  50%       { box-shadow: 0 0 30px #ff2d78cc, 0 0 60px #ffb30066; }
+}
+
+/* ─── Vinyl spinner ────────────────────────── */
+@keyframes spin-vinyl {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.spinning {
+  animation: spin-vinyl 2s linear infinite;
+}
+
+/* ─── Progress bar ─────────────────────────── */
+.progress-bar {
+  height: 4px;
+  background: var(--bg-card);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--neon-primary), var(--neon-accent));
+  border-radius: 2px;
+  transition: width 0.5s linear;
+  box-shadow: var(--glow-primary);
+}
+
+/* ─── Cover art placeholder ────────────────── */
+.cover-placeholder {
+  background: linear-gradient(135deg, var(--wood-dark), var(--bg-base));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  border-radius: var(--radius-sm);
+}
+
+/* ─── Loading skeleton ─────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--bg-card) 25%,
+    var(--bg-card-hover) 50%,
+    var(--bg-card) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+}
+
+/* ─── Marquee for long track names ────────── */
+.marquee-wrap {
+  overflow: hidden;
+  white-space: nowrap;
+}
+.marquee-inner {
+  display: inline-block;
+  animation: marquee 12s linear infinite;
+}
+.marquee-inner:hover {
+  animation-play-state: paused;
+}
+@keyframes marquee {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+/* ─── Party overlay ────────────────────────── */
+.party-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+@keyframes neon-blink {
+  0%, 100% { opacity: 1; }
+  45%       { opacity: 1; }
+  50%       { opacity: 0.2; }
+  55%       { opacity: 1; }
+}
+.neon-blink {
+  animation: neon-blink 1.5s steps(1, end) infinite;
+}
+
+/* ─── Input fields ─────────────────────────── */
+.input {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--text-dim);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  transition: border-color var(--transition-fast);
+  outline: none;
+}
+.input:focus {
+  border-color: var(--neon-primary);
+  box-shadow: 0 0 0 2px rgba(191,0,255,0.2);
+}
+.input::placeholder {
+  color: var(--text-dim);
+}
+
+/* ─── Tag / Badge ──────────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 100px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.badge-primary {
+  background: rgba(191, 0, 255, 0.2);
+  color: var(--neon-primary);
+  border: 1px solid rgba(191, 0, 255, 0.4);
+}
+.badge-accent {
+  background: rgba(255, 45, 120, 0.2);
+  color: var(--neon-accent);
+  border: 1px solid rgba(255, 45, 120, 0.4);
+}
+.badge-amber {
+  background: rgba(255, 179, 0, 0.2);
+  color: var(--neon-amber);
+  border: 1px solid rgba(255, 179, 0, 0.4);
+}

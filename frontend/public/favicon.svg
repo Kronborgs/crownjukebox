@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <rect width="32" height="32" rx="8" fill="#0d0520"/>
+  <!-- Crown shape -->
+  <path d="M5 22 L8 12 L12.5 17 L16 8 L19.5 17 L24 12 L27 22 Z"
+        fill="none" stroke="#bf00ff" stroke-width="1.5"
+        stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- Crown base -->
+  <rect x="5" y="22" width="22" height="3" rx="1.5" fill="#bf00ff" opacity="0.9"/>
+  <!-- Jewels -->
+  <circle cx="16" cy="10" r="1.5" fill="#ff2d78"/>
+  <circle cx="10" cy="15.5" r="1" fill="#ffb300"/>
+  <circle cx="22" cy="15.5" r="1" fill="#ffb300"/>
+  <!-- Neon glow effect -->
+  <path d="M5 22 L8 12 L12.5 17 L16 8 L19.5 17 L24 12 L27 22 Z"
+        fill="none" stroke="#bf00ff" stroke-width="3" opacity="0.2"
+        stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

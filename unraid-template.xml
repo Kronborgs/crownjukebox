@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<Container>
+  <Name>CrownJukebox</Name>
+  <Repository>ghcr.io/kronborgs/crownjukebox-frontend</Repository>
+  <Registry>https://ghcr.io/</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Kronborgs/crownjukebox</Support>
+  <Project>https://github.com/Kronborgs/crownjukebox</Project>
+  <Overview>
+    CrownJukebox — Retro browser-based party jukebox.
+    Point to your music folder and open on a TV/touchscreen.
+    Also requires the crownjukebox/backend container.
+  </Overview>
+  <Category>MediaApp:Music</Category>
+  <WebUI>http://[IP]:[PORT:3000]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/Kronborgs/crownjukebox/main/unraid-template.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Kronborgs/crownjukebox/main/docs/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <Date>2026-04-25</Date>
+  <Changes/>
+
+  <!-- Frontend port -->
+  <Config Name="WebUI Port" Target="80" Default="3000" Mode="tcp"
+          Description="Port to access the jukebox web interface."
+          Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+
+  <!-- Backend container is separate — set its URL here -->
+  <Config Name="BACKEND_URL" Target="BACKEND_URL" Default="http://[IP]:8080"
+          Description="URL to the CrownJukebox-Backend container. Use http://[unraid-ip]:8080 where 8080 matches the API Port set in the backend template."
+          Type="Variable" Display="always" Required="true" Mask="false">http://[IP]:8080</Config>
+</Container>

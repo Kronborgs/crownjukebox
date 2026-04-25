@@ -1,0 +1,43 @@
+# ═══════════════════════════════════════════════════════════════
+# CrownJukebox — Portainer Stack (docker-compose.yml format)
+# Deploy in Portainer → Stacks → Add Stack → Web editor
+# ═══════════════════════════════════════════════════════════════
+version: "3.9"
+
+services:
+  backend:
+    image: ghcr.io/kronborgs/crownjukebox-backend:latest
+    restart: unless-stopped
+    environment:
+      PORT:               "8080"
+      DB_PATH:            /data/crownjukebox.db
+      MUSIC_DIR:          /music
+      ARTWORK_CACHE_DIR:  /artwork_cache
+      SESSION_TTL_HOURS:  "168"
+      ADMIN_USERNAME:     admin
+      ADMIN_PASSWORD:     changeme   # ← Change this!
+      JWT_SECRET:         change_this_secret  # ← Change this!
+    volumes:
+      - crownjukebox_db:/data
+      - /mnt/user/music:/music:ro    # ← Din musiksti på Unraid/NAS
+      - crownjukebox_artwork:/artwork_cache
+    networks:
+      - crownjukebox_net
+
+  frontend:
+    image: ghcr.io/kronborgs/crownjukebox-frontend:latest
+    restart: unless-stopped
+    ports:
+      - "3000:80"   # Access at http://<server-ip>:3000
+    depends_on:
+      - backend
+    networks:
+      - crownjukebox_net
+
+volumes:
+  crownjukebox_db:
+  crownjukebox_artwork:
+
+networks:
+  crownjukebox_net:
+    driver: bridge

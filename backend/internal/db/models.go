@@ -1,0 +1,208 @@
+package db
+
+import "time"
+
+// ─────────────────────────────────────────────────────────────
+// Music library models
+// ─────────────────────────────────────────────────────────────
+
+type Artist struct {
+	ID            string    `db:"id"`
+	Name          string    `db:"name"`
+	SortName      string    `db:"sort_name"`
+	MusicBrainzID string    `db:"musicbrainz_id"`
+	CreatedAt     time.Time `db:"created_at"`
+	UpdatedAt     time.Time `db:"updated_at"`
+}
+
+type Album struct {
+	ID            string    `db:"id"`
+	ArtistID      string    `db:"artist_id"`
+	AlbumArtistID string    `db:"album_artist_id"`
+	Title         string    `db:"title"`
+	Year          int       `db:"year"`
+	Genre         string    `db:"genre"`
+	SourceType    string    `db:"source_type"` // local | subsonic
+	SourceID      string    `db:"source_id"`
+	CoverArtID    string    `db:"cover_art_id"`
+	CoverStatus   string    `db:"cover_status"` // found | missing | generated | error
+	TrackCount    int       `db:"track_count"`
+	CreatedAt     time.Time `db:"created_at"`
+	UpdatedAt     time.Time `db:"updated_at"`
+}
+
+type Track struct {
+	ID          string    `db:"id"`
+	AlbumID     string    `db:"album_id"`
+	ArtistID    string    `db:"artist_id"`
+	Title       string    `db:"title"`
+	TrackNumber int       `db:"track_number"`
+	DiscNumber  int       `db:"disc_number"`
+	Duration    int       `db:"duration" json:"duration_secs"`
+	FilePath    string    `db:"file_path"`
+	SourceType  string    `db:"source_type"` // local | subsonic
+	SourceID    string    `db:"source_id"`
+	StreamURL   string    `db:"stream_url"`
+	CoverArtID  string    `db:"cover_art_id"`
+	CreatedAt   time.Time `db:"created_at"`
+	UpdatedAt   time.Time `db:"updated_at"`
+}
+
+type AlbumArt struct {
+	ID               string    `db:"id"`
+	AlbumID          string    `db:"album_id"`
+	TrackID          string    `db:"track_id"`
+	SourceType       string    `db:"source_type"` // embedded | folder_file | subsonic | generated | external
+	SourcePath       string    `db:"source_path"`
+	OriginalHash     string    `db:"original_hash"`
+	MimeType         string    `db:"mime_type"`
+	Width            int       `db:"width"`
+	Height           int       `db:"height"`
+	SmallPath        string    `db:"small_path"`  // 128x128
+	MediumPath       string    `db:"medium_path"` // 300x300
+	LargePath        string    `db:"large_path"`  // 600x600
+	ColorPaletteJSON string    `db:"color_palette_json"`
+	CreatedAt        time.Time `db:"created_at"`
+	UpdatedAt        time.Time `db:"updated_at"`
+}
+
+type Playlist struct {
+	ID              string    `db:"id"`
+	Name            string    `db:"name"`
+	SourceType      string    `db:"source_type"` // local | subsonic
+	SourceID        string    `db:"source_id"`
+	IsPartyPlaylist bool      `db:"is_party_playlist"`
+	CreatedAt       time.Time `db:"created_at"`
+}
+
+type PlaylistTrack struct {
+	PlaylistID string `db:"playlist_id"`
+	TrackID    string `db:"track_id"`
+	Position   int    `db:"position"`
+}
+
+// ─────────────────────────────────────────────────────────────
+// Users & Access models
+// ─────────────────────────────────────────────────────────────
+
+type User struct {
+	ID               string     `db:"id"`
+	DisplayName      string     `db:"display_name"`
+	Username         string     `db:"username"`
+	Role             string     `db:"role"` // admin | user
+	PinHash          string     `db:"pin_hash"`
+	LoginTokenHash   string     `db:"login_token_hash"`
+	IsActive         bool       `db:"is_active"`
+	IsPermanent      bool       `db:"is_permanent"`
+	AccessStartsAt   *time.Time `db:"access_starts_at"`
+	AccessExpiresAt  *time.Time `db:"access_expires_at"`
+	CreatedByAdminID string     `db:"created_by_admin_id"`
+	CreatedAt        time.Time  `db:"created_at"`
+	UpdatedAt        time.Time  `db:"updated_at"`
+	LastSeenAt       *time.Time `db:"last_seen_at"`
+}
+
+type Session struct {
+	ID               string     `db:"id"`
+	UserID           string     `db:"user_id"`
+	SessionTokenHash string     `db:"session_token_hash"`
+	DeviceName       string     `db:"device_name"`
+	UserAgent        string     `db:"user_agent"`
+	IPAddress        string     `db:"ip_address"`
+	CreatedAt        time.Time  `db:"created_at"`
+	ExpiresAt        time.Time  `db:"expires_at"`
+	RevokedAt        *time.Time `db:"revoked_at"`
+	LastSeenAt       time.Time  `db:"last_seen_at"`
+}
+
+type UserPermissions struct {
+	UserID            string `db:"user_id"`
+	CanAddToQueue     bool   `db:"can_add_to_queue"`
+	CanSearch         bool   `db:"can_search"`
+	CanUsePartyButton bool   `db:"can_use_party_button"`
+	CanViewQueue      bool   `db:"can_view_queue"`
+}
+
+type AccessLink struct {
+	ID        string     `db:"id"`
+	UserID    string     `db:"user_id"`
+	TokenHash string     `db:"token_hash"`
+	CreatedAt time.Time  `db:"created_at"`
+	ExpiresAt *time.Time `db:"expires_at"`
+	UsedAt    *time.Time `db:"used_at"`
+	RevokedAt *time.Time `db:"revoked_at"`
+}
+
+// ─────────────────────────────────────────────────────────────
+// Playback models
+// ─────────────────────────────────────────────────────────────
+
+type QueueItem struct {
+	ID          string    `db:"id"`
+	TrackID     string    `db:"track_id"`
+	AddedByUser string    `db:"added_by_user_id"`
+	Position    int       `db:"position"`
+	IsAutoplay  bool      `db:"is_autoplay"`
+	AddedAt     time.Time `db:"added_at"`
+}
+
+// QueueItemRich is returned by the API and includes denormalized track data.
+type QueueItemRich struct {
+	ID           string    `db:"id"                  json:"id"`
+	TrackID      string    `db:"track_id"            json:"track_id"`
+	TrackTitle   string    `db:"track_title"         json:"track_title"`
+	TrackArtist  string    `db:"track_artist"        json:"track_artist"`
+	TrackAlbum   string    `db:"track_album"         json:"track_album"`
+	DurationSecs int       `db:"duration_secs"       json:"duration_secs"`
+	CoverArtID   string    `db:"album_cover_art_id"  json:"album_cover_art_id"`
+	AddedByUser  string    `db:"added_by_user_id"    json:"added_by_user_id"`
+	Position     int       `db:"position"            json:"position"`
+	IsAutoplay   bool      `db:"is_autoplay"         json:"is_autoplay"`
+	AddedAt      time.Time `db:"added_at"            json:"added_at"`
+}
+
+type PlaybackHistory struct {
+	ID           string     `db:"id"`
+	TrackID      string     `db:"track_id"`
+	PlayedByUser string     `db:"played_by_user_id"`
+	StartedAt    time.Time  `db:"started_at"`
+	EndedAt      *time.Time `db:"ended_at"`
+	WasSkipped   bool       `db:"was_skipped"`
+	WasParty     bool       `db:"was_party"`
+}
+
+type PlaybackState struct {
+	ID             int       `db:"id"`
+	CurrentTrackID string    `db:"current_track_id"`
+	IsPlaying      bool      `db:"is_playing"`
+	IsPartyMode    bool      `db:"is_party_mode"`
+	PartyTrackID   string    `db:"party_track_id"`
+	PositionSecs   float64   `db:"position_seconds"`
+	UpdatedAt      time.Time `db:"updated_at"`
+}
+
+// ─────────────────────────────────────────────────────────────
+// Settings models
+// ─────────────────────────────────────────────────────────────
+
+type Setting struct {
+	Key       string    `db:"key"`
+	Value     string    `db:"value"`
+	UpdatedAt time.Time `db:"updated_at"`
+}
+
+type KeyboardBinding struct {
+	Action  string `db:"action"`
+	KeyCode string `db:"key_code"`
+	Label   string `db:"label"`
+}
+
+type SubsonicConfig struct {
+	ID           int        `db:"id"`
+	URL          string     `db:"url"`
+	Username     string     `db:"username"`
+	PasswordHash string     `db:"password_hash"`
+	APIToken     string     `db:"api_token"`
+	IsEnabled    bool       `db:"is_enabled"`
+	LastSyncAt   *time.Time `db:"last_sync_at"`
+}

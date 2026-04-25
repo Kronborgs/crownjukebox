@@ -1,0 +1,171 @@
+package main
+
+import (
+	"context"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
+	"golang.org/x/crypto/bcrypt"
+
+	"github.com/crownjukebox/crownjukebox/internal/api"
+	"github.com/crownjukebox/crownjukebox/internal/artwork"
+	"github.com/crownjukebox/crownjukebox/internal/config"
+	"github.com/crownjukebox/crownjukebox/internal/db"
+	"github.com/crownjukebox/crownjukebox/internal/events"
+	"github.com/crownjukebox/crownjukebox/internal/music"
+)
+
+func main() {
+	cfg := config.Load()
+
+	log.Printf("CrownJukebox starting on port %s", cfg.Port)
+	log.Printf("Music dir:        %s", cfg.MusicDir)
+	log.Printf("Artwork cache:    %s", cfg.ArtworkCacheDir)
+	log.Printf("Database:         %s", cfg.DBPath)
+
+	// ─── Database ──────────────────────────────────────────
+	database, err := db.Open(cfg.DBPath)
+	if err != nil {
+		log.Fatalf("Failed to open database: %v", err)
+	}
+	defer database.Close()
+
+	if err := db.Migrate(database); err != nil {
+		log.Fatalf("Migration failed: %v", err)
+	}
+
+	// ─── Seed admin user ──────────────────────────────────
+	if err := seedAdmin(database, cfg); err != nil {
+		log.Printf("[seed] admin seed warning: %v", err)
+	}
+
+	// ─── Ensure cache directories exist ───────────────────
+	for _, dir := range []string{
+		cfg.ArtworkCacheDir,
+		cfg.ArtworkCacheDir + "/originals",
+		cfg.ArtworkCacheDir + "/thumbs/small",
+		cfg.ArtworkCacheDir + "/thumbs/medium",
+		cfg.ArtworkCacheDir + "/thumbs/large",
+		cfg.ArtworkCacheDir + "/placeholders",
+	} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			log.Printf("Warning: could not create dir %s: %v", dir, err)
+		}
+	}
+
+	// ─── Background: initial library scan ─────────────────
+	go func() {
+		log.Println("[startup] beginning initial library scan...")
+		scanner := music.NewScanner(database, cfg.MusicDir)
+		if err := scanner.Scan(nil); err != nil {
+			log.Printf("[startup] scan error: %v", err)
+		} else {
+			log.Println("[startup] library scan complete")
+
+			// Follow up with artwork extraction
+			extractor := artwork.NewExtractor(database, cfg.ArtworkCacheDir)
+			log.Println("[startup] extracting missing artwork...")
+			if err := extractor.ExtractMissing(nil); err != nil {
+				log.Printf("[startup] artwork extraction error: %v", err)
+			} else {
+				log.Println("[startup] artwork extraction complete")
+			}
+		}
+	}()
+
+	// ─── HTTP server ───────────────────────────────────────
+	srv := api.NewServer(cfg, database)
+	router := srv.Router()
+
+	// ─── Background: expire user access ───────────────────
+	go func() {
+		ticker := time.NewTicker(60 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			var expired []db.User
+			if err := database.Select(&expired, `
+				SELECT * FROM users
+				WHERE is_active = 1
+				  AND is_permanent = 0
+				  AND access_expires_at IS NOT NULL
+				  AND access_expires_at <= CURRENT_TIMESTAMP`); err != nil {
+				continue
+			}
+			for _, u := range expired {
+				database.Exec(`UPDATE users SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, u.ID)
+				srv.Hub().BroadcastToUser(u.ID, events.EventUserAccessExpired, map[string]any{"user_id": u.ID})
+				_ = srv.AuthService().RevokeAllUserSessions(context.Background(), u.ID)
+				log.Printf("[access] user %s (%s) access expired — logged out", u.ID, u.DisplayName)
+			}
+		}
+	}()
+
+	httpServer := &http.Server{
+		Addr:         ":" + cfg.Port,
+		Handler:      router,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 0, // 0 = no timeout (needed for SSE streams)
+		IdleTimeout:  120 * time.Second,
+	}
+
+	// Graceful shutdown
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		log.Printf("Listening on http://0.0.0.0:%s", cfg.Port)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("HTTP server error: %v", err)
+		}
+	}()
+
+	<-quit
+	log.Println("Shutting down gracefully...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := httpServer.Shutdown(ctx); err != nil {
+		log.Printf("Shutdown error: %v", err)
+	}
+	log.Println("Goodbye!")
+}
+
+// seedAdmin ensures at least one admin user exists when the database is empty.
+func seedAdmin(database *sqlx.DB, cfg *config.Config) error {
+	var count int
+	if err := database.Get(&count, `SELECT COUNT(*) FROM users WHERE role = 'admin'`); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil // admin already exists
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(cfg.AdminPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	adminID := uuid.NewString()
+	_, err = database.Exec(`
+		INSERT INTO users (id, display_name, username, role, pin_hash, is_active, is_permanent, created_at, updated_at)
+		VALUES (?, ?, ?, 'admin', ?, 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+		adminID, cfg.AdminUsername, cfg.AdminUsername, string(hash),
+	)
+	if err != nil {
+		return err
+	}
+
+	// Admin gets all permissions
+	_, err = database.Exec(`
+		INSERT INTO user_permissions (user_id, can_add_to_queue, can_search, can_use_party_button, can_view_queue)
+		VALUES (?, 1, 1, 1, 1)`, adminID)
+
+	log.Printf("[seed] admin user created: %s", cfg.AdminUsername)
+	return err
+}
