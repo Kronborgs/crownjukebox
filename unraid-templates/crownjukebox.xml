@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Container>
   <Name>CrownJukebox</Name>
-  <Repository>ghcr.io/kronborgs/crownjukebox-frontend:main</Repository>
+  <Repository>ghcr.io/kronborgs/crownjukebox:main</Repository>
   <Registry>https://ghcr.io/</Registry>
   <Network>bridge</Network>
   <Shell>sh</Shell>
@@ -10,8 +10,8 @@
   <Project>https://github.com/Kronborgs/crownjukebox</Project>
   <Overview>
     CrownJukebox — Retro browser-based party jukebox.
-    Point to your music folder and open on a TV/touchscreen.
-    Also requires the crownjukebox/backend container.
+    Frontend + Backend i én container. Peg på din musikmappe og åbn på TV/touchscreen.
+    Standard port: 3000.
   </Overview>
   <Category>MediaApp:Music</Category>
   <WebUI>http://[IP]:[PORT:3000]/</WebUI>
@@ -22,13 +22,126 @@
   <Date>2026-04-25</Date>
   <Changes/>
 
-  <!-- Frontend port -->
-  <Config Name="WebUI Port" Target="80" Default="3000" Mode="tcp"
-          Description="Port to access the jukebox web interface."
-          Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+  <!-- ── Port ───────────────────────────────────────────────── -->
 
-  <!-- Backend container is separate — set its URL here -->
-  <Config Name="BACKEND_URL" Target="BACKEND_URL" Default="http://[IP]:8080"
-          Description="URL to the CrownJukebox-Backend container. Use http://[unraid-ip]:8080 where 8080 matches the API Port set in the backend template."
-          Type="Variable" Display="always" Required="true" Mask="false">http://[IP]:8080</Config>
+  <Config
+    Name="WebUI Port"
+    Target="80"
+    Default="3000"
+    Mode="tcp"
+    Description="Port til jukebox-websiden."
+    Type="Port"
+    Display="always"
+    Required="true"
+    Mask="false">3000</Config>
+
+  <!-- ── Volumes ─────────────────────────────────────────────── -->
+
+  <Config
+    Name="Musik-bibliotek"
+    Target="/music"
+    Default="/mnt/user/music"
+    Mode="ro"
+    Description="Sti til din musikmappe. MP3, FLAC og OGG understøttes. Monteres skrivebeskyttet."
+    Type="Path"
+    Display="always"
+    Required="true"
+    Mask="false">/mnt/user/music</Config>
+
+  <Config
+    Name="App Data (database)"
+    Target="/data"
+    Default="/mnt/user/appdata/crownjukebox"
+    Mode="rw"
+    Description="Hvor SQLite-databasen gemmes. Brug en sti på dit cache- eller array-drev."
+    Type="Path"
+    Display="always"
+    Required="true"
+    Mask="false">/mnt/user/appdata/crownjukebox</Config>
+
+  <Config
+    Name="Artwork Cache"
+    Target="/artwork_cache"
+    Default="/mnt/user/appdata/crownjukebox/artwork"
+    Mode="rw"
+    Description="Hvor album-covers gemmes. Kan ligge på cache-drevet for hurtigere adgang."
+    Type="Path"
+    Display="always"
+    Required="true"
+    Mask="false">/mnt/user/appdata/crownjukebox/artwork</Config>
+
+  <!-- ── Påkrævede indstillinger ────────────────────────────── -->
+
+  <Config
+    Name="Admin brugernavn"
+    Target="ADMIN_USERNAME"
+    Default="admin"
+    Description="Brugernavn til admin-kontoen. Oprettes automatisk ved første start."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="false">admin</Config>
+
+  <Config
+    Name="Admin kodeord"
+    Target="ADMIN_PASSWORD"
+    Default=""
+    Description="Kodeord/PIN til admin-kontoen. Skift dette inden første start!"
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="true"></Config>
+
+  <Config
+    Name="Hemmelig nøgle"
+    Target="JWT_SECRET"
+    Default=""
+    Description="Hemmelig nøgle til session-tokens. Brug en lang tilfældig streng. Del aldrig denne."
+    Type="Variable"
+    Display="always"
+    Required="true"
+    Mask="true"></Config>
+
+  <!-- ── Valgfrie indstillinger ─────────────────────────────── -->
+
+  <Config
+    Name="Session-levetid (timer)"
+    Target="SESSION_TTL_HOURS"
+    Default="168"
+    Description="Hvor længe en brugersession varer i timer. Standard er 168 (7 dage)."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">168</Config>
+
+  <Config
+    Name="Subsonic URL"
+    Target="SUBSONIC_URL"
+    Default=""
+    Description="Valgfri Subsonic/Navidrome URL, fx http://192.168.1.5:4533"
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false"></Config>
+
+  <Config
+    Name="Subsonic brugernavn"
+    Target="SUBSONIC_USERNAME"
+    Default=""
+    Description="Subsonic/Navidrome brugernavn (kun hvis Subsonic er aktiveret)."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false"></Config>
+
+  <Config
+    Name="Subsonic kodeord"
+    Target="SUBSONIC_PASSWORD"
+    Default=""
+    Description="Subsonic/Navidrome kodeord."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="true"></Config>
+
 </Container>

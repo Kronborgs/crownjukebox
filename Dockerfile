@@ -1,0 +1,60 @@
+# ─── Stage 1: Build Go backend ───────────────────────────────
+FROM golang:1.26-alpine AS go-builder
+
+WORKDIR /app
+
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+
+COPY backend/ .
+
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o crownjukebox ./cmd/server
+
+# ─── Stage 2: Build frontend ──────────────────────────────────
+FROM node:20-alpine AS node-builder
+
+WORKDIR /app
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --silent
+
+COPY frontend/ .
+RUN npm run build
+
+# ─── Stage 3: Runtime ─────────────────────────────────────────
+FROM nginx:1.27-alpine
+
+# ca-certificates for HTTPS (Subsonic etc.), tzdata for correct timestamps
+RUN apk add --no-cache ca-certificates tzdata
+
+# Go binary
+COPY --from=go-builder /app/crownjukebox /app/crownjukebox
+
+# Frontend static files
+COPY --from=node-builder /app/dist /usr/share/nginx/html
+
+# nginx config (proxies /api/ to localhost:8080)
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Startup script
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Default dirs (overridden by volume mounts)
+RUN mkdir -p /data /music /artwork_cache
+
+# ── Environment defaults ──────────────────────────────────────
+ENV PORT=8080
+ENV DB_PATH=/data/crownjukebox.db
+ENV MUSIC_DIR=/music
+ENV ARTWORK_CACHE_DIR=/artwork_cache
+ENV SESSION_TTL_HOURS=168
+ENV ADMIN_USERNAME=admin
+ENV ALLOWED_ORIGINS=*
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD wget -qO- http://localhost/api/playback/state || exit 1
+
+ENTRYPOINT ["/entrypoint.sh"]

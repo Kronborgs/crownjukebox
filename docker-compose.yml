@@ -1,54 +1,34 @@
 version: "3.9"
 
 services:
-  # ─── Backend API ──────────────────────────────────────────────
-  backend:
+  crownjukebox:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
-    image: crownjukebox/backend:latest
+    image: ghcr.io/kronborgs/crownjukebox:main
     restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
     environment:
-      PORT:               "8080"
       DB_PATH:            /data/crownjukebox.db
       MUSIC_DIR:          /music
       ARTWORK_CACHE_DIR:  /artwork_cache
       SESSION_TTL_HOURS:  "168"
       ADMIN_USERNAME:     ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD:     ${ADMIN_PASSWORD:-changeme}
-      JWT_SECRET:         ${JWT_SECRET:-change_this_secret_in_production}
+      ADMIN_PASSWORD:     ${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set in .env}
+      JWT_SECRET:         ${JWT_SECRET:?JWT_SECRET must be set in .env}
+      ALLOWED_ORIGINS:    ${ALLOWED_ORIGINS:-*}
     volumes:
       - db_data:/data
       - ${MUSIC_DIR:-./music}:/music:ro
       - artwork_cache:/artwork_cache
-    networks:
-      - cj_internal
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/playback/state"]
+      test: ["CMD", "wget", "-qO-", "http://localhost/api/playback/state"]
       interval: 30s
       timeout: 5s
-      start_period: 15s
+      start_period: 20s
       retries: 3
-
-  # ─── Frontend (nginx) ─────────────────────────────────────────
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    image: crownjukebox/frontend:latest
-    restart: unless-stopped
-    ports:
-      - "${FRONTEND_PORT:-3000}:80"
-    depends_on:
-      backend:
-        condition: service_healthy
-    networks:
-      - cj_internal
 
 volumes:
   db_data:
   artwork_cache:
-
-networks:
-  cj_internal:
-    driver: bridge
