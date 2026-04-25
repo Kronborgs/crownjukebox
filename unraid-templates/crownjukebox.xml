@@ -15,7 +15,7 @@
   </Overview>
   <Category>MediaApp:Music</Category>
   <WebUI>http://[IP]:[PORT:3000]/</WebUI>
-  <TemplateURL>https://raw.githubusercontent.com/Kronborgs/crownjukebox/main/unraid-template.xml</TemplateURL>
+  <TemplateURL>https://raw.githubusercontent.com/Kronborgs/crownjukebox/main/unraid-templates/crownjukebox.xml</TemplateURL>
   <Icon>https://raw.githubusercontent.com/Kronborgs/crownjukebox/main/docs/icon.png</Icon>
   <ExtraParams/>
   <PostArgs/>
