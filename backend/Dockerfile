@@ -32,7 +32,7 @@ ENV MUSIC_DIR=/music
 ENV ARTWORK_CACHE_DIR=/artwork_cache
 ENV SESSION_TTL_HOURS=168
 ENV ADMIN_USERNAME=admin
-ENV ADMIN_PASSWORD=changeme
+# ADMIN_PASSWORD has no default — must be set at runtime via environment variable
 
 EXPOSE 8080
 
