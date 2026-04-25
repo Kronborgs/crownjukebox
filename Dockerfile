@@ -1,5 +1,5 @@
 # ─── Stage 1: Build Go backend ───────────────────────────────
-FROM golang:1.26-alpine AS go-builder
+FROM --platform=$BUILDPLATFORM golang:1.26-alpine AS go-builder
 
 WORKDIR /app
 
@@ -8,10 +8,12 @@ RUN go mod download
 
 COPY backend/ .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o crownjukebox ./cmd/server
+ARG TARGETOS TARGETARCH
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w" -o crownjukebox ./cmd/server
 
 # ─── Stage 2: Build frontend ──────────────────────────────────
-FROM node:20-alpine AS node-builder
+# Always build on native host platform — JS output is platform-independent
+FROM --platform=$BUILDPLATFORM node:20-alpine AS node-builder
 
 WORKDIR /app
 
