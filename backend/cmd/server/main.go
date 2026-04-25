@@ -136,14 +136,13 @@ func main() {
 	log.Println("Goodbye!")
 }
 
-// seedAdmin ensures at least one admin user exists when the database is empty.
+// seedAdmin ensures at least one admin user exists and that the admin password
+// is always in sync with the ADMIN_PASSWORD environment variable.
+// On every startup we re-hash and update the admin's pin_hash so that changing
+// ADMIN_PASSWORD and restarting the container is all that's needed.
 func seedAdmin(database *sqlx.DB, cfg *config.Config) error {
-	var count int
-	if err := database.Get(&count, `SELECT COUNT(*) FROM users WHERE role = 'admin'`); err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil // admin already exists
+	if cfg.AdminPassword == "changeme" {
+		log.Printf("[seed] WARNING: ADMIN_PASSWORD is not set — using default 'changeme'. Set ADMIN_PASSWORD in Unraid and restart!")
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(cfg.AdminPassword), bcrypt.DefaultCost)
@@ -151,6 +150,22 @@ func seedAdmin(database *sqlx.DB, cfg *config.Config) error {
 		return err
 	}
 
+	var count int
+	if err := database.Get(&count, `SELECT COUNT(*) FROM users WHERE role = 'admin'`); err != nil {
+		return err
+	}
+
+	if count > 0 {
+		// Admin exists — update their password hash so ADMIN_PASSWORD changes take effect on restart.
+		_, err = database.Exec(`UPDATE users SET pin_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE role = 'admin'`, string(hash))
+		if err != nil {
+			return err
+		}
+		log.Printf("[seed] admin password synced for existing admin")
+		return nil
+	}
+
+	// First boot — create admin user.
 	adminID := uuid.NewString()
 	_, err = database.Exec(`
 		INSERT INTO users (id, display_name, username, role, pin_hash, is_active, is_permanent, created_at, updated_at)
