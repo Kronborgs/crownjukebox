@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <Container>
   <Name>CrownJukebox</Name>
-  <Repository>ghcr.io/kronborgs/crownjukebox-frontend</Repository>
+  <Repository>ghcr.io/kronborgs/crownjukebox-frontend:main</Repository>
   <Registry>https://ghcr.io/</Registry>
   <Network>bridge</Network>
   <Shell>sh</Shell>
