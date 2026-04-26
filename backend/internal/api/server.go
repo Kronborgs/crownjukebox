@@ -735,24 +735,14 @@ func getRoomFromCtx(ctx context.Context) *rooms.Room {
 func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 	var adminCount int
 	_ = s.db.Get(&adminCount, `SELECT COUNT(*) FROM users WHERE role = 'admin'`)
-	if adminCount == 0 {
-		jsonOK(w, map[string]bool{"needs_setup": true})
-		return
-	}
-
-	var val string
-	_ = s.db.Get(&val, `SELECT value FROM settings WHERE key = 'setup_completed'`)
-	jsonOK(w, map[string]bool{"needs_setup": val != "1"})
+	jsonOK(w, map[string]bool{"needs_setup": adminCount == 0})
 }
 
 func (s *Server) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
-	// Only allowed when setup is not yet done
+	// Only allowed when no admin account exists yet.
 	var adminCount int
 	_ = s.db.Get(&adminCount, `SELECT COUNT(*) FROM users WHERE role = 'admin'`)
-
-	var val string
-	_ = s.db.Get(&val, `SELECT value FROM settings WHERE key = 'setup_completed'`)
-	if val == "1" && adminCount > 0 {
+	if adminCount > 0 {
 		jsonError(w, "setup already completed", http.StatusForbidden)
 		return
 	}
