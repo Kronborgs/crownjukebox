@@ -96,6 +96,16 @@
     Mask="false"></Config>
 
   <Config
+    Name="Reset setup ved næste start"
+    Target="RESET_SETUP_ON_START"
+    Default=""
+    Description="Valgfri ENGANGS-reset. Sæt til CONFIRM for at slette brugere/sessions og åbne setup-wizard igen (musikbibliotek bevares). VIGTIGT: fjern værdien igen efter opstart."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false"></Config>
+
+  <Config
     Name="Subsonic URL"
     Target="SUBSONIC_URL"
     Default=""

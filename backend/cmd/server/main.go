@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -38,6 +39,11 @@ func main() {
 
 	if err := db.Migrate(database); err != nil {
 		log.Fatalf("Migration failed: %v", err)
+	}
+
+	// Optional one-time reset for auth/setup (keeps library data intact).
+	if err := resetAuthAndSetupIfRequested(database); err != nil {
+		log.Fatalf("Auth/setup reset failed: %v", err)
 	}
 
 	// ─── Seed admin user ──────────────────────────────────
@@ -134,6 +140,59 @@ func main() {
 		log.Printf("Shutdown error: %v", err)
 	}
 	log.Println("Goodbye!")
+}
+
+// resetAuthAndSetupIfRequested clears users/auth state when RESET_SETUP_ON_START=CONFIRM.
+// This preserves library/scanner data and allows setup wizard to run again.
+func resetAuthAndSetupIfRequested(database *sqlx.DB) error {
+	flag := strings.TrimSpace(os.Getenv("RESET_SETUP_ON_START"))
+	if flag == "" || flag == "0" || strings.EqualFold(flag, "false") {
+		return nil
+	}
+	if !strings.EqualFold(flag, "confirm") {
+		log.Printf("[reset] RESET_SETUP_ON_START is set but not CONFIRM; skipping reset for safety")
+		return nil
+	}
+
+	log.Printf("[reset] RESET_SETUP_ON_START=CONFIRM detected — resetting users/auth/setup state")
+
+	tx, err := database.Beginx()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Clear foreign key references from playback/queue history before deleting users.
+	if _, err := tx.Exec(`UPDATE queue_items SET added_by_user_id = NULL`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE playback_history SET played_by_user_id = NULL`); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`DELETE FROM access_links`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM sessions`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM user_permissions`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM users`); err != nil {
+		return err
+	}
+
+	if _, err := tx.Exec(`UPDATE settings SET value = '0', updated_at = CURRENT_TIMESTAMP WHERE key = 'setup_completed'`); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+
+	log.Printf("[reset] auth/setup reset complete — remove RESET_SETUP_ON_START env var now")
+	return nil
 }
 
 // seedAdmin keeps backward compatibility for env-based admin seeding.
