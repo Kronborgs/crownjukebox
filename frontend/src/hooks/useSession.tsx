@@ -1,16 +1,18 @@
 import { useState, useEffect, useCallback, createContext, useContext, ReactNode } from 'react'
-import { authApi, User, Permissions, ApiError } from '@/api/client'
+import { authApi, User, Permissions, ApiError, setCurrentRoomId, getCurrentRoomId } from '@/api/client'
 
 interface SessionState {
   user: User | null
   permissions: Permissions | null
   token: string | null
   isLoading: boolean
+  currentRoomId: string
 }
 
 interface SessionContextValue extends SessionState {
   login:  (username: string, pin: string) => Promise<void>
   logout: () => Promise<void>
+  setRoom: (roomId: string) => void
   isAdmin: boolean
 }
 
@@ -22,6 +24,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     permissions: null,
     token:       sessionStorage.getItem('cj_token'),
     isLoading:   true,
+    currentRoomId: getCurrentRoomId(),
   })
 
   // Validate existing token on mount
@@ -37,7 +40,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       .catch((err: ApiError) => {
         if (err.status === 401) {
           sessionStorage.removeItem('cj_token')
-          setState({ user: null, permissions: null, token: null, isLoading: false })
+          setCurrentRoomId('default')
+          setState({ user: null, permissions: null, token: null, isLoading: false, currentRoomId: 'default' })
         } else {
           setState(s => ({ ...s, isLoading: false }))
         }
@@ -60,19 +64,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     sessionStorage.setItem('cj_token', token)
     // Fetch full permissions
     const { permissions } = await authApi.me()
-    setState({ user, permissions, token, isLoading: false })
+    setState(s => ({ ...s, user, permissions, token, isLoading: false }))
   }, [])
 
   const logout = useCallback(async () => {
     try { await authApi.logout() } catch {}
     sessionStorage.removeItem('cj_token')
-    setState({ user: null, permissions: null, token: null, isLoading: false })
+    setCurrentRoomId('default')
+    setState({ user: null, permissions: null, token: null, isLoading: false, currentRoomId: 'default' })
+  }, [])
+
+  const setRoom = useCallback((roomId: string) => {
+    setCurrentRoomId(roomId)
+    setState(s => ({ ...s, currentRoomId: roomId }))
   }, [])
 
   const value: SessionContextValue = {
     ...state,
     login,
     logout,
+    setRoom,
     isAdmin: state.user?.role === 'admin',
   }
 

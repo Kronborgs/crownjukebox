@@ -21,12 +21,15 @@ import (
 	"github.com/crownjukebox/crownjukebox/internal/auth"
 	"github.com/crownjukebox/crownjukebox/internal/config"
 	"github.com/crownjukebox/crownjukebox/internal/db"
+	"github.com/crownjukebox/crownjukebox/internal/email"
 	"github.com/crownjukebox/crownjukebox/internal/events"
 	"github.com/crownjukebox/crownjukebox/internal/music"
-	"github.com/crownjukebox/crownjukebox/internal/party"
-	"github.com/crownjukebox/crownjukebox/internal/playback"
-	"github.com/crownjukebox/crownjukebox/internal/queue"
+	"github.com/crownjukebox/crownjukebox/internal/rooms"
 )
+
+type contextKey string
+
+const roomContextKey contextKey = "room"
 
 // Server holds all service dependencies.
 type Server struct {
@@ -35,9 +38,8 @@ type Server struct {
 	hub      *events.Hub
 	authSvc  *auth.Service
 	qrSvc    *auth.QRService
-	queueMgr *queue.Manager
-	playMgr  *playback.Manager
-	partyEng *party.Engine
+	roomSvc  *rooms.Service
+	emailSvc *email.Service
 	artExt   *artwork.Extractor
 	scanner  *music.Scanner
 }
@@ -47,9 +49,8 @@ func NewServer(cfg *config.Config, database *sqlx.DB) *Server {
 	hub := events.NewHub()
 	authSvc := auth.NewService(database, cfg.SessionTTLHours)
 	qrSvc := auth.NewQRService(database, getBaseURL(cfg))
-	qMgr := queue.NewManager(database)
-	partyEng := party.NewEngine(database, hub)
-	playMgr := playback.NewManager(database, hub, qMgr, partyEng)
+	roomSvc := rooms.New(database, hub)
+	emailSvc := email.NewService(database)
 	artExt := artwork.NewExtractor(database, cfg.ArtworkCacheDir)
 	scanner := music.NewScanner(database, cfg.MusicDir)
 
@@ -59,9 +60,8 @@ func NewServer(cfg *config.Config, database *sqlx.DB) *Server {
 		hub:      hub,
 		authSvc:  authSvc,
 		qrSvc:    qrSvc,
-		queueMgr: qMgr,
-		playMgr:  playMgr,
-		partyEng: partyEng,
+		roomSvc:  roomSvc,
+		emailSvc: emailSvc,
 		artExt:   artExt,
 		scanner:  scanner,
 	}
@@ -97,7 +97,7 @@ func (s *Server) Router() http.Handler {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   strings.Split(s.cfg.AllowedOrigins, ","),
 		AllowedMethods:   []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Session-Token"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Session-Token", "X-Room-ID"},
 		AllowCredentials: false,
 		MaxAge:           300,
 	}))
@@ -105,10 +105,13 @@ func (s *Server) Router() http.Handler {
 	// ─── Public endpoints ─────────────────────────────────────
 	r.Post("/api/auth/login", s.handleLogin)
 	r.Post("/api/auth/qr-login", s.handleQRLogin)
+	r.Get("/api/setup/status", s.handleSetupStatus)
+	r.Post("/api/setup", s.handleSetupComplete)
 
 	// ─── Authenticated endpoints ──────────────────────────────
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireAuth(s.authSvc))
+		r.Use(s.roomMiddleware)
 
 		r.Post("/api/auth/logout", s.handleLogout)
 		r.Get("/api/auth/me", s.handleMe)
@@ -122,6 +125,9 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/library/search", auth.RequirePermission(s.authSvc, "can_search")(http.HandlerFunc(s.handleSearch)).ServeHTTP)
 		r.Get("/api/library/cover/{id}", s.handleCoverArt)
 		r.Get("/api/library/missing-covers", s.handleMissingCovers)
+
+		// Rooms (list available rooms — all authenticated users)
+		r.Get("/api/rooms", s.handleListRooms)
 
 		// Queue
 		r.Get("/api/queue", auth.RequirePermission(s.authSvc, "can_view_queue")(http.HandlerFunc(s.handleGetQueue)).ServeHTTP)
@@ -143,7 +149,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/party/cheers", auth.RequirePermission(s.authSvc, "can_use_party_button")(http.HandlerFunc(s.handleCheers)).ServeHTTP)
 		r.Get("/api/party/state", s.handlePartyState)
 
-		// SSE (token via query param for EventSource)
+		// SSE (room_id via query param for EventSource)
 		r.Get("/api/events", s.handleSSE)
 	})
 
@@ -161,6 +167,14 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/admin/users/{id}/extend", s.handleAdminExtendUser)
 		r.Delete("/api/admin/users/{id}", s.handleAdminDeleteUser)
 		r.Put("/api/admin/users/{id}/password", s.handleAdminChangePassword)
+
+		// Invite user via email
+		r.Post("/api/admin/users/{id}/invite", s.handleAdminInviteUser)
+
+		// Rooms management
+		r.Post("/api/admin/rooms", s.handleAdminCreateRoom)
+		r.Delete("/api/admin/rooms/{id}", s.handleAdminDeleteRoom)
+		r.Put("/api/admin/rooms/{id}/party-playlist", s.handleAdminSetRoomPartyPlaylist)
 
 		// Access links / QR
 		r.Post("/api/admin/access-links", s.handleAdminCreateAccessLink)
@@ -454,7 +468,8 @@ func (s *Server) handleMissingCovers(w http.ResponseWriter, r *http.Request) {
 // ─────────────────────────────────────────────────────────────
 
 func (s *Server) handleGetQueue(w http.ResponseWriter, r *http.Request) {
-	items, err := s.queueMgr.GetQueue(r.Context())
+	rm := getRoomFromCtx(r.Context())
+	items, err := rm.Queue.GetQueue(r.Context())
 	if err != nil {
 		jsonError(w, "db error", http.StatusInternalServerError)
 		return
@@ -477,7 +492,8 @@ func (s *Server) handleAddToQueue(w http.ResponseWriter, r *http.Request) {
 		userID = sd.User.ID
 	}
 
-	item, err := s.queueMgr.AddTrack(r.Context(), req.TrackID, userID)
+	rm := getRoomFromCtx(r.Context())
+	item, err := rm.Queue.AddTrack(r.Context(), req.TrackID, userID)
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
@@ -491,7 +507,8 @@ func (s *Server) handleAddToQueue(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRemoveFromQueue(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	if err := s.queueMgr.RemoveItem(r.Context(), id); err != nil {
+	rm := getRoomFromCtx(r.Context())
+	if err := rm.Queue.RemoveItem(r.Context(), id); err != nil {
 		jsonError(w, "remove failed", http.StatusInternalServerError)
 		return
 	}
@@ -507,7 +524,8 @@ func (s *Server) handleReorderQueue(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-	if err := s.queueMgr.Reorder(r.Context(), req.Order); err != nil {
+	rm := getRoomFromCtx(r.Context())
+	if err := rm.Queue.Reorder(r.Context(), req.Order); err != nil {
 		jsonError(w, "reorder failed", http.StatusInternalServerError)
 		return
 	}
@@ -520,7 +538,8 @@ func (s *Server) handleReorderQueue(w http.ResponseWriter, r *http.Request) {
 // ─────────────────────────────────────────────────────────────
 
 func (s *Server) handlePlaybackState(w http.ResponseWriter, r *http.Request) {
-	state, err := s.playMgr.GetState(r.Context())
+	rm := getRoomFromCtx(r.Context())
+	state, err := rm.Playback.GetState(r.Context())
 	if err != nil {
 		jsonError(w, "state error", http.StatusInternalServerError)
 		return
@@ -540,7 +559,8 @@ func (s *Server) handlePlay(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
-	if err := s.playMgr.Play(r.Context(), req.TrackID, userID); err != nil {
+	rm := getRoomFromCtx(r.Context())
+	if err := rm.Playback.Play(r.Context(), req.TrackID, userID); err != nil {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -548,7 +568,8 @@ func (s *Server) handlePlay(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePause(w http.ResponseWriter, r *http.Request) {
-	if err := s.playMgr.Pause(r.Context()); err != nil {
+	rm := getRoomFromCtx(r.Context())
+	if err := rm.Playback.Pause(r.Context()); err != nil {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -561,7 +582,8 @@ func (s *Server) handleSkip(w http.ResponseWriter, r *http.Request) {
 	if sd != nil {
 		userID = sd.User.ID
 	}
-	if err := s.playMgr.Skip(r.Context(), userID, true); err != nil {
+	rm := getRoomFromCtx(r.Context())
+	if err := rm.Playback.Skip(r.Context(), userID, true); err != nil {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -616,7 +638,8 @@ func (s *Server) handleTrackEnded(w http.ResponseWriter, r *http.Request) {
 		TrackID string `json:"track_id"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	_ = s.playMgr.TrackEnded(r.Context(), req.TrackID, userID)
+	rm := getRoomFromCtx(r.Context())
+	_ = rm.Playback.TrackEnded(r.Context(), req.TrackID, userID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -633,7 +656,8 @@ func (s *Server) handleUpdatePosition(w http.ResponseWriter, r *http.Request) {
 	if sd != nil {
 		userID = sd.User.ID
 	}
-	s.playMgr.UpdatePosition(r.Context(), req.Position, userID)
+	rm := getRoomFromCtx(r.Context())
+	rm.Playback.UpdatePosition(r.Context(), req.Position, userID)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -648,15 +672,16 @@ func (s *Server) handleCheers(w http.ResponseWriter, r *http.Request) {
 		userID = sd.User.ID
 	}
 
-	track, err := s.partyEng.TriggerCheers(r.Context(), userID)
+	rm := getRoomFromCtx(r.Context())
+	track, err := rm.Party.TriggerCheers(r.Context(), userID)
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	// Start playing the party track
-	s.playMgr.SetPartyMode(true, track.ID)
-	if err := s.playMgr.Play(r.Context(), track.ID, userID); err != nil {
+	rm.Playback.SetPartyMode(true, track.ID)
+	if err := rm.Playback.Play(r.Context(), track.ID, userID); err != nil {
 		log.Printf("[party] play error: %v", err)
 	}
 
@@ -667,11 +692,185 @@ func (s *Server) handleCheers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePartyState(w http.ResponseWriter, r *http.Request) {
-	state, _ := s.playMgr.GetState(r.Context())
+	rm := getRoomFromCtx(r.Context())
+	state, _ := rm.Playback.GetState(r.Context())
 	jsonOK(w, map[string]any{
 		"is_party_mode":  state != nil && state.IsPartyMode,
 		"party_track_id": "",
 	})
+}
+
+// ─────────────────────────────────────────────────────────────
+// Room middleware + helpers
+// ─────────────────────────────────────────────────────────────
+
+// roomMiddleware reads the X-Room-ID header (default: "default") and attaches
+// the corresponding *rooms.Room to the request context.
+func (s *Server) roomMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		roomID := r.Header.Get("X-Room-ID")
+		if roomID == "" {
+			roomID = "default"
+		}
+		room := s.roomSvc.Get(r.Context(), roomID)
+		if room == nil {
+			room = s.roomSvc.Get(r.Context(), "default")
+		}
+		ctx := context.WithValue(r.Context(), roomContextKey, room)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func getRoomFromCtx(ctx context.Context) *rooms.Room {
+	if r, ok := ctx.Value(roomContextKey).(*rooms.Room); ok {
+		return r
+	}
+	return nil
+}
+
+// ─────────────────────────────────────────────────────────────
+// Setup handlers
+// ─────────────────────────────────────────────────────────────
+
+func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
+	var val string
+	_ = s.db.Get(&val, `SELECT value FROM settings WHERE key = 'setup_completed'`)
+	jsonOK(w, map[string]bool{"needs_setup": val != "1"})
+}
+
+func (s *Server) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
+	// Only allowed when setup is not yet done
+	var val string
+	_ = s.db.Get(&val, `SELECT value FROM settings WHERE key = 'setup_completed'`)
+	if val == "1" {
+		jsonError(w, "setup already completed", http.StatusForbidden)
+		return
+	}
+
+	var req struct {
+		AdminUsername string `json:"admin_username"`
+		AdminPassword string `json:"admin_password"`
+		SMTP          *struct {
+			Host     string `json:"host"`
+			Port     int    `json:"port"`
+			Username string `json:"username"`
+			Password string `json:"password"`
+			From     string `json:"from"`
+			FromName string `json:"from_name"`
+		} `json:"smtp,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	if req.AdminUsername == "" || len(req.AdminPassword) < 6 {
+		jsonError(w, "username og adgangskode (min. 6 tegn) kræves", http.StatusBadRequest)
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.AdminPassword), bcrypt.DefaultCost)
+	if err != nil {
+		jsonError(w, "hash error", http.StatusInternalServerError)
+		return
+	}
+
+	// Create admin user (or update existing)
+	adminID := uuid.NewString()
+	_, err = s.db.Exec(`
+		INSERT INTO users (id, username, display_name, password_hash, role, is_permanent, is_active, created_at)
+		VALUES (?, ?, 'Administrator', ?, 'admin', 1, 1, CURRENT_TIMESTAMP)
+		ON CONFLICT(username) DO UPDATE SET password_hash = excluded.password_hash`,
+		adminID, req.AdminUsername, string(hash))
+	if err != nil {
+		jsonError(w, "create admin: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Save SMTP settings if provided
+	if req.SMTP != nil && req.SMTP.Host != "" {
+		port := req.SMTP.Port
+		if port == 0 {
+			port = 587
+		}
+		fromName := req.SMTP.FromName
+		if fromName == "" {
+			fromName = "CrownJukebox"
+		}
+		smtpUpdates := map[string]string{
+			"smtp_enabled":   "1",
+			"smtp_host":      req.SMTP.Host,
+			"smtp_port":      fmt.Sprintf("%d", port),
+			"smtp_username":  req.SMTP.Username,
+			"smtp_password":  req.SMTP.Password,
+			"smtp_from":      req.SMTP.From,
+			"smtp_from_name": fromName,
+		}
+		for k, v := range smtpUpdates {
+			_, _ = s.db.Exec(`UPDATE settings SET value = ? WHERE key = ?`, v, k)
+		}
+	}
+
+	_, _ = s.db.Exec(`UPDATE settings SET value = '1' WHERE key = 'setup_completed'`)
+	jsonOK(w, map[string]string{"status": "setup complete"})
+}
+
+// ─────────────────────────────────────────────────────────────
+// Room handlers
+// ─────────────────────────────────────────────────────────────
+
+func (s *Server) handleListRooms(w http.ResponseWriter, r *http.Request) {
+	list, err := s.roomSvc.List(r.Context())
+	if err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w, list)
+}
+
+func (s *Server) handleAdminCreateRoom(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" {
+		jsonError(w, "name required", http.StatusBadRequest)
+		return
+	}
+	room, err := s.roomSvc.Create(r.Context(), req.Name)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+	jsonOK(w, room)
+}
+
+func (s *Server) handleAdminDeleteRoom(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "default" {
+		jsonError(w, "cannot delete default room", http.StatusBadRequest)
+		return
+	}
+	if err := s.roomSvc.Delete(r.Context(), id); err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleAdminSetRoomPartyPlaylist(w http.ResponseWriter, r *http.Request) {
+	roomID := chi.URLParam(r, "id")
+	var req struct {
+		PlaylistID string `json:"playlist_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	if err := s.roomSvc.SetPartyPlaylist(r.Context(), roomID, req.PlaylistID); err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w, map[string]string{"status": "updated"})
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -684,7 +883,16 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	if sd != nil {
 		userID = sd.User.ID
 	}
-	s.hub.ServeSSE(userID)(w, r)
+	// room_id from query param (EventSource doesn't support custom headers)
+	roomID := r.URL.Query().Get("room_id")
+	if roomID == "" {
+		if rm := getRoomFromCtx(r.Context()); rm != nil {
+			roomID = rm.Info.ID
+		} else {
+			roomID = "default"
+		}
+	}
+	s.hub.ServeSSE(userID, roomID)(w, r)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -900,6 +1108,54 @@ func (s *Server) handleAdminChangePassword(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	jsonOK(w, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleAdminInviteUser(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var req struct {
+		Email            string `json:"email"`
+		ExpiresInMinutes int    `json:"expires_in_minutes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Email == "" {
+		jsonError(w, "email required", http.StatusBadRequest)
+		return
+	}
+
+	// Build an access link for the user
+	var expiry *time.Time
+	expMins := req.ExpiresInMinutes
+	if expMins == 0 {
+		expMins = 14 * 24 * 60 // default 14 days
+	}
+	expDur := time.Duration(expMins) * time.Minute
+	if expMins > 0 {
+		t := time.Now().Add(expDur)
+		expiry = &t
+	}
+
+	link, token, err := s.qrSvc.CreateAccessLink(r.Context(), id, expDur)
+	if err != nil {
+		jsonError(w, "failed to create access link: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	_ = link // link.ID etc. available if needed
+
+	// Get user display name
+	var user db.User
+	_ = s.db.GetContext(r.Context(), &user, `SELECT * FROM users WHERE id = ?`, id)
+
+	accessURL := getBaseURL(s.cfg) + "/qr/" + token
+
+	if err := s.emailSvc.SendInvitation(r.Context(), req.Email, user.DisplayName, accessURL, expiry); err != nil {
+		jsonError(w, "failed to send email: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Save email on user record
+	_, _ = s.db.ExecContext(r.Context(), `UPDATE users SET email = ? WHERE id = ?`, req.Email, id)
+
+	jsonOK(w, map[string]string{"status": "invitation sent"})
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1187,8 +1443,12 @@ func (s *Server) handleRemovePlaylistTrack(w http.ResponseWriter, r *http.Reques
 // ─────────────────────────────────────────────────────────────
 
 func (s *Server) broadcastQueueChange(ctx context.Context) {
-	items, _ := s.queueMgr.GetQueue(ctx)
-	s.hub.Broadcast(events.EventQueueChanged, map[string]any{"items": items})
+	rm := getRoomFromCtx(ctx)
+	if rm == nil {
+		return
+	}
+	items, _ := rm.Queue.GetQueue(ctx)
+	s.hub.BroadcastToRoom(rm.Info.ID, events.EventQueueChanged, map[string]any{"items": items})
 }
 
 func jsonOK(w http.ResponseWriter, v any) {

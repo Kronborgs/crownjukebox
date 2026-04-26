@@ -37,6 +37,7 @@ type Manager struct {
 	hub      *events.Hub
 	queueMgr *queue.Manager
 	partyEng PartyEnder
+	roomID   string
 
 	currentTrackID string
 	isPlaying      bool
@@ -47,12 +48,13 @@ type Manager struct {
 	historyID      string
 }
 
-func NewManager(database *sqlx.DB, hub *events.Hub, qMgr *queue.Manager, partyEng PartyEnder) *Manager {
+func NewManager(database *sqlx.DB, hub *events.Hub, qMgr *queue.Manager, partyEng PartyEnder, roomID string) *Manager {
 	m := &Manager{
 		db:       database,
 		hub:      hub,
 		queueMgr: qMgr,
 		partyEng: partyEng,
+		roomID:   roomID,
 	}
 	// Load persisted state
 	m.loadState()
@@ -60,8 +62,8 @@ func NewManager(database *sqlx.DB, hub *events.Hub, qMgr *queue.Manager, partyEn
 }
 
 func (m *Manager) loadState() {
-	var state db.PlaybackState
-	if err := m.db.Get(&state, `SELECT * FROM playback_state WHERE id = 1`); err == nil {
+	var state db.RoomPlaybackState
+	if err := m.db.Get(&state, `SELECT * FROM room_playback_state WHERE room_id = ?`, m.roomID); err == nil {
 		m.currentTrackID = state.CurrentTrackID
 		m.isPlaying = state.IsPlaying
 		m.isPartyMode = state.IsPartyMode
@@ -73,12 +75,18 @@ func (m *Manager) loadState() {
 
 func (m *Manager) saveState() {
 	_, _ = m.db.Exec(`
-		UPDATE playback_state
-		SET current_track_id=?, is_playing=?, is_party_mode=?, party_track_id=?,
-		    position_seconds=?, updated_at=?
-		WHERE id=1`,
-		m.currentTrackID, m.isPlaying, m.isPartyMode, m.partyTrackID,
-		m.positionSecs, time.Now(),
+		INSERT INTO room_playback_state
+			(room_id, current_track_id, is_playing, is_party_mode, party_track_id, position_seconds, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(room_id) DO UPDATE SET
+			current_track_id = excluded.current_track_id,
+			is_playing       = excluded.is_playing,
+			is_party_mode    = excluded.is_party_mode,
+			party_track_id   = excluded.party_track_id,
+			position_seconds = excluded.position_seconds,
+			updated_at       = excluded.updated_at`,
+		m.roomID, m.currentTrackID, m.isPlaying, m.isPartyMode,
+		m.partyTrackID, m.positionSecs, time.Now(),
 	)
 }
 
@@ -102,7 +110,7 @@ func (m *Manager) GetState(ctx context.Context) (*State, error) {
 	}
 
 	var qLen int
-	_ = m.db.GetContext(ctx, &qLen, `SELECT COUNT(*) FROM queue_items`)
+	_ = m.db.GetContext(ctx, &qLen, `SELECT COUNT(*) FROM queue_items WHERE room_id = ?`, m.roomID)
 	state.QueueLength = qLen
 
 	return state, nil
@@ -143,9 +151,9 @@ func (m *Manager) Play(ctx context.Context, trackID, userID string) error {
 	// Start new history entry
 	m.historyID = uuid.NewString()
 	_, _ = m.db.ExecContext(ctx, `
-		INSERT INTO playback_history (id, track_id, played_by_user_id, started_at)
-		VALUES (?, ?, ?, ?)`,
-		m.historyID, trackID, userID, time.Now(),
+		INSERT INTO playback_history (id, room_id, track_id, played_by_user_id, started_at)
+		VALUES (?, ?, ?, ?, ?)`,
+		m.historyID, m.roomID, trackID, userID, time.Now(),
 	)
 
 	m.saveState()
@@ -158,11 +166,11 @@ func (m *Manager) Play(ctx context.Context, trackID, userID string) error {
 	if t.CoverArtID != nil && *t.CoverArtID != "" {
 		coverURL = "/api/library/cover/" + *t.CoverArtID + "?size=large"
 	}
-	m.hub.Broadcast(events.EventNowPlayingChanged, map[string]any{
+	m.hub.BroadcastToRoom(m.roomID, events.EventNowPlayingChanged, map[string]any{
 		"track":     t,
 		"cover_url": coverURL,
 	})
-	m.hub.Broadcast(events.EventPlaybackStateChanged, map[string]any{
+	m.hub.BroadcastToRoom(m.roomID, events.EventPlaybackStateChanged, map[string]any{
 		"is_playing": true,
 		"track_id":   trackID,
 	})
@@ -179,7 +187,7 @@ func (m *Manager) Pause(ctx context.Context) error {
 	m.updatedAt = time.Now()
 	m.saveState()
 
-	m.hub.Broadcast(events.EventPlaybackStateChanged, map[string]any{
+	m.hub.BroadcastToRoom(m.roomID, events.EventPlaybackStateChanged, map[string]any{
 		"is_playing":   m.isPlaying,
 		"position_sec": m.positionSecs,
 	})

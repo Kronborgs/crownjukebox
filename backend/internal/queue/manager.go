@@ -12,13 +12,14 @@ import (
 	"github.com/crownjukebox/crownjukebox/internal/db"
 )
 
-// Manager handles the play queue including autoplay logic.
+// Manager handles the play queue for a single room.
 type Manager struct {
-	db *sqlx.DB
+	db     *sqlx.DB
+	roomID string
 }
 
-func NewManager(database *sqlx.DB) *Manager {
-	return &Manager{db: database}
+func NewManager(database *sqlx.DB, roomID string) *Manager {
+	return &Manager{db: database, roomID: roomID}
 }
 
 // GetQueue returns the current queue in position order with joined track info.
@@ -41,7 +42,8 @@ func (m *Manager) GetQueue(ctx context.Context) ([]db.QueueItemRich, error) {
 		JOIN tracks  t  ON t.id  = qi.track_id
 		JOIN albums  al ON al.id = t.album_id
 		JOIN artists ar ON ar.id = t.artist_id
-		ORDER BY qi.position ASC`)
+		WHERE qi.room_id = ?
+		ORDER BY qi.position ASC`, m.roomID)
 	return items, err
 }
 
@@ -53,12 +55,13 @@ func (m *Manager) AddTrack(ctx context.Context, trackID, userID string) (*db.Que
 		return nil, fmt.Errorf("track not found: %s", trackID)
 	}
 
-	// Get next position
+	// Get next position for this room
 	var maxPos int
-	_ = m.db.GetContext(ctx, &maxPos, `SELECT COALESCE(MAX(position), 0) FROM queue_items`)
+	_ = m.db.GetContext(ctx, &maxPos, `SELECT COALESCE(MAX(position), 0) FROM queue_items WHERE room_id = ?`, m.roomID)
 
 	item := &db.QueueItem{
 		ID:          uuid.NewString(),
+		RoomID:      m.roomID,
 		TrackID:     trackID,
 		AddedByUser: userID,
 		Position:    maxPos + 1,
@@ -67,31 +70,30 @@ func (m *Manager) AddTrack(ctx context.Context, trackID, userID string) (*db.Que
 	}
 
 	_, err := m.db.ExecContext(ctx, `
-		INSERT INTO queue_items (id, track_id, added_by_user_id, position, is_autoplay, added_at)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		item.ID, item.TrackID, item.AddedByUser,
+		INSERT INTO queue_items (id, room_id, track_id, added_by_user_id, position, is_autoplay, added_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		item.ID, item.RoomID, item.TrackID, item.AddedByUser,
 		item.Position, item.IsAutoplay, item.AddedAt,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("add to queue: %w", err)
 	}
 
-	// If autoplay was running, signal that a user track was added (caller handles this)
 	return item, nil
 }
 
-// RemoveItem removes a specific queue item.
+// RemoveItem removes a specific queue item (room-scoped for safety).
 func (m *Manager) RemoveItem(ctx context.Context, itemID string) error {
-	_, err := m.db.ExecContext(ctx, `DELETE FROM queue_items WHERE id = ?`, itemID)
+	_, err := m.db.ExecContext(ctx, `DELETE FROM queue_items WHERE id = ? AND room_id = ?`, itemID, m.roomID)
 	return err
 }
 
-// Advance pops and returns the next item from the front of the queue.
+// Advance pops and returns the next item from the front of the room's queue.
 // Returns nil if the queue is empty.
 func (m *Manager) Advance(ctx context.Context) (*db.QueueItem, error) {
 	var item db.QueueItem
 	err := m.db.GetContext(ctx, &item,
-		`SELECT * FROM queue_items ORDER BY position ASC LIMIT 1`)
+		`SELECT * FROM queue_items WHERE room_id = ? ORDER BY position ASC LIMIT 1`, m.roomID)
 	if err != nil {
 		return nil, nil // empty queue
 	}
@@ -101,10 +103,10 @@ func (m *Manager) Advance(ctx context.Context) (*db.QueueItem, error) {
 		return nil, fmt.Errorf("remove queue item: %w", err)
 	}
 
-	// Re-number positions
+	// Re-number positions for this room
 	_, _ = m.db.ExecContext(ctx, `
 		UPDATE queue_items SET position = position - 1
-		WHERE position > ?`, item.Position)
+		WHERE room_id = ? AND position > ?`, m.roomID, item.Position)
 
 	return &item, nil
 }
@@ -118,17 +120,16 @@ func (m *Manager) Reorder(ctx context.Context, orderedIDs []string) error {
 	defer tx.Rollback()
 
 	for i, id := range orderedIDs {
-		if _, err := tx.ExecContext(ctx, `UPDATE queue_items SET position = ? WHERE id = ?`, i+1, id); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE queue_items SET position = ? WHERE id = ? AND room_id = ?`, i+1, id, m.roomID); err != nil {
 			return fmt.Errorf("reorder item %s: %w", id, err)
 		}
 	}
 	return tx.Commit()
 }
 
-// AutoplayNext selects a track for autoplay based on recent history.
-// It prefers tracks from genres/artists played in the last hour.
+// AutoplayNext selects a track for autoplay based on recent room history.
 func (m *Manager) AutoplayNext(ctx context.Context) (*db.Track, error) {
-	// Get genre distribution from last 60 minutes of history
+	// Get genre distribution from last 60 minutes of this room's history
 	var recentGenres []string
 	_ = m.db.SelectContext(ctx, &recentGenres, `
 		SELECT DISTINCT al.genre
@@ -136,18 +137,20 @@ func (m *Manager) AutoplayNext(ctx context.Context) (*db.Track, error) {
 		JOIN tracks t ON t.id = ph.track_id
 		JOIN albums al ON al.id = t.album_id
 		WHERE ph.started_at > datetime('now', '-60 minutes')
+		  AND ph.room_id = ?
 		  AND al.genre != ''
-		LIMIT 5`)
+		LIMIT 5`, m.roomID)
 
-	// Get recently played track IDs to avoid repetition
+	// Get recently played track IDs in this room to avoid repetition
 	var recentTrackIDs []string
 	_ = m.db.SelectContext(ctx, &recentTrackIDs, `
 		SELECT track_id FROM playback_history
-		WHERE started_at > datetime('now', '-60 minutes')`)
+		WHERE started_at > datetime('now', '-60 minutes')
+		  AND room_id = ?`, m.roomID)
 
 	var track db.Track
 
-	// Try to find a matching genre track first (use parameterized IN clause)
+	// Try to find a matching genre track first
 	if len(recentGenres) > 0 {
 		genre := recentGenres[rand.Intn(len(recentGenres))]
 		if len(recentTrackIDs) > 0 {
@@ -173,7 +176,7 @@ func (m *Manager) AutoplayNext(ctx context.Context) (*db.Track, error) {
 		}
 	}
 
-	// Fall back: any track not recently played
+	// Fall back: any track not recently played in this room
 	if len(recentTrackIDs) > 0 {
 		query, args, err := sqlx.In(`
 			SELECT * FROM tracks WHERE id NOT IN (?)
@@ -193,10 +196,10 @@ func (m *Manager) AutoplayNext(ctx context.Context) (*db.Track, error) {
 	return &track, nil
 }
 
-// IsEmpty reports whether the queue has no items.
+// IsEmpty reports whether the room's queue has no items.
 func (m *Manager) IsEmpty(ctx context.Context) bool {
 	var count int
-	_ = m.db.GetContext(ctx, &count, `SELECT COUNT(*) FROM queue_items`)
+	_ = m.db.GetContext(ctx, &count, `SELECT COUNT(*) FROM queue_items WHERE room_id = ?`, m.roomID)
 	return count == 0
 }
 

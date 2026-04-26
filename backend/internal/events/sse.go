@@ -36,6 +36,7 @@ type Event struct {
 type client struct {
 	ch     chan Event
 	userID string
+	roomID string
 }
 
 // Hub manages all active SSE connections.
@@ -82,9 +83,24 @@ func (h *Hub) BroadcastToUser(userID string, eventType string, data any) {
 	}
 }
 
-// ServeSSE handles an SSE connection. The request must already be authenticated;
-// pass userID="" for unauthenticated streams (not recommended for production).
-func (h *Hub) ServeSSE(userID string) http.HandlerFunc {
+// BroadcastToRoom sends an event only to clients connected to the given room.
+func (h *Hub) BroadcastToRoom(roomID string, eventType string, data any) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	ev := Event{Type: eventType, Data: data}
+	for c := range h.clients {
+		if c.roomID == roomID {
+			select {
+			case c.ch <- ev:
+			default:
+			}
+		}
+	}
+}
+
+// ServeSSE handles an SSE connection for a specific room.
+func (h *Hub) ServeSSE(userID, roomID string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Verify client supports streaming
 		flusher, ok := w.(http.Flusher)
@@ -101,6 +117,7 @@ func (h *Hub) ServeSSE(userID string) http.HandlerFunc {
 		c := &client{
 			ch:     make(chan Event, 32),
 			userID: userID,
+			roomID: roomID,
 		}
 
 		h.mu.Lock()

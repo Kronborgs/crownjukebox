@@ -89,6 +89,7 @@ type User struct {
 	ID               string     `db:"id"`
 	DisplayName      string     `db:"display_name"`
 	Username         string     `db:"username"`
+	Email            string     `db:"email"`
 	Role             string     `db:"role"` // admin | user
 	PinHash          string     `db:"pin_hash"`
 	LoginTokenHash   string     `db:"login_token_hash"`
@@ -139,6 +140,7 @@ type AccessLink struct {
 
 type QueueItem struct {
 	ID          string    `db:"id"`
+	RoomID      string    `db:"room_id"`
 	TrackID     string    `db:"track_id"`
 	AddedByUser string    `db:"added_by_user_id"`
 	Position    int       `db:"position"`
@@ -179,6 +181,29 @@ type PlaybackState struct {
 	PartyTrackID   string    `db:"party_track_id"`
 	PositionSecs   float64   `db:"position_seconds"`
 	UpdatedAt      time.Time `db:"updated_at"`
+}
+
+// RoomPlaybackState stores per-room playback state (one row per room).
+type RoomPlaybackState struct {
+	RoomID         string    `db:"room_id"`
+	CurrentTrackID string    `db:"current_track_id"`
+	IsPlaying      bool      `db:"is_playing"`
+	IsPartyMode    bool      `db:"is_party_mode"`
+	PartyTrackID   string    `db:"party_track_id"`
+	PositionSecs   float64   `db:"position_seconds"`
+	UpdatedAt      time.Time `db:"updated_at"`
+}
+
+// ─────────────────────────────────────────────────────────────
+// Room models
+// ─────────────────────────────────────────────────────────────
+
+type Room struct {
+	ID              string    `db:"id"               json:"id"`
+	Name            string    `db:"name"             json:"name"`
+	PartyPlaylistID *string   `db:"party_playlist_id" json:"party_playlist_id,omitempty"`
+	CreatedAt       time.Time `db:"created_at"       json:"created_at"`
+	UpdatedAt       time.Time `db:"updated_at"       json:"updated_at"`
 }
 
 // ─────────────────────────────────────────────────────────────

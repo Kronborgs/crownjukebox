@@ -12,6 +12,7 @@
     CrownJukebox — Retro browser-based party jukebox.
     Frontend + Backend i én container. Peg på din musikmappe og åbn på TV/touchscreen.
     Standard port: 3000.
+    Admin-bruger og kode oprettes i setup-guiden i web-UI ved første opstart.
   </Overview>
   <Category>MediaApp:Music</Category>
   <WebUI>http://[IP]:[PORT:3000]/</WebUI>
@@ -19,8 +20,8 @@
   <Icon>https://raw.githubusercontent.com/Kronborgs/crownjukebox/main/docs/icon.png</Icon>
   <ExtraParams/>
   <PostArgs/>
-  <Date>2026-04-25</Date>
-  <Changes/>
+  <Date>2026-04-26</Date>
+  <Changes>Opdateret til setup-wizard flow (ingen ADMIN_USERNAME/ADMIN_PASSWORD i template) og single-container deployment.</Changes>
 
   <!-- ── Port ───────────────────────────────────────────────── -->
 
@@ -40,63 +41,43 @@
   <Config
     Name="Musik-bibliotek"
     Target="/music"
-    Default="/mnt/user/music"
+    Default=""
     Mode="ro"
-    Description="Sti til din musikmappe. MP3, FLAC og OGG understøttes. Monteres skrivebeskyttet."
+    Description="SKAL udfyldes manuelt. Angiv fuld sti til din musikmappe, fx /mnt/user/music. MP3, FLAC og OGG understøttes. Monteres skrivebeskyttet."
     Type="Path"
     Display="always"
     Required="true"
-    Mask="false">/mnt/user/music</Config>
+    Mask="false"></Config>
 
   <Config
     Name="App Data (database)"
     Target="/data"
-    Default="/mnt/user/appdata/crownjukebox"
+    Default=""
     Mode="rw"
-    Description="Hvor SQLite-databasen gemmes. Brug en sti på dit cache- eller array-drev."
+    Description="SKAL udfyldes manuelt. Angiv fuld sti til appdata, fx /mnt/user/appdata/crownjukebox. SQLite-databasen gemmes her."
     Type="Path"
     Display="always"
     Required="true"
-    Mask="false">/mnt/user/appdata/crownjukebox</Config>
+    Mask="false"></Config>
 
   <Config
     Name="Artwork Cache"
     Target="/artwork_cache"
-    Default="/mnt/user/appdata/crownjukebox/artwork"
+    Default=""
     Mode="rw"
-    Description="Hvor album-covers gemmes. Kan ligge på cache-drevet for hurtigere adgang."
+    Description="SKAL udfyldes manuelt. Angiv fuld sti til artwork-cache, fx /mnt/user/appdata/crownjukebox/artwork. Album-covers gemmes her."
     Type="Path"
     Display="always"
     Required="true"
-    Mask="false">/mnt/user/appdata/crownjukebox/artwork</Config>
+    Mask="false"></Config>
 
   <!-- ── Påkrævede indstillinger ────────────────────────────── -->
 
   <Config
-    Name="Admin brugernavn"
-    Target="ADMIN_USERNAME"
-    Default="admin"
-    Description="Brugernavn til admin-kontoen. Oprettes automatisk ved første start."
-    Type="Variable"
-    Display="always"
-    Required="true"
-    Mask="false">admin</Config>
-
-  <Config
-    Name="Admin kodeord"
-    Target="ADMIN_PASSWORD"
-    Default=""
-    Description="Kodeord/PIN til admin-kontoen. Skift dette inden første start!"
-    Type="Variable"
-    Display="always"
-    Required="true"
-    Mask="true"></Config>
-
-  <Config
-    Name="Hemmelig nøgle"
+    Name="App hemmelig nøgle"
     Target="JWT_SECRET"
     Default=""
-    Description="Hemmelig nøgle til session-tokens. Brug en lang tilfældig streng. Del aldrig denne."
+    Description="SKAL udfyldes manuelt. Brug en lang tilfældig streng (min. 32 tegn), fx genereret password/secret. Del aldrig denne."
     Type="Variable"
     Display="always"
     Required="true"
@@ -107,18 +88,18 @@
   <Config
     Name="Session-levetid (timer)"
     Target="SESSION_TTL_HOURS"
-    Default="168"
-    Description="Hvor længe en brugersession varer i timer. Standard er 168 (7 dage)."
+    Default=""
+    Description="Valgfri. Udfyld manuelt hvis du vil ændre timeout (timer). Lad være tom for standard (168 = 7 dage)."
     Type="Variable"
     Display="advanced"
     Required="false"
-    Mask="false">168</Config>
+    Mask="false"></Config>
 
   <Config
     Name="Subsonic URL"
     Target="SUBSONIC_URL"
     Default=""
-    Description="Valgfri Subsonic/Navidrome URL, fx http://192.168.1.5:4533"
+    Description="Valgfri. Udfyld manuelt hvis du bruger Subsonic/Navidrome, fx http://192.168.1.5:4533. Lad tom hvis ikke i brug."
     Type="Variable"
     Display="advanced"
     Required="false"
@@ -128,7 +109,7 @@
     Name="Subsonic brugernavn"
     Target="SUBSONIC_USERNAME"
     Default=""
-    Description="Subsonic/Navidrome brugernavn (kun hvis Subsonic er aktiveret)."
+    Description="Valgfri. Udfyld manuelt med Subsonic/Navidrome brugernavn (kun hvis SUBSONIC_URL er udfyldt)."
     Type="Variable"
     Display="advanced"
     Required="false"
@@ -138,7 +119,7 @@
     Name="Subsonic kodeord"
     Target="SUBSONIC_PASSWORD"
     Default=""
-    Description="Subsonic/Navidrome kodeord."
+    Description="Valgfri. Udfyld manuelt med Subsonic/Navidrome kodeord (kun hvis SUBSONIC_URL er udfyldt)."
     Type="Variable"
     Display="advanced"
     Required="false"

@@ -136,6 +136,24 @@ export interface KeyboardBinding {
 
 // ─── HTTP client ──────────────────────────────────────────────────
 
+export interface Room {
+  id: string
+  name: string
+  party_playlist_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+// ─── Room ID helper ───────────────────────────────────────────────
+
+export function getCurrentRoomId(): string {
+  return sessionStorage.getItem('cj_room_id') ?? 'default'
+}
+
+export function setCurrentRoomId(id: string): void {
+  sessionStorage.setItem('cj_room_id', id)
+}
+
 class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message)
@@ -145,12 +163,16 @@ class ApiError extends Error {
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = sessionStorage.getItem('cj_token')
+  const roomId = getCurrentRoomId()
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(options.headers as Record<string, string>),
   }
   if (token) {
     headers['X-Session-Token'] = token
+  }
+  if (roomId && roomId !== 'default') {
+    headers['X-Room-ID'] = roomId
   }
 
   const res = await fetch(BASE + path, { ...options, headers })
@@ -287,6 +309,40 @@ export const adminApi = {
   // Password management
   changePassword: (userId: string, newPassword: string) =>
     put<void>(`/api/admin/users/${userId}/password`, { new_password: newPassword }),
+
+  // Invite user
+  inviteUser: (userId: string, email: string, expiresInMinutes = 0) =>
+    post<{ status: string }>(`/api/admin/users/${userId}/invite`, { email, expires_in_minutes: expiresInMinutes }),
+
+  // Room management (admin)
+  createRoom: (name: string) => post<Room>('/api/admin/rooms', { name }),
+  deleteRoom: (id: string) => del(`/api/admin/rooms/${id}`),
+  setRoomPartyPlaylist: (roomId: string, playlistId: string) =>
+    put<void>(`/api/admin/rooms/${roomId}/party-playlist`, { playlist_id: playlistId }),
+}
+
+// ─── Rooms ────────────────────────────────────────────────────────
+
+export const roomApi = {
+  list: () => get<Room[]>('/api/rooms'),
+}
+
+// ─── Setup ────────────────────────────────────────────────────────
+
+export const setupApi = {
+  status: () => get<{ needs_setup: boolean }>('/api/setup/status'),
+  complete: (data: {
+    admin_username: string
+    admin_password: string
+    smtp?: {
+      host: string
+      port: number
+      username: string
+      password: string
+      from: string
+      from_name: string
+    }
+  }) => post<{ status: string }>('/api/setup', data),
 }
 
 export { ApiError }

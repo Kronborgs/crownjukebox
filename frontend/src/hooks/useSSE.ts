@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react'
+import { getCurrentRoomId } from '@/api/client'
 
 export type SSEEventType =
   | 'now_playing_changed'
@@ -19,6 +20,8 @@ export type SSEHandler = (data: unknown) => void
 interface SSEOptions {
   /** token for authentication via query param (EventSource can't set headers) */
   token?: string
+  /** room_id to subscribe to (defaults to current room from sessionStorage) */
+  roomId?: string
   onReconnect?: () => void
 }
 
@@ -40,7 +43,8 @@ export function useSSE(
     const token = options.token ?? sessionStorage.getItem('cj_token') ?? ''
     if (!token) return
 
-    const url = `/api/events?token=${encodeURIComponent(token)}`
+    const roomId = options.roomId ?? getCurrentRoomId()
+    const url = `/api/events?token=${encodeURIComponent(token)}&room_id=${encodeURIComponent(roomId)}`
     const es = new EventSource(url)
     esRef.current = es
 

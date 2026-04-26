@@ -11,24 +11,24 @@ import (
 	"github.com/crownjukebox/crownjukebox/internal/events"
 )
 
-// Engine manages the SKÅLE (party/cheers) functionality.
+// Engine manages the SKÅLE (party/cheers) functionality for a single room.
 type Engine struct {
-	db  *sqlx.DB
-	hub *events.Hub
+	db     *sqlx.DB
+	hub    *events.Hub
+	roomID string
 }
 
-func NewEngine(database *sqlx.DB, hub *events.Hub) *Engine {
-	return &Engine{db: database, hub: hub}
+func NewEngine(database *sqlx.DB, hub *events.Hub, roomID string) *Engine {
+	return &Engine{db: database, hub: hub, roomID: roomID}
 }
 
-// TriggerCheers picks a random track from the party playlist and broadcasts the party start event.
-// Returns the selected track, or error if no party playlist is configured.
+// TriggerCheers picks a random track from this room's party playlist.
 func (e *Engine) TriggerCheers(ctx context.Context, triggeredByUserID string) (*db.Track, error) {
-	// Get party playlist ID from settings
-	var playlistID string
+	// Get party playlist ID from the rooms table
+	var playlistID *string
 	if err := e.db.GetContext(ctx, &playlistID,
-		`SELECT value FROM settings WHERE key = 'party_playlist_id'`); err != nil || playlistID == "" {
-		return nil, fmt.Errorf("ingen skåle-playliste konfigureret — admin skal vælge en")
+		`SELECT party_playlist_id FROM rooms WHERE id = ?`, e.roomID); err != nil || playlistID == nil || *playlistID == "" {
+		return nil, fmt.Errorf("ingen skåle-playliste konfigureret for dette rum — admin skal vælge en")
 	}
 
 	// Get all tracks in the party playlist
@@ -37,7 +37,7 @@ func (e *Engine) TriggerCheers(ctx context.Context, triggeredByUserID string) (*
 		SELECT t.* FROM tracks t
 		JOIN playlist_tracks pt ON pt.track_id = t.id
 		WHERE pt.playlist_id = ?
-		ORDER BY pt.position`, playlistID); err != nil || len(tracks) == 0 {
+		ORDER BY pt.position`, *playlistID); err != nil || len(tracks) == 0 {
 		return nil, fmt.Errorf("skåle-playlisten er tom")
 	}
 
@@ -50,8 +50,8 @@ func (e *Engine) TriggerCheers(ctx context.Context, triggeredByUserID string) (*
 		coverURL = "/api/library/cover/" + *track.CoverArtID + "?size=large"
 	}
 
-	// Broadcast party started to all connected clients
-	e.hub.Broadcast(events.EventPartyStarted, map[string]any{
+	// Broadcast party started only to clients in this room
+	e.hub.BroadcastToRoom(e.roomID, events.EventPartyStarted, map[string]any{
 		"track":        track,
 		"cover_url":    coverURL,
 		"triggered_by": triggeredByUserID,
@@ -60,21 +60,21 @@ func (e *Engine) TriggerCheers(ctx context.Context, triggeredByUserID string) (*
 	return &track, nil
 }
 
-// EndParty broadcasts party ended and returns to normal playback.
+// EndParty broadcasts party ended to this room.
 func (e *Engine) EndParty(ctx context.Context) {
-	e.hub.Broadcast(events.EventPartyEnded, map[string]any{})
+	e.hub.BroadcastToRoom(e.roomID, events.EventPartyEnded, map[string]any{})
 }
 
-// GetPartyPlaylist returns the configured party playlist.
+// GetPartyPlaylist returns this room's configured party playlist.
 func (e *Engine) GetPartyPlaylist(ctx context.Context) (*db.Playlist, []db.Track, error) {
-	var playlistID string
+	var playlistID *string
 	if err := e.db.GetContext(ctx, &playlistID,
-		`SELECT value FROM settings WHERE key = 'party_playlist_id'`); err != nil || playlistID == "" {
+		`SELECT party_playlist_id FROM rooms WHERE id = ?`, e.roomID); err != nil || playlistID == nil || *playlistID == "" {
 		return nil, nil, nil
 	}
 
 	var playlist db.Playlist
-	if err := e.db.GetContext(ctx, &playlist, `SELECT * FROM playlists WHERE id = ?`, playlistID); err != nil {
+	if err := e.db.GetContext(ctx, &playlist, `SELECT * FROM playlists WHERE id = ?`, *playlistID); err != nil {
 		return nil, nil, fmt.Errorf("playlist not found: %w", err)
 	}
 
@@ -83,15 +83,7 @@ func (e *Engine) GetPartyPlaylist(ctx context.Context) (*db.Playlist, []db.Track
 		SELECT t.* FROM tracks t
 		JOIN playlist_tracks pt ON pt.track_id = t.id
 		WHERE pt.playlist_id = ?
-		ORDER BY pt.position`, playlistID)
+		ORDER BY pt.position`, *playlistID)
 
 	return &playlist, tracks, nil
-}
-
-// SetPartyPlaylist sets the party playlist in settings.
-func (e *Engine) SetPartyPlaylist(ctx context.Context, playlistID string) error {
-	_, err := e.db.ExecContext(ctx, `
-		INSERT OR REPLACE INTO settings (key, value, updated_at)
-		VALUES ('party_playlist_id', ?, CURRENT_TIMESTAMP)`, playlistID)
-	return err
 }

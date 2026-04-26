@@ -6,6 +6,9 @@ import { KioskLayout } from '@/layouts/KioskLayout'
 import { MobileLayout } from '@/layouts/MobileLayout'
 import { LoginScreen } from '@/screens/LoginScreen'
 import { AdminLayout } from '@/screens/Admin/AdminLayout'
+import { SetupScreen } from '@/screens/SetupScreen'
+import { RoomSelector } from '@/screens/RoomSelector'
+import { setupApi } from '@/api/client'
 
 /** Returns true when the viewport is narrower than 768px. */
 function useIsMobile() {
@@ -29,8 +32,17 @@ const queryClient = new QueryClient({
 })
 
 function AppRoutes() {
-  const { user, isLoading } = useSession()
+  const { user, isLoading, currentRoomId, setRoom } = useSession()
   const isMobile = useIsMobile()
+  const [needsSetup, setNeedsSetup] = useState<boolean | null>(null)
+  const [roomSelected, setRoomSelected] = useState(!!currentRoomId && currentRoomId !== 'default')
+
+  // Check setup status on mount
+  useEffect(() => {
+    setupApi.status()
+      .then(({ needs_setup }) => setNeedsSetup(needs_setup))
+      .catch(() => setNeedsSetup(false))
+  }, [])
 
   if (isLoading) {
     return (
@@ -48,11 +60,43 @@ function AppRoutes() {
     )
   }
 
+  // Show loading while setup status is being fetched
+  if (needsSetup === null) {
+    return (
+      <div style={{
+        height: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--bg-base)',
+        color: 'var(--neon-primary)',
+        fontSize: '2rem',
+      }}>
+        ♛
+      </div>
+    )
+  }
+
+  // First-time setup wizard
+  if (needsSetup) {
+    return <SetupScreen onComplete={() => setNeedsSetup(false)} />
+  }
+
   if (!user) {
     return (
       <Routes>
         <Route path="*" element={<LoginScreen />} />
       </Routes>
+    )
+  }
+
+  // Show room selector if user is logged in but hasn't selected a room yet
+  if (!roomSelected) {
+    return (
+      <RoomSelector onRoomSelected={(id) => {
+        setRoom(id)
+        setRoomSelected(true)
+      }} />
     )
   }
 
