@@ -220,6 +220,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
 	}
+	req.Username = strings.TrimSpace(req.Username)
 
 	if req.Username == "" || req.Pin == "" {
 		jsonError(w, "username and pin required", http.StatusBadRequest)
@@ -227,7 +228,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var user db.User
-	if err := s.db.Get(&user, `SELECT * FROM users WHERE username = ? AND is_active = 1`, req.Username); err != nil {
+	if err := s.db.Get(&user, `SELECT * FROM users WHERE username = ? COLLATE NOCASE AND is_active = 1`, req.Username); err != nil {
 		// Constant-time delay to prevent timing attacks
 		bcrypt.GenerateFromPassword([]byte("dummy"), bcrypt.MinCost)
 		jsonError(w, "invalid credentials", http.StatusUnauthorized)
@@ -763,6 +764,7 @@ func (s *Server) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
 	}
+	req.AdminUsername = strings.TrimSpace(req.AdminUsername)
 	if req.AdminUsername == "" || len(req.AdminPassword) < 6 {
 		jsonError(w, "username og adgangskode (min. 6 tegn) kræves", http.StatusBadRequest)
 		return
@@ -779,11 +781,29 @@ func (s *Server) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 	_, err = s.db.Exec(`
 		INSERT INTO users (id, username, display_name, pin_hash, role, is_permanent, is_active, created_at)
 		VALUES (?, ?, 'Administrator', ?, 'admin', 1, 1, CURRENT_TIMESTAMP)
-		ON CONFLICT(username) DO UPDATE SET pin_hash = excluded.pin_hash`,
+		ON CONFLICT(username) DO UPDATE SET
+			pin_hash = excluded.pin_hash,
+			display_name = 'Administrator',
+			role = 'admin',
+			is_permanent = 1,
+			is_active = 1,
+			updated_at = CURRENT_TIMESTAMP`,
 		adminID, req.AdminUsername, string(hash))
 	if err != nil {
 		jsonError(w, "create admin: "+err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	// Ensure admin has full permissions row.
+	if err := s.db.Get(&adminID, `SELECT id FROM users WHERE username = ? COLLATE NOCASE LIMIT 1`, req.AdminUsername); err == nil {
+		_, _ = s.db.Exec(`
+			INSERT INTO user_permissions (user_id, can_add_to_queue, can_search, can_use_party_button, can_view_queue)
+			VALUES (?, 1, 1, 1, 1)
+			ON CONFLICT(user_id) DO UPDATE SET
+				can_add_to_queue = 1,
+				can_search = 1,
+				can_use_party_button = 1,
+				can_view_queue = 1`, adminID)
 	}
 
 	// Save SMTP settings if provided
