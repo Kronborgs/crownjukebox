@@ -43,13 +43,202 @@
 
   /* Typography */
   --font-display: 'Georgia', 'Times New Roman', serif;
-  --font-body:    system-ui, -apple-system, sans-serif;
+  --font-body:    'Trebuchet MS', 'Segoe UI', sans-serif;
   --font-mono:    'Courier New', monospace;
 
   /* Transitions */
   --transition-fast:   150ms ease;
   --transition-normal: 250ms ease;
   --transition-slow:   400ms ease;
+}
+
+/* ─── Kiosk cabinet scene ───────────────────── */
+.kiosk-stage {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% -10%, #2b124f 0%, #12072b 36%, #080313 100%);
+  padding: 22px;
+}
+
+.kiosk-cabinet-shell {
+  position: absolute;
+  inset: 10px;
+  border-radius: 38px;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(125, 255, 58, 0.24), transparent 38%),
+    radial-gradient(circle at 0% 100%, rgba(255, 138, 42, 0.2), transparent 40%),
+    linear-gradient(160deg, rgba(97, 40, 12, 0.92), rgba(41, 18, 6, 0.94));
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 177, 0, 0.18),
+    inset 0 0 60px rgba(0, 0, 0, 0.5),
+    0 18px 48px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+}
+
+.kiosk-cabinet-rim {
+  position: absolute;
+  inset: 2px;
+  border-radius: 44px;
+  border: 10px solid transparent;
+  background:
+    linear-gradient(#1a0735, #1a0735) padding-box,
+    conic-gradient(from 10deg, #ff9d3b, #95ff4a, #cb4dff, #ff9d3b) border-box;
+  opacity: 0.92;
+  filter: drop-shadow(0 0 24px rgba(125, 255, 58, 0.22));
+  pointer-events: none;
+}
+
+.kiosk-cabinet {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 14px;
+  border-radius: 24px;
+  padding: 14px;
+}
+
+.kiosk-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  border-radius: 16px;
+  padding: 10px 16px;
+  background:
+    linear-gradient(180deg, rgba(248, 250, 255, 0.2), rgba(59, 64, 82, 0.25)),
+    linear-gradient(140deg, rgba(255, 157, 59, 0.16), rgba(117, 26, 173, 0.2));
+}
+
+.kiosk-brand-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.kiosk-crown {
+  font-size: 1.45rem;
+}
+
+.kiosk-brand {
+  font-size: 1.15rem;
+  letter-spacing: 0.24rem;
+  text-transform: uppercase;
+  font-family: var(--font-display);
+  color: var(--chrome-bright);
+  text-shadow: 0 0 16px rgba(255, 138, 42, 0.45);
+}
+
+.kiosk-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kiosk-main-grid {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 380px minmax(0, 1fr);
+  gap: 14px;
+}
+
+.kiosk-now-playing,
+.kiosk-browser {
+  min-height: 0;
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0)),
+    linear-gradient(145deg, rgba(29, 14, 54, 0.96), rgba(15, 8, 30, 0.96));
+}
+
+.kiosk-now-playing {
+  overflow: hidden;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 138, 42, 0.26),
+    inset 0 0 40px rgba(0, 0, 0, 0.38);
+}
+
+.kiosk-browser {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow:
+    inset 0 0 0 1px rgba(125, 255, 58, 0.18),
+    inset 0 0 44px rgba(0, 0, 0, 0.42);
+}
+
+.kiosk-tabbar {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.kiosk-pill {
+  flex: 1;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 10px 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #ffe9d8;
+  background:
+    linear-gradient(180deg, rgba(255, 196, 140, 0.9), rgba(239, 93, 22, 0.88));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    0 0 0 1px rgba(255, 150, 74, 0.52),
+    0 6px 16px rgba(255, 123, 0, 0.22);
+  transition: transform var(--transition-fast), filter var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.kiosk-pill:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.kiosk-pill.is-active {
+  color: #f6fff2;
+  background:
+    linear-gradient(180deg, rgba(182, 255, 120, 0.95), rgba(65, 176, 25, 0.92));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.48),
+    0 0 0 1px rgba(123, 255, 61, 0.6),
+    0 0 16px rgba(123, 255, 61, 0.45);
+}
+
+.kiosk-browser-content {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.kiosk-footer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 4px 0;
+}
+
+@media (max-width: 1200px) {
+  .kiosk-main-grid {
+    grid-template-columns: 320px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 980px) {
+  .kiosk-main-grid {
+    grid-template-columns: 1fr;
+    grid-template-rows: 56vh minmax(0, 1fr);
+  }
 }
 
 /* ─── Reset ─────────────────────────────────── */
@@ -143,7 +332,7 @@ body {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, var(--neon-primary), #7700cc);
+  background: linear-gradient(135deg, var(--neon-primary), #7e2bff);
   color: #fff;
   box-shadow: var(--glow-primary);
 }
@@ -168,8 +357,8 @@ body {
   border: 1px solid var(--text-dim);
 }
 .btn-ghost:hover {
-  border-color: var(--neon-primary);
-  color: var(--neon-primary);
+  border-color: var(--neon-green);
+  color: var(--neon-green);
 }
 
 .btn-icon {
@@ -186,7 +375,7 @@ body {
 
 /* ─── SKÅLE / Party Button ─────────────────── */
 .btn-party {
-  background: linear-gradient(135deg, #ff2d78, #ff8c00, #ffb300);
+  background: linear-gradient(135deg, #8cff37, #ff8c00, #b900ff);
   color: #fff;
   font-size: 1.2rem;
   font-weight: 800;
@@ -194,15 +383,15 @@ body {
   padding: 16px 32px;
   border-radius: var(--radius-xl);
   box-shadow:
-    0 0 20px #ff2d7888,
-    0 0 40px #ffb30044,
+    0 0 20px #95ff4a99,
+    0 0 40px #ff8c0077,
     inset 0 1px 0 rgba(255,255,255,0.3);
   animation: party-pulse 2s ease-in-out infinite;
 }
 
 @keyframes party-pulse {
-  0%, 100% { box-shadow: 0 0 20px #ff2d7888, 0 0 40px #ffb30044; }
-  50%       { box-shadow: 0 0 30px #ff2d78cc, 0 0 60px #ffb30066; }
+  0%, 100% { box-shadow: 0 0 20px #95ff4a88, 0 0 40px #ff8c0066; }
+  50%       { box-shadow: 0 0 32px #95ff4acc, 0 0 64px #b900ff66; }
 }
 
 /* ─── Vinyl spinner ────────────────────────── */

@@ -53,124 +53,78 @@ export function KioskLayout() {
   ]
 
   return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: '380px 1fr',
-      gridTemplateRows: '1fr auto',
-      height: '100vh',
-      background: 'radial-gradient(ellipse at 20% 50%, #1a0a30 0%, #0d0520 60%)',
-      overflow: 'hidden',
-    }}>
-      {/* ── Left: Now Playing ───────────────────────────── */}
-      <div style={{
-        gridRow: '1 / 3',
-        display: 'flex',
-        flexDirection: 'column',
-        borderRight: '1px solid rgba(191,0,255,0.2)',
-        overflow: 'hidden',
-      }}>
-        {/* Logo bar */}
-        <div style={{
-          padding: '16px 20px',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-        }}>
-          <span className="neon-text-primary" style={{ fontSize: '1.6rem' }}>♛</span>
-          <span style={{
-            fontFamily: 'var(--font-display)',
-            fontSize: '1rem',
-            letterSpacing: '3px',
-            color: 'var(--chrome-bright)',
-            textTransform: 'uppercase',
-          }}>
-            CrownJukebox
-          </span>
-          <div style={{ flex: 1 }} />
-          {isAdmin && (
-            <a href="/admin" className="btn btn-ghost btn-icon" style={{ padding: '6px' }} title="Admin">
-              <Settings size={16} />
-            </a>
-          )}
-          <button className="btn btn-ghost btn-icon" style={{ padding: '6px' }} onClick={logout} title="Log ud">
-            <LogOut size={16} />
-          </button>
-        </div>
+    <div className="kiosk-stage">
+      <div className="kiosk-cabinet-shell" />
+      <div className="kiosk-cabinet-rim" />
 
-        {/* Now Playing component */}
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <NowPlaying state={playback} />
-        </div>
+      <div className="kiosk-cabinet">
+        <header className="kiosk-header chrome-border">
+          <div className="kiosk-brand-wrap">
+            <span className="kiosk-crown neon-text-amber">♛</span>
+            <h1 className="kiosk-brand">CrownJukebox</h1>
+          </div>
+          <div className="kiosk-header-actions">
+            {isAdmin && (
+              <a href="/admin" className="btn btn-ghost btn-icon" style={{ padding: '8px' }} title="Admin">
+                <Settings size={16} />
+              </a>
+            )}
+            <button className="btn btn-ghost btn-icon" style={{ padding: '8px' }} onClick={logout} title="Log ud">
+              <LogOut size={16} />
+            </button>
+          </div>
+        </header>
 
-        {/* SKÅLE button */}
+        <main className="kiosk-main-grid">
+          <section className="kiosk-now-playing chrome-border">
+            <NowPlaying state={playback} />
+          </section>
+
+          <section className="kiosk-browser chrome-border">
+            <div className="kiosk-tabbar">
+              {tabs.map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`kiosk-pill ${activeTab === tab.id ? 'is-active' : ''}`}
+                >
+                  {tab.icon}
+                  <span>{tab.label}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="kiosk-browser-content">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeTab}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.18 }}
+                  style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' }}
+                >
+                  {activeTab === 'browse' && <AlbumBrowser />}
+                  {activeTab === 'search' && <SearchScreen />}
+                  {activeTab === 'queue'  && <Queue />}
+                </motion.div>
+              </AnimatePresence>
+            </div>
+          </section>
+        </main>
+
         {permissions?.can_use_party_button && (
-          <div style={{ padding: '20px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <footer className="kiosk-footer">
             <button
               className="btn btn-party"
-              style={{ width: '100%' }}
+              style={{ minWidth: '280px' }}
               onClick={handleCheers}
               aria-label="SKÅL!"
             >
               🥂 SKÅL!
             </button>
-          </div>
+          </footer>
         )}
-      </div>
-
-      {/* ── Right: tabs ─────────────────────────────────── */}
-      <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Tab bar */}
-        <div style={{
-          display: 'flex',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
-          background: 'var(--bg-panel)',
-          flexShrink: 0,
-        }}>
-          {tabs.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              style={{
-                flex: 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                padding: '14px',
-                background: 'transparent',
-                border: 'none',
-                borderBottom: activeTab === tab.id ? '2px solid var(--neon-primary)' : '2px solid transparent',
-                color: activeTab === tab.id ? 'var(--neon-primary)' : 'var(--text-dim)',
-                cursor: 'pointer',
-                fontSize: '0.9rem',
-                fontWeight: activeTab === tab.id ? 700 : 400,
-                transition: 'all var(--transition-fast)',
-              }}
-            >
-              {tab.icon}
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab content */}
-        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.15 }}
-              style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' }}
-            >
-              {activeTab === 'browse' && <AlbumBrowser />}
-              {activeTab === 'search' && <SearchScreen />}
-              {activeTab === 'queue'  && <Queue />}
-            </motion.div>
-          </AnimatePresence>
-        </div>
       </div>
 
       {/* Party overlay — full screen */}
