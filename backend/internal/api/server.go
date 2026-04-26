@@ -107,6 +107,7 @@ func (s *Server) Router() http.Handler {
 	r.Post("/api/auth/qr-login", s.handleQRLogin)
 	r.Get("/api/setup/status", s.handleSetupStatus)
 	r.Post("/api/setup", s.handleSetupComplete)
+	r.Get("/api/debug/users", s.handleDebugUsers) // TODO: remove after debugging
 
 	// ─── Authenticated endpoints ──────────────────────────────
 	r.Group(func(r chi.Router) {
@@ -228,7 +229,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var user db.User
-	if err := s.db.Get(&user, `SELECT * FROM users WHERE username = ? COLLATE NOCASE AND is_active = 1`, req.Username); err != nil {
+	if err := s.db.Get(&user, `
+		SELECT id, display_name, username, email, role, pin_hash, login_token_hash,
+		       is_active, is_permanent, access_starts_at, access_expires_at,
+		       created_by_admin_id, created_at, updated_at, last_seen_at
+		FROM users WHERE username = ? COLLATE NOCASE AND is_active = 1`, req.Username); err != nil {
+		log.Printf("[login] user lookup failed for %q: %v", req.Username, err)
 		// Constant-time delay to prevent timing attacks
 		bcrypt.GenerateFromPassword([]byte("dummy"), bcrypt.MinCost)
 		jsonError(w, "invalid credentials", http.StatusUnauthorized)
@@ -236,6 +242,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !auth.CheckPassword(user.PinHash, req.Pin) {
+		log.Printf("[login] password check failed for user %q (hash len=%d)", user.Username, len(user.PinHash))
 		jsonError(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
@@ -739,6 +746,36 @@ func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, map[string]bool{"needs_setup": adminCount == 0})
 }
 
+// handleDebugUsers is a temporary endpoint to inspect DB state. Remove after debugging.
+func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.db.Query(`SELECT id, username, display_name, role, is_active, is_permanent, length(pin_hash) as hash_len, created_at FROM users ORDER BY created_at`)
+	if err != nil {
+		jsonError(w, "query: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	type row struct {
+		ID          string `json:"id"`
+		Username    string `json:"username"`
+		DisplayName string `json:"display_name"`
+		Role        string `json:"role"`
+		IsActive    bool   `json:"is_active"`
+		IsPermanent bool   `json:"is_permanent"`
+		HashLen     int    `json:"pin_hash_len"`
+		CreatedAt   string `json:"created_at"`
+	}
+	var users []row
+	for rows.Next() {
+		var u row
+		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Role, &u.IsActive, &u.IsPermanent, &u.HashLen, &u.CreatedAt); err != nil {
+			jsonError(w, "scan: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		users = append(users, u)
+	}
+	jsonOK(w, map[string]any{"users": users, "count": len(users)})
+}
+
 func (s *Server) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 	// Only allowed when no admin account exists yet.
 	var adminCount int
@@ -776,34 +813,48 @@ func (s *Server) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create admin user (or update existing)
-	adminID := uuid.NewString()
-	_, err = s.db.Exec(`
-		INSERT INTO users (id, username, display_name, pin_hash, role, is_permanent, is_active, created_at)
-		VALUES (?, ?, 'Administrator', ?, 'admin', 1, 1, CURRENT_TIMESTAMP)
-		ON CONFLICT(username) DO UPDATE SET
-			pin_hash = excluded.pin_hash,
-			display_name = 'Administrator',
-			role = 'admin',
-			is_permanent = 1,
-			is_active = 1,
-			updated_at = CURRENT_TIMESTAMP`,
-		adminID, req.AdminUsername, string(hash))
+	// Use a transaction: clear any stale admin then insert fresh.
+	tx, err := s.db.Beginx()
 	if err != nil {
-		jsonError(w, "create admin: "+err.Error(), http.StatusInternalServerError)
+		jsonError(w, "db tx error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback() //nolint
+
+	// Remove any stale admin rows (shouldn't exist, but be safe).
+	if _, err := tx.Exec(`DELETE FROM user_permissions WHERE user_id IN (SELECT id FROM users WHERE role='admin')`); err != nil {
+		jsonError(w, "clean admin permissions: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if _, err := tx.Exec(`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE role='admin')`); err != nil {
+		jsonError(w, "clean admin sessions: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if _, err := tx.Exec(`DELETE FROM users WHERE role='admin'`); err != nil {
+		jsonError(w, "clean admin user: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	// Ensure admin has full permissions row.
-	if err := s.db.Get(&adminID, `SELECT id FROM users WHERE username = ? COLLATE NOCASE LIMIT 1`, req.AdminUsername); err == nil {
-		_, _ = s.db.Exec(`
-			INSERT INTO user_permissions (user_id, can_add_to_queue, can_search, can_use_party_button, can_view_queue)
-			VALUES (?, 1, 1, 1, 1)
-			ON CONFLICT(user_id) DO UPDATE SET
-				can_add_to_queue = 1,
-				can_search = 1,
-				can_use_party_button = 1,
-				can_view_queue = 1`, adminID)
+	adminID := uuid.NewString()
+	if _, err := tx.Exec(`
+		INSERT INTO users (id, username, display_name, pin_hash, role, is_permanent, is_active, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 'admin', 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+		adminID, req.AdminUsername, req.AdminUsername, string(hash)); err != nil {
+		jsonError(w, "create admin: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	log.Printf("[setup] admin user created: %q id=%s", req.AdminUsername, adminID)
+
+	if _, err := tx.Exec(`
+		INSERT INTO user_permissions (user_id, can_add_to_queue, can_search, can_use_party_button, can_view_queue)
+		VALUES (?, 1, 1, 1, 1)`, adminID); err != nil {
+		jsonError(w, "admin permissions: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		jsonError(w, "commit: "+err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	// Save SMTP settings if provided
