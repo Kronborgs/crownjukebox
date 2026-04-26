@@ -107,7 +107,6 @@ func (s *Server) Router() http.Handler {
 	r.Post("/api/auth/qr-login", s.handleQRLogin)
 	r.Get("/api/setup/status", s.handleSetupStatus)
 	r.Post("/api/setup", s.handleSetupComplete)
-	r.Get("/api/debug/users", s.handleDebugUsers) // TODO: remove after debugging
 
 	// ─── Authenticated endpoints ──────────────────────────────
 	r.Group(func(r chi.Router) {
@@ -744,36 +743,6 @@ func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 	var adminCount int
 	_ = s.db.Get(&adminCount, `SELECT COUNT(*) FROM users WHERE role = 'admin'`)
 	jsonOK(w, map[string]bool{"needs_setup": adminCount == 0})
-}
-
-// handleDebugUsers is a temporary endpoint to inspect DB state. Remove after debugging.
-func (s *Server) handleDebugUsers(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(`SELECT id, username, display_name, role, is_active, is_permanent, length(pin_hash) as hash_len, created_at FROM users ORDER BY created_at`)
-	if err != nil {
-		jsonError(w, "query: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-	type row struct {
-		ID          string `json:"id"`
-		Username    string `json:"username"`
-		DisplayName string `json:"display_name"`
-		Role        string `json:"role"`
-		IsActive    bool   `json:"is_active"`
-		IsPermanent bool   `json:"is_permanent"`
-		HashLen     int    `json:"pin_hash_len"`
-		CreatedAt   string `json:"created_at"`
-	}
-	var users []row
-	for rows.Next() {
-		var u row
-		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Role, &u.IsActive, &u.IsPermanent, &u.HashLen, &u.CreatedAt); err != nil {
-			jsonError(w, "scan: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-		users = append(users, u)
-	}
-	jsonOK(w, map[string]any{"users": users, "count": len(users)})
 }
 
 func (s *Server) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
