@@ -155,7 +155,13 @@ export function NowPlaying({ state }: Props) {
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
         <button
           className="btn btn-ghost btn-icon"
-          onClick={() => playbackApi.pause()}
+          onClick={() => {
+            if (state?.is_playing) {
+              playbackApi.pause()
+            } else {
+              playbackApi.play(track?.id)
+            }
+          }}
           aria-label={state?.is_playing ? 'Pause' : 'Afspil'}
           title={state?.is_playing ? 'Pause' : 'Afspil'}
         >

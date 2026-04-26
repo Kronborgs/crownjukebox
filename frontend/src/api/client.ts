@@ -201,6 +201,11 @@ const patch = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: 'PATCH', body: JSON.stringify(body) })
 const del  = <T>(path: string) => request<T>(path, { method: 'DELETE' })
 
+const getList = async <T>(path: string): Promise<T[]> => {
+  const res = await get<T[] | null>(path)
+  return Array.isArray(res) ? res : []
+}
+
 // ─── Auth ─────────────────────────────────────────────────────────
 
 export const authApi = {
@@ -215,14 +220,14 @@ export const authApi = {
 // ─── Library ──────────────────────────────────────────────────────
 
 export const libraryApi = {
-  artists: () => get<Artist[]>('/api/library/artists'),
+  artists: () => getList<Artist>('/api/library/artists'),
   albums:  (artistId?: string, page = 1, limit = 40) =>
-    get<Album[]>(`/api/library/albums?${artistId ? `artist_id=${artistId}&` : ''}page=${page}&limit=${limit}`),
+    getList<Album>(`/api/library/albums?${artistId ? `artist_id=${artistId}&` : ''}page=${page}&limit=${limit}`),
   album:      (id: string) => get<Album>(`/api/library/albums/${id}`),
-  albumTracks: (id: string) => get<Track[]>(`/api/library/albums/${id}/tracks`),
+  albumTracks: (id: string) => getList<Track>(`/api/library/albums/${id}/tracks`),
   track:      (id: string) => get<Track>(`/api/library/tracks/${id}`),
   search:     (q: string) => get<SearchResults>(`/api/library/search?q=${encodeURIComponent(q)}`),
-  missingCovers: () => get<Album[]>('/api/library/missing-covers'),
+  missingCovers: () => getList<Album>('/api/library/missing-covers'),
   coverUrl:   (id: string, size: 'small' | 'medium' | 'large' = 'medium') =>
     `${BASE}/api/library/cover/${id}?size=${size}`,
   streamUrl:  (trackId: string) => `${BASE}/api/playback/stream/${trackId}`,
@@ -231,7 +236,7 @@ export const libraryApi = {
 // ─── Queue ────────────────────────────────────────────────────────
 
 export const queueApi = {
-  get:     () => get<QueueItem[]>('/api/queue'),
+  get:     () => getList<QueueItem>('/api/queue'),
   add:     (trackId: string) => post<QueueItem>('/api/queue', { track_id: trackId }),
   remove:  (id: string) => del(`/api/queue/${id}`),
   reorder: (order: string[]) => post('/api/queue/reorder', { order }),
@@ -246,7 +251,7 @@ export const playbackApi = {
   skip:           () => post('/api/playback/skip'),
   trackEnded:     (trackId: string) => post<void>('/api/playback/track-ended', { track_id: trackId }),
   updatePosition: (position: number) => post('/api/playback/position', { position }),
-  history:        () => get<PlaybackHistory[]>('/api/playback/history'),
+  history:        () => getList<PlaybackHistory>('/api/playback/history'),
 }
 
 // ─── Party ────────────────────────────────────────────────────────
@@ -260,7 +265,7 @@ export const partyApi = {
 
 export const adminApi = {
   // Users
-  users:      () => get<User[]>('/api/admin/users'),
+  users:      () => getList<User>('/api/admin/users'),
   createUser: (data: Partial<User> & { pin?: string; can_add_to_queue?: boolean; can_search?: boolean; can_use_party_button?: boolean; can_view_queue?: boolean; access_duration_minutes?: number }) =>
     post<User>('/api/admin/users', data),
   getUser:    (id: string) => get<User>(`/api/admin/users/${id}`),
@@ -274,11 +279,11 @@ export const adminApi = {
   // Access links
   createAccessLink: (userId: string, expiresInMinutes = 0) =>
     post<AccessLink>('/api/admin/access-links', { user_id: userId, expires_in_minutes: expiresInMinutes }),
-  listAccessLinks: () => get<AccessLink[]>('/api/admin/access-links'),
+  listAccessLinks: () => getList<AccessLink>('/api/admin/access-links'),
   revokeAccessLink: (id: string) => post<void>(`/api/admin/access-links/${id}/revoke`),
 
   // Sessions
-  sessions:      () => get<Session[]>('/api/admin/sessions'),
+  sessions:      () => getList<Session>('/api/admin/sessions'),
   revokeSession: (id: string) => post<void>(`/api/admin/sessions/${id}/revoke`),
 
   // Settings
@@ -289,14 +294,14 @@ export const adminApi = {
   rescan:               () => post('/api/admin/rescan'),
   rescanArtwork:        () => post('/api/admin/rescan-artwork'),
   rescanMissingArtwork: () => post('/api/admin/rescan-missing-artwork'),
-  missingArtwork:       () => get<Album[]>('/api/admin/missing-artwork'),
+  missingArtwork:       () => getList<Album>('/api/admin/missing-artwork'),
 
   // Keyboard bindings
-  keyboardBindings:       () => get<KeyboardBinding[]>('/api/admin/keyboard-bindings'),
+  keyboardBindings:       () => getList<KeyboardBinding>('/api/admin/keyboard-bindings'),
   updateKeyboardBindings: (bindings: KeyboardBinding[]) => put<void>('/api/admin/keyboard-bindings', bindings),
 
   // Playlists
-  playlists:          () => get<Playlist[]>('/api/admin/playlists'),
+  playlists:          () => getList<Playlist>('/api/admin/playlists'),
   createPlaylist:     (name: string, isParty = false) =>
     post<Playlist>('/api/admin/playlists', { name, is_party_playlist: isParty }),
   updatePlaylist:     (id: string, isPartyPlaylist: boolean) =>
@@ -324,7 +329,7 @@ export const adminApi = {
 // ─── Rooms ────────────────────────────────────────────────────────
 
 export const roomApi = {
-  list: () => get<Room[]>('/api/rooms'),
+  list: () => getList<Room>('/api/rooms'),
 }
 
 // ─── Setup ────────────────────────────────────────────────────────
