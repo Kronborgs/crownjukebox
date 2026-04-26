@@ -43,6 +43,10 @@ var supportedExtensions = map[string]bool{
 	".m4a":  true,
 }
 
+func SupportedExtension(ext string) bool {
+	return supportedExtensions[strings.ToLower(ext)]
+}
+
 // Scan walks the music directory and upserts all tracks into the database.
 // Progress updates are sent to the progress channel (may be nil).
 func (s *Scanner) Scan(progress chan<- ScanProgress) error {
@@ -98,6 +102,11 @@ func (s *Scanner) Scan(progress chan<- ScanProgress) error {
 
 	log.Printf("[scanner] scan complete: %d files", total)
 	return nil
+}
+
+// IndexFile indexes one specific audio file path.
+func (s *Scanner) IndexFile(filePath string) error {
+	return s.indexFile(filePath)
 }
 
 // indexFile reads metadata from a single audio file and upserts it.

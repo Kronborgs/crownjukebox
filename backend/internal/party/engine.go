@@ -22,12 +22,23 @@ func NewEngine(database *sqlx.DB, hub *events.Hub, roomID string) *Engine {
 	return &Engine{db: database, hub: hub, roomID: roomID}
 }
 
+func (e *Engine) getPartyPlaylistID(ctx context.Context) (*string, error) {
+	var globalPlaylistID string
+	if err := e.db.GetContext(ctx, &globalPlaylistID, `SELECT value FROM settings WHERE key = 'party_playlist_id' LIMIT 1`); err == nil && globalPlaylistID != "" {
+		return &globalPlaylistID, nil
+	}
+
+	var roomPlaylistID *string
+	if err := e.db.GetContext(ctx, &roomPlaylistID, `SELECT party_playlist_id FROM rooms WHERE id = ?`, e.roomID); err != nil {
+		return nil, err
+	}
+	return roomPlaylistID, nil
+}
+
 // TriggerCheers picks a random track from this room's party playlist.
 func (e *Engine) TriggerCheers(ctx context.Context, triggeredByUserID string) (*db.Track, error) {
-	// Get party playlist ID from the rooms table
-	var playlistID *string
-	if err := e.db.GetContext(ctx, &playlistID,
-		`SELECT party_playlist_id FROM rooms WHERE id = ?`, e.roomID); err != nil || playlistID == nil || *playlistID == "" {
+	playlistID, err := e.getPartyPlaylistID(ctx)
+	if err != nil || playlistID == nil || *playlistID == "" {
 		return nil, fmt.Errorf("ingen skåle-playliste konfigureret for dette rum — admin skal vælge en")
 	}
 
@@ -67,9 +78,8 @@ func (e *Engine) EndParty(ctx context.Context) {
 
 // GetPartyPlaylist returns this room's configured party playlist.
 func (e *Engine) GetPartyPlaylist(ctx context.Context) (*db.Playlist, []db.Track, error) {
-	var playlistID *string
-	if err := e.db.GetContext(ctx, &playlistID,
-		`SELECT party_playlist_id FROM rooms WHERE id = ?`, e.roomID); err != nil || playlistID == nil || *playlistID == "" {
+	playlistID, err := e.getPartyPlaylistID(ctx)
+	if err != nil || playlistID == nil || *playlistID == "" {
 		return nil, nil, nil
 	}
 

@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"strconv"
 )
 
@@ -87,4 +88,12 @@ func getEnvBool(key string, fallback bool) bool {
 		}
 	}
 	return fallback
+}
+
+func GlobalPartyUploadsDir(dbPath string) string {
+	baseDir := filepath.Dir(dbPath)
+	if baseDir == "." || baseDir == "" {
+		baseDir = "/data"
+	}
+	return filepath.Join(baseDir, "skale_uploads")
 }

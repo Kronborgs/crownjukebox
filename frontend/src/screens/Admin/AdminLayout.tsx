@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi, User } from '@/api/client'
@@ -336,6 +336,8 @@ function LibraryPanel() {
   const [scanStatus, setScanStatus] = useState('')
   const { data: playlists = [] } = useQuery({ queryKey: ['admin-playlists'], queryFn: adminApi.playlists })
   const [newPlaylistName, setNewPlaylistName] = useState('')
+  const [uploadingPartyFiles, setUploadingPartyFiles] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   async function rescan() {
     setScanStatus('Scanner…')
@@ -365,6 +367,24 @@ function LibraryPanel() {
     qc.invalidateQueries({ queryKey: ['admin-playlists'] })
   }
 
+  async function uploadPartyFiles(files: FileList | null) {
+    if (!files || files.length === 0) return
+    setUploadingPartyFiles(true)
+    setScanStatus('Uploader SKÅLE-filer…')
+    try {
+      const result = await adminApi.uploadPartyPlaylistTracks(Array.from(files))
+      qc.invalidateQueries({ queryKey: ['admin-playlists'] })
+      setScanStatus(`${result.uploaded.length} fil(er) lagt i den globale SKÅLE-playliste`)
+    } catch (err: unknown) {
+      setScanStatus(err instanceof Error ? err.message : 'Upload fejlede')
+    } finally {
+      setUploadingPartyFiles(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
   return (
     <div>
       <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '20px' }}>Musikbibliotek</h2>
@@ -374,6 +394,22 @@ function LibraryPanel() {
         </button>
         <button className="btn btn-ghost" style={{ justifyContent: 'flex-start', gap: '10px' }} onClick={rescanArtwork}>
           <RefreshCw size={16} /> Genindlæs album covers
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".mp3,.flac,.ogg,.m4a,audio/*"
+          multiple
+          style={{ display: 'none' }}
+          onChange={e => uploadPartyFiles(e.target.files)}
+        />
+        <button
+          className="btn btn-ghost"
+          style={{ justifyContent: 'flex-start', gap: '10px' }}
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploadingPartyFiles}
+        >
+          <Plus size={16} /> {uploadingPartyFiles ? 'Uploader SKÅLE-filer…' : 'Upload filer til global SKÅLE-liste'}
         </button>
         {scanStatus && (
           <p style={{ color: 'var(--neon-teal)', fontSize: '0.85rem', marginTop: '8px' }}>{scanStatus}</p>
@@ -387,6 +423,9 @@ function LibraryPanel() {
         </h3>
         <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '16px' }}>
           Marker hvilken playliste der bruges til SKÅLE-funktionen. Kun én kan være aktiv ad gangen.
+        </p>
+        <p style={{ fontSize: '0.8rem', color: 'var(--neon-amber)', marginBottom: '16px' }}>
+          Upload-knappen ovenfor lægger filer i den samme globale SKÅLE-playliste for alle brugere og skærme.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '480px' }}>
           {(playlists as import('@/api/client').Playlist[]).map(pl => (

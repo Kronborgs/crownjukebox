@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -202,6 +204,7 @@ func (s *Server) Router() http.Handler {
 		r.Patch("/api/admin/playlists/{id}", s.handleUpdatePlaylist)
 		r.Post("/api/admin/playlists/{id}/tracks", s.handleAddPlaylistTrack)
 		r.Delete("/api/admin/playlists/{id}/tracks/{trackId}", s.handleRemovePlaylistTrack)
+		r.Post("/api/admin/party-playlist/upload", s.handleUploadPartyPlaylistTracks)
 	})
 
 	return r
@@ -611,10 +614,13 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Security: reject paths that escape the music directory
+	// Security: reject paths that escape allowed media directories.
 	cleanTrack := filepath.Clean(track.FilePath)
 	cleanMusic := filepath.Clean(s.cfg.MusicDir)
-	if !strings.HasPrefix(cleanTrack, cleanMusic+string(filepath.Separator)) {
+	cleanUploads := filepath.Clean(config.GlobalPartyUploadsDir(s.cfg.DBPath))
+	allowedMusic := strings.HasPrefix(cleanTrack, cleanMusic+string(filepath.Separator)) || cleanTrack == cleanMusic
+	allowedUploads := strings.HasPrefix(cleanTrack, cleanUploads+string(filepath.Separator)) || cleanTrack == cleanUploads
+	if !allowedMusic && !allowedUploads {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -1477,6 +1483,125 @@ func (s *Server) handleRemovePlaylistTrack(w http.ResponseWriter, r *http.Reques
 	trackID := chi.URLParam(r, "trackId")
 	s.db.Exec(`DELETE FROM playlist_tracks WHERE playlist_id = ? AND track_id = ?`, playlistID, trackID)
 	jsonOK(w, map[string]string{"status": "removed"})
+}
+
+func (s *Server) ensureGlobalPartyPlaylist() (string, error) {
+	var playlistID string
+	if err := s.db.Get(&playlistID, `SELECT value FROM settings WHERE key = 'party_playlist_id' LIMIT 1`); err == nil && strings.TrimSpace(playlistID) != "" {
+		return playlistID, nil
+	}
+
+	var playlist db.Playlist
+	if err := s.db.Get(&playlist, `SELECT * FROM playlists WHERE is_party_playlist = 1 ORDER BY created_at LIMIT 1`); err == nil {
+		_, _ = s.db.Exec(`INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('party_playlist_id', ?, CURRENT_TIMESTAMP)`, playlist.ID)
+		return playlist.ID, nil
+	}
+
+	playlist = db.Playlist{
+		ID:              uuid.NewString(),
+		Name:            "SKÅLE Uploads",
+		SourceType:      "local",
+		IsPartyPlaylist: true,
+		CreatedAt:       time.Now(),
+	}
+	if _, err := s.db.Exec(`INSERT INTO playlists (id, name, source_type, is_party_playlist, created_at) VALUES (?, ?, ?, ?, ?)`,
+		playlist.ID, playlist.Name, playlist.SourceType, playlist.IsPartyPlaylist, playlist.CreatedAt); err != nil {
+		return "", err
+	}
+	_, _ = s.db.Exec(`UPDATE playlists SET is_party_playlist = 0 WHERE id != ?`, playlist.ID)
+	_, _ = s.db.Exec(`INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('party_playlist_id', ?, CURRENT_TIMESTAMP)`, playlist.ID)
+	return playlist.ID, nil
+}
+
+func (s *Server) handleUploadPartyPlaylistTracks(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(128 << 20); err != nil {
+		jsonError(w, "kunne ikke læse upload", http.StatusBadRequest)
+		return
+	}
+
+	playlistID, err := s.ensureGlobalPartyPlaylist()
+	if err != nil {
+		jsonError(w, "kunne ikke oprette global skåle-playliste", http.StatusInternalServerError)
+		return
+	}
+
+	uploadDir := config.GlobalPartyUploadsDir(s.cfg.DBPath)
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		jsonError(w, "kunne ikke oprette upload-mappe", http.StatusInternalServerError)
+		return
+	}
+
+	files := r.MultipartForm.File["files"]
+	if len(files) == 0 {
+		jsonError(w, "vælg mindst én lydfil", http.StatusBadRequest)
+		return
+	}
+
+	type uploadedTrack struct {
+		TrackID string `json:"track_id"`
+		Title   string `json:"title"`
+		Path    string `json:"path"`
+	}
+	uploaded := make([]uploadedTrack, 0, len(files))
+
+	for _, fileHeader := range files {
+		ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+		if !music.SupportedExtension(ext) {
+			continue
+		}
+
+		src, err := fileHeader.Open()
+		if err != nil {
+			continue
+		}
+
+		safeName := uuid.NewString() + ext
+		destPath := filepath.Join(uploadDir, safeName)
+		dst, err := os.Create(destPath)
+		if err != nil {
+			src.Close()
+			continue
+		}
+		_, copyErr := io.Copy(dst, src)
+		dst.Close()
+		src.Close()
+		if copyErr != nil {
+			_ = os.Remove(destPath)
+			continue
+		}
+
+		if err := s.scanner.IndexFile(destPath); err != nil {
+			_ = os.Remove(destPath)
+			continue
+		}
+
+		var track db.Track
+		if err := s.db.Get(&track, `SELECT * FROM tracks WHERE file_path = ? LIMIT 1`, destPath); err != nil {
+			continue
+		}
+
+		var maxPos int
+		_ = s.db.Get(&maxPos, `SELECT COALESCE(MAX(position), 0) FROM playlist_tracks WHERE playlist_id = ?`, playlistID)
+		_, _ = s.db.Exec(`INSERT OR IGNORE INTO playlist_tracks (playlist_id, track_id, position) VALUES (?, ?, ?)`, playlistID, track.ID, maxPos+1)
+
+		var album db.Album
+		if err := s.db.Get(&album, `SELECT * FROM albums WHERE id = ? LIMIT 1`, track.AlbumID); err == nil {
+			_ = s.artExt.ExtractForAlbum(&album)
+		}
+
+		uploaded = append(uploaded, uploadedTrack{TrackID: track.ID, Title: track.Title, Path: destPath})
+	}
+
+	if len(uploaded) == 0 {
+		jsonError(w, "ingen gyldige lydfiler blev uploadet", http.StatusBadRequest)
+		return
+	}
+
+	jsonOK(w, map[string]any{
+		"status":      "uploaded",
+		"playlist_id": playlistID,
+		"uploaded":    uploaded,
+	})
 }
 
 // ─────────────────────────────────────────────────────────────

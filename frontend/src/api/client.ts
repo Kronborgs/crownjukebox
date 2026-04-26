@@ -128,6 +128,16 @@ export interface Playlist {
   created_at: string
 }
 
+export interface PartyPlaylistUploadResult {
+  status: string
+  playlist_id: string
+  uploaded: Array<{
+    track_id: string
+    title: string
+    path: string
+  }>
+}
+
 export interface KeyboardBinding {
   action: string
   key_code: string
@@ -189,6 +199,32 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   // 204 No Content
   if (res.status === 204) return undefined as T
 
+  return res.json()
+}
+
+async function requestForm<T>(path: string, formData: FormData): Promise<T> {
+  const token = sessionStorage.getItem('cj_token')
+  const roomId = getCurrentRoomId()
+  const headers: Record<string, string> = {}
+  if (token) {
+    headers['X-Session-Token'] = token
+  }
+  if (roomId && roomId !== 'default') {
+    headers['X-Room-ID'] = roomId
+  }
+
+  const res = await fetch(BASE + path, { method: 'POST', headers, body: formData })
+
+  if (!res.ok) {
+    let msg = res.statusText
+    try {
+      const body = await res.json()
+      msg = body.error ?? msg
+    } catch {}
+    throw new ApiError(res.status, msg)
+  }
+
+  if (res.status === 204) return undefined as T
   return res.json()
 }
 
@@ -310,6 +346,11 @@ export const adminApi = {
     post<void>(`/api/admin/playlists/${playlistId}/tracks`, { track_id: trackId }),
   removePlaylistTrack: (playlistId: string, trackId: string) =>
     del(`/api/admin/playlists/${playlistId}/tracks/${trackId}`),
+  uploadPartyPlaylistTracks: (files: File[]) => {
+    const form = new FormData()
+    files.forEach(file => form.append('files', file))
+    return requestForm<PartyPlaylistUploadResult>('/api/admin/party-playlist/upload', form)
+  },
 
   // Password management
   changePassword: (userId: string, newPassword: string) =>
