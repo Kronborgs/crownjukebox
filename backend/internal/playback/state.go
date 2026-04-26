@@ -206,8 +206,6 @@ func (m *Manager) UpdatePosition(ctx context.Context, positionSecs float64, user
 // Skip forcibly moves to the next track (admin or party mode only).
 func (m *Manager) Skip(ctx context.Context, userID string, wasSkipped bool) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
-
 	m.endCurrentHistoryLocked(ctx, wasSkipped)
 	m.mu.Unlock()
 
