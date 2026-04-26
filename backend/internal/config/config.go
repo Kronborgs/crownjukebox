@@ -47,7 +47,7 @@ func Load() *Config {
 		ArtworkCacheDir: getEnv("ARTWORK_CACHE_DIR", "/artwork-cache"),
 
 		AdminUsername: getEnv("ADMIN_USERNAME", "admin"),
-		AdminPassword: getEnv("ADMIN_PASSWORD", "changeme"),
+		AdminPassword: getEnv("ADMIN_PASSWORD", ""),
 
 		JWTSecret:       getEnv("JWT_SECRET", "change-this-secret-in-production"),
 		SessionTTLHours: getEnvInt("SESSION_TTL_HOURS", 24),

@@ -733,6 +733,13 @@ func getRoomFromCtx(ctx context.Context) *rooms.Room {
 // ─────────────────────────────────────────────────────────────
 
 func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
+	var adminCount int
+	_ = s.db.Get(&adminCount, `SELECT COUNT(*) FROM users WHERE role = 'admin'`)
+	if adminCount == 0 {
+		jsonOK(w, map[string]bool{"needs_setup": true})
+		return
+	}
+
 	var val string
 	_ = s.db.Get(&val, `SELECT value FROM settings WHERE key = 'setup_completed'`)
 	jsonOK(w, map[string]bool{"needs_setup": val != "1"})
@@ -740,9 +747,12 @@ func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 	// Only allowed when setup is not yet done
+	var adminCount int
+	_ = s.db.Get(&adminCount, `SELECT COUNT(*) FROM users WHERE role = 'admin'`)
+
 	var val string
 	_ = s.db.Get(&val, `SELECT value FROM settings WHERE key = 'setup_completed'`)
-	if val == "1" {
+	if val == "1" && adminCount > 0 {
 		jsonError(w, "setup already completed", http.StatusForbidden)
 		return
 	}
@@ -777,9 +787,9 @@ func (s *Server) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 	// Create admin user (or update existing)
 	adminID := uuid.NewString()
 	_, err = s.db.Exec(`
-		INSERT INTO users (id, username, display_name, password_hash, role, is_permanent, is_active, created_at)
+		INSERT INTO users (id, username, display_name, pin_hash, role, is_permanent, is_active, created_at)
 		VALUES (?, ?, 'Administrator', ?, 'admin', 1, 1, CURRENT_TIMESTAMP)
-		ON CONFLICT(username) DO UPDATE SET password_hash = excluded.password_hash`,
+		ON CONFLICT(username) DO UPDATE SET pin_hash = excluded.pin_hash`,
 		adminID, req.AdminUsername, string(hash))
 	if err != nil {
 		jsonError(w, "create admin: "+err.Error(), http.StatusInternalServerError)

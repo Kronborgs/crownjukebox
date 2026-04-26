@@ -136,11 +136,11 @@ func main() {
 	log.Println("Goodbye!")
 }
 
-// seedAdmin ensures at least one admin user exists.
-// Password sync rules:
-//   - If ADMIN_PASSWORD env var is explicitly provided (non-empty) → always sync to DB
-//   - If ADMIN_PASSWORD env var is empty (e.g. Unraid force-update reset it) → leave DB as-is
-//   - First boot with no admin in DB → seed with "changeme" if env var is empty
+// seedAdmin keeps backward compatibility for env-based admin seeding.
+// New setup flow rules:
+//   - If ADMIN_PASSWORD env var is explicitly provided (non-empty) → seed/sync admin from env
+//   - If ADMIN_PASSWORD env var is empty → do NOT auto-create admin
+//   - Fresh installs without ADMIN_PASSWORD should use the setup wizard in the web UI
 func seedAdmin(database *sqlx.DB, cfg *config.Config) error {
 	// Check if the env var was explicitly set (non-empty raw value).
 	explicitPassword := os.Getenv("ADMIN_PASSWORD")
@@ -169,12 +169,15 @@ func seedAdmin(database *sqlx.DB, cfg *config.Config) error {
 		return nil
 	}
 
-	// First boot — create admin user.
-	password := explicitPassword
-	if password == "" {
-		password = "changeme"
-		log.Printf("[seed] WARNING: ADMIN_PASSWORD not set. Admin created with default password 'changeme'. Change it immediately via Admin Panel!")
+	// First boot with no explicit env password:
+	// leave DB without admin and let setup wizard create it.
+	if explicitPassword == "" {
+		log.Printf("[seed] no ADMIN_PASSWORD provided — skipping env admin seed; setup wizard will create admin")
+		return nil
 	}
+
+	// First boot — create admin user from explicit env password.
+	password := explicitPassword
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
