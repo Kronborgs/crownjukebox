@@ -339,9 +339,13 @@ func (s *Server) handleListAlbums(w http.ResponseWriter, r *http.Request) {
 
 	result := make([]AlbumResponse, len(albums))
 	for i, a := range albums {
+		coverURL := ""
+		if a.CoverArtID != nil && *a.CoverArtID != "" {
+			coverURL = "/api/library/cover/" + *a.CoverArtID + "?size=medium"
+		}
 		result[i] = AlbumResponse{
 			AlbumWithArtist: a,
-			CoverURL:        "/api/library/cover/" + a.CoverArtID + "?size=medium",
+			CoverURL:        coverURL,
 		}
 	}
 

@@ -24,7 +24,7 @@ type Album struct {
 	Genre         string    `db:"genre"`
 	SourceType    string    `db:"source_type"` // local | subsonic
 	SourceID      string    `db:"source_id"`
-	CoverArtID    string    `db:"cover_art_id"`
+	CoverArtID    *string   `db:"cover_art_id"`
 	CoverStatus   string    `db:"cover_status"` // found | missing | generated | error
 	TrackCount    int       `db:"track_count"`
 	CreatedAt     time.Time `db:"created_at"`
@@ -43,7 +43,7 @@ type Track struct {
 	SourceType  string    `db:"source_type"` // local | subsonic
 	SourceID    string    `db:"source_id"`
 	StreamURL   string    `db:"stream_url"`
-	CoverArtID  string    `db:"cover_art_id"`
+	CoverArtID  *string   `db:"cover_art_id"`
 	CreatedAt   time.Time `db:"created_at"`
 	UpdatedAt   time.Time `db:"updated_at"`
 }

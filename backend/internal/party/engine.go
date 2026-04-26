@@ -46,8 +46,8 @@ func (e *Engine) TriggerCheers(ctx context.Context, triggeredByUserID string) (*
 
 	// Build cover URL
 	coverURL := ""
-	if track.CoverArtID != "" {
-		coverURL = "/api/library/cover/" + track.CoverArtID + "?size=large"
+	if track.CoverArtID != nil && *track.CoverArtID != "" {
+		coverURL = "/api/library/cover/" + *track.CoverArtID + "?size=large"
 	}
 
 	// Broadcast party started to all connected clients

@@ -154,9 +154,13 @@ func (m *Manager) Play(ctx context.Context, trackID, userID string) error {
 	var t db.Track
 	_ = m.db.GetContext(ctx, &t, `SELECT * FROM tracks WHERE id = ?`, trackID)
 
+	coverURL := ""
+	if t.CoverArtID != nil && *t.CoverArtID != "" {
+		coverURL = "/api/library/cover/" + *t.CoverArtID + "?size=large"
+	}
 	m.hub.Broadcast(events.EventNowPlayingChanged, map[string]any{
 		"track":     t,
-		"cover_url": "/api/library/cover/" + t.CoverArtID + "?size=large",
+		"cover_url": coverURL,
 	})
 	m.hub.Broadcast(events.EventPlaybackStateChanged, map[string]any{
 		"is_playing": true,
