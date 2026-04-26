@@ -145,11 +145,16 @@ func main() {
 // resetAuthAndSetupIfRequested clears users/auth state when RESET_SETUP_ON_START=CONFIRM.
 // This preserves library/scanner data and allows setup wizard to run again.
 func resetAuthAndSetupIfRequested(database *sqlx.DB) error {
-	flag := strings.TrimSpace(os.Getenv("RESET_SETUP_ON_START"))
+	flagRaw := strings.TrimSpace(os.Getenv("RESET_SETUP_ON_START"))
+	flag := strings.Trim(flagRaw, "\"'")
 	if flag == "" || flag == "0" || strings.EqualFold(flag, "false") {
 		return nil
 	}
-	if !strings.EqualFold(flag, "confirm") {
+
+	log.Printf("[reset] RESET_SETUP_ON_START received value: %q", flagRaw)
+
+	// Accept exact CONFIRM and tolerant variants that contain CONFIRM.
+	if !(strings.EqualFold(flag, "confirm") || strings.Contains(strings.ToLower(flag), "confirm")) {
 		log.Printf("[reset] RESET_SETUP_ON_START is set but not CONFIRM; skipping reset for safety")
 		return nil
 	}
