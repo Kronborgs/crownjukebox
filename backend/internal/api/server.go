@@ -1014,9 +1014,10 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sd, _ := auth.GetSessionFromContext(r.Context())
-	adminID := ""
+	var createdByAdminID *string
 	if sd != nil {
-		adminID = sd.User.ID
+		adminID := sd.User.ID
+		createdByAdminID = &adminID
 	}
 
 	user := db.User{
@@ -1027,7 +1028,7 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 		PinHash:          pinHash,
 		IsActive:         true,
 		IsPermanent:      req.IsPermanent,
-		CreatedByAdminID: adminID,
+		CreatedByAdminID: createdByAdminID,
 		CreatedAt:        time.Now(),
 		UpdatedAt:        time.Now(),
 	}
