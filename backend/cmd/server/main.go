@@ -136,19 +136,14 @@ func main() {
 	log.Println("Goodbye!")
 }
 
-// seedAdmin ensures at least one admin user exists and that the admin password
-// is always in sync with the ADMIN_PASSWORD environment variable.
-// On every startup we re-hash and update the admin's pin_hash so that changing
-// ADMIN_PASSWORD and restarting the container is all that's needed.
+// seedAdmin ensures at least one admin user exists.
+// Password sync rules:
+//   - If ADMIN_PASSWORD env var is explicitly provided (non-empty) → always sync to DB
+//   - If ADMIN_PASSWORD env var is empty (e.g. Unraid force-update reset it) → leave DB as-is
+//   - First boot with no admin in DB → seed with "changeme" if env var is empty
 func seedAdmin(database *sqlx.DB, cfg *config.Config) error {
-	if cfg.AdminPassword == "changeme" {
-		log.Printf("[seed] WARNING: ADMIN_PASSWORD is not set — using default 'changeme'. Set ADMIN_PASSWORD in Unraid and restart!")
-	}
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(cfg.AdminPassword), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
+	// Check if the env var was explicitly set (non-empty raw value).
+	explicitPassword := os.Getenv("ADMIN_PASSWORD")
 
 	var count int
 	if err := database.Get(&count, `SELECT COUNT(*) FROM users WHERE role = 'admin'`); err != nil {
@@ -156,16 +151,35 @@ func seedAdmin(database *sqlx.DB, cfg *config.Config) error {
 	}
 
 	if count > 0 {
-		// Admin exists — update their password hash so ADMIN_PASSWORD changes take effect on restart.
-		_, err = database.Exec(`UPDATE users SET pin_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE role = 'admin'`, string(hash))
-		if err != nil {
-			return err
+		if explicitPassword != "" {
+			// Env var is set — sync it to the DB.
+			hash, err := bcrypt.GenerateFromPassword([]byte(explicitPassword), bcrypt.DefaultCost)
+			if err != nil {
+				return err
+			}
+			_, err = database.Exec(`UPDATE users SET pin_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE role = 'admin'`, string(hash))
+			if err != nil {
+				return err
+			}
+			log.Printf("[seed] admin password synced from ADMIN_PASSWORD env var")
+		} else {
+			// Env var is empty (e.g. Unraid reset it) — keep whatever is in the DB.
+			log.Printf("[seed] ADMIN_PASSWORD not set — keeping existing admin password (change it in Admin Panel → Skift kodeord)")
 		}
-		log.Printf("[seed] admin password synced for existing admin")
 		return nil
 	}
 
 	// First boot — create admin user.
+	password := explicitPassword
+	if password == "" {
+		password = "changeme"
+		log.Printf("[seed] WARNING: ADMIN_PASSWORD not set. Admin created with default password 'changeme'. Change it immediately via Admin Panel!")
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
 	adminID := uuid.NewString()
 	_, err = database.Exec(`
 		INSERT INTO users (id, display_name, username, role, pin_hash, is_active, is_permanent, created_at, updated_at)

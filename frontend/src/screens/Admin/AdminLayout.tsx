@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi, User } from '@/api/client'
-import { ChevronLeft, Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X } from 'lucide-react'
+import { ChevronLeft, Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound } from 'lucide-react'
 
 type AdminTab = 'users' | 'settings' | 'library'
 
@@ -56,6 +56,7 @@ export function AdminLayout() {
 function UsersPanel() {
   const qc = useQueryClient()
   const [showCreate, setShowCreate] = useState(false)
+  const [changePwUser, setChangePwUser] = useState<User | null>(null)
   const { data: users = [] } = useQuery({ queryKey: ['admin-users'], queryFn: adminApi.users })
 
   const disable = useMutation({
@@ -83,6 +84,9 @@ function UsersPanel() {
       {showCreate && (
         <CreateUserModal onClose={() => setShowCreate(false)} onCreated={() => { qc.invalidateQueries({ queryKey: ['admin-users'] }); setShowCreate(false) }} />
       )}
+      {changePwUser && (
+        <ChangePasswordModal user={changePwUser} onClose={() => setChangePwUser(null)} />
+      )}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {(users as User[]).map(user => (
@@ -100,6 +104,9 @@ function UsersPanel() {
               </p>
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
+              <button className="btn btn-ghost btn-icon" style={{ padding: '6px' }} onClick={() => setChangePwUser(user)} title="Skift kodeord">
+                <KeyRound size={16} />
+              </button>
               {user.is_active ? (
                 <button className="btn btn-ghost btn-icon" style={{ padding: '6px' }} onClick={() => disable.mutate(user.id)} title="Deaktiver">
                   <UserX size={16} />
@@ -118,6 +125,74 @@ function UsersPanel() {
             </div>
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Change password modal ───────────────────────────────────────
+
+function ChangePasswordModal({ user, onClose }: { user: User; onClose: () => void }) {
+  const [newPw, setNewPw] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [error, setError] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [done, setDone] = useState(false)
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (newPw.length < 4) { setError('Kodeord skal være mindst 4 tegn'); return }
+    if (newPw !== confirm) { setError('Kodeordene matcher ikke'); return }
+    setSaving(true); setError('')
+    try {
+      await adminApi.changePassword(user.id, newPw)
+      setDone(true)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Fejl ved ændring')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const overlayStyle: React.CSSProperties = {
+    position: 'fixed', inset: 0, zIndex: 200,
+    background: 'rgba(0,0,0,0.75)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
+  }
+  const modalStyle: React.CSSProperties = {
+    background: 'var(--bg-panel)', border: '1px solid rgba(191,0,255,0.3)',
+    borderRadius: 'var(--radius-md)', padding: '28px', width: '100%', maxWidth: '420px',
+  }
+
+  return (
+    <div style={overlayStyle} onClick={onClose}>
+      <div style={modalStyle} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h3 style={{ fontWeight: 700, fontSize: '1rem' }}>Skift kodeord — {user.display_name}</h3>
+          <button className="btn btn-ghost btn-icon" onClick={onClose}><X size={16} /></button>
+        </div>
+        {done ? (
+          <div style={{ textAlign: 'center', padding: '16px 0' }}>
+            <p style={{ color: 'var(--neon-primary)', marginBottom: '16px' }}>✓ Kodeord ændret!</p>
+            <button className="btn btn-primary" onClick={onClose}>Luk</button>
+          </div>
+        ) : (
+          <form onSubmit={submit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Nyt kodeord</label>
+              <input className="input" type="password" value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="••••" autoFocus />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Gentag kodeord</label>
+              <input className="input" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="••••" />
+            </div>
+            {error && <p style={{ color: 'var(--neon-accent)', fontSize: '0.85rem' }}>{error}</p>}
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '4px' }}>
+              <button type="button" className="btn btn-ghost" onClick={onClose}>Annuller</button>
+              <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Gemmer…' : 'Skift kodeord'}</button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   )

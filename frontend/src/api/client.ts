@@ -283,6 +283,10 @@ export const adminApi = {
     post<void>(`/api/admin/playlists/${playlistId}/tracks`, { track_id: trackId }),
   removePlaylistTrack: (playlistId: string, trackId: string) =>
     del(`/api/admin/playlists/${playlistId}/tracks/${trackId}`),
+
+  // Password management
+  changePassword: (userId: string, newPassword: string) =>
+    put<void>(`/api/admin/users/${userId}/password`, { new_password: newPassword }),
 }
 
 export { ApiError }

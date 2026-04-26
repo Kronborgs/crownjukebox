@@ -160,6 +160,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/admin/users/{id}/enable", s.handleAdminEnableUser)
 		r.Post("/api/admin/users/{id}/extend", s.handleAdminExtendUser)
 		r.Delete("/api/admin/users/{id}", s.handleAdminDeleteUser)
+		r.Put("/api/admin/users/{id}/password", s.handleAdminChangePassword)
 
 		// Access links / QR
 		r.Post("/api/admin/access-links", s.handleAdminCreateAccessLink)
@@ -874,6 +875,31 @@ func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	_ = s.authSvc.RevokeAllUserSessions(r.Context(), id)
 	s.db.Exec(`DELETE FROM users WHERE id = ?`, id)
 	jsonOK(w, map[string]string{"status": "deleted"})
+}
+
+func (s *Server) handleAdminChangePassword(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req struct {
+		NewPassword string `json:"new_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.NewPassword == "" {
+		jsonError(w, "new_password required", http.StatusBadRequest)
+		return
+	}
+	if len(req.NewPassword) < 4 {
+		jsonError(w, "password must be at least 4 characters", http.StatusBadRequest)
+		return
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		jsonError(w, "failed to hash password", http.StatusInternalServerError)
+		return
+	}
+	if _, err := s.db.Exec(`UPDATE users SET pin_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, string(hash), id); err != nil {
+		jsonError(w, "failed to update password", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w, map[string]string{"status": "ok"})
 }
 
 // ─────────────────────────────────────────────────────────────
