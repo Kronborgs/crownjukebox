@@ -30,6 +30,11 @@ func main() {
 	log.Printf("Artwork cache:    %s", cfg.ArtworkCacheDir)
 	log.Printf("Database:         %s", cfg.DBPath)
 
+	// Optional one-time full DB reset before opening the database.
+	if err := resetDatabaseIfRequested(cfg.DBPath); err != nil {
+		log.Fatalf("DB reset failed: %v", err)
+	}
+
 	// ─── Database ──────────────────────────────────────────
 	database, err := db.Open(cfg.DBPath)
 	if err != nil {
@@ -39,11 +44,6 @@ func main() {
 
 	if err := db.Migrate(database); err != nil {
 		log.Fatalf("Migration failed: %v", err)
-	}
-
-	// Optional one-time reset for auth/setup (keeps library data intact).
-	if err := resetAuthAndSetupIfRequested(database); err != nil {
-		log.Fatalf("Auth/setup reset failed: %v", err)
 	}
 
 	// ─── Seed admin user ──────────────────────────────────
@@ -142,9 +142,9 @@ func main() {
 	log.Println("Goodbye!")
 }
 
-// resetAuthAndSetupIfRequested clears users/auth state when RESET_SETUP_ON_START=CONFIRM.
-// This preserves library/scanner data and allows setup wizard to run again.
-func resetAuthAndSetupIfRequested(database *sqlx.DB) error {
+// resetDatabaseIfRequested performs a full DB reset when RESET_SETUP_ON_START=CONFIRM.
+// This gives a true fresh-install state.
+func resetDatabaseIfRequested(dbPath string) error {
 	flagRaw := strings.TrimSpace(os.Getenv("RESET_SETUP_ON_START"))
 	flag := strings.Trim(flagRaw, "\"'")
 	if flag == "" || flag == "0" || strings.EqualFold(flag, "false") {
@@ -159,44 +159,19 @@ func resetAuthAndSetupIfRequested(database *sqlx.DB) error {
 		return nil
 	}
 
-	log.Printf("[reset] RESET_SETUP_ON_START=CONFIRM detected — resetting users/auth/setup state")
-
-	tx, err := database.Beginx()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// Clear foreign key references from playback/queue history before deleting users.
-	if _, err := tx.Exec(`UPDATE queue_items SET added_by_user_id = NULL`); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`UPDATE playback_history SET played_by_user_id = NULL`); err != nil {
-		return err
+	if strings.TrimSpace(dbPath) == "" {
+		log.Printf("[reset] db path is empty; skipping reset")
+		return nil
 	}
 
-	if _, err := tx.Exec(`DELETE FROM access_links`); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`DELETE FROM sessions`); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`DELETE FROM user_permissions`); err != nil {
-		return err
-	}
-	if _, err := tx.Exec(`DELETE FROM users`); err != nil {
-		return err
+	log.Printf("[reset] RESET_SETUP_ON_START=CONFIRM detected — removing database files for full reset")
+	for _, p := range []string{dbPath, dbPath + "-wal", dbPath + "-shm", dbPath + "-journal"} {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			return err
+		}
 	}
 
-	if _, err := tx.Exec(`UPDATE settings SET value = '0', updated_at = CURRENT_TIMESTAMP WHERE key = 'setup_completed'`); err != nil {
-		return err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-
-	log.Printf("[reset] auth/setup reset complete — remove RESET_SETUP_ON_START env var now")
+	log.Printf("[reset] full DB reset complete — remove RESET_SETUP_ON_START env var now")
 	return nil
 }
 

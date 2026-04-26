@@ -15,8 +15,8 @@ services:
       SESSION_TTL_HOURS: "168"
       JWT_SECRET: change_this_secret  # Change this
       ALLOWED_ORIGINS: "*"
-      # One-time setup reset (optional): set to CONFIRM for one start,
-      # then remove it again. Clears users/sessions and re-enables setup wizard.
+      # One-time FULL DB reset (optional): set to CONFIRM for one start,
+      # then remove it again. Deletes the database file and starts from scratch.
       # RESET_SETUP_ON_START: "CONFIRM"
       # Optional Subsonic/Navidrome integration
       # SUBSONIC_URL: "http://navidrome:4533"
