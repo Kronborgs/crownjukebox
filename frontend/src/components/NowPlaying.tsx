@@ -1,9 +1,10 @@
 import { useRef, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { CoverArt } from '@/components/CoverArt'
-import { playbackApi } from '@/api/client'
+import { adminApi, playbackApi } from '@/api/client'
 import { PlaybackState } from '@/api/client'
 import { SkipForward, Pause, Play } from 'lucide-react'
+import { useSSE } from '@/hooks/useSSE'
 
 interface Props {
   state: PlaybackState | null
@@ -17,10 +18,119 @@ function formatTime(secs: number) {
 
 export function NowPlaying({ state }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null)
+  const bassFilterRef = useRef<BiquadFilterNode | null>(null)
+  const trebleFilterRef = useRef<BiquadFilterNode | null>(null)
+  const gainNodeRef = useRef<GainNode | null>(null)
+  const pannerNodeRef = useRef<StereoPannerNode | null>(null)
   const [audioSrc, setAudioSrc] = useState<string | null>(null)
   const [needsInteraction, setNeedsInteraction] = useState(false)
+  const [audioSettings, setAudioSettings] = useState({
+    volume: 85,
+    bass: 0,
+    treble: 0,
+    balance: 0,
+    loudness: false,
+  })
 
   const track = state?.current_track
+
+  useEffect(() => {
+    adminApi.settings()
+      .then((settings) => {
+        setAudioSettings({
+          volume: Number(settings.audio_volume ?? settings.volume ?? '85'),
+          bass: Number(settings.audio_bass ?? '0'),
+          treble: Number(settings.audio_treble ?? '0'),
+          balance: Number(settings.audio_balance ?? '0'),
+          loudness: (settings.audio_loudness ?? '0') === '1',
+        })
+      })
+      .catch(() => {})
+  }, [])
+
+  useSSE({
+    settings_changed: (data) => {
+      const next = data as Record<string, string>
+      setAudioSettings((current) => ({
+        volume: Number(next.audio_volume ?? next.volume ?? current.volume),
+        bass: Number(next.audio_bass ?? current.bass),
+        treble: Number(next.audio_treble ?? current.treble),
+        balance: Number(next.audio_balance ?? current.balance),
+        loudness: (next.audio_loudness ?? (current.loudness ? '1' : '0')) === '1',
+      }))
+    },
+  })
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+    if (sourceNodeRef.current) return
+
+    const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!AudioContextCtor) return
+
+    const context = new AudioContextCtor()
+    const source = context.createMediaElementSource(audio)
+    const bass = context.createBiquadFilter()
+    bass.type = 'lowshelf'
+    bass.frequency.value = 180
+
+    const treble = context.createBiquadFilter()
+    treble.type = 'highshelf'
+    treble.frequency.value = 3200
+
+    const gain = context.createGain()
+    const panner = context.createStereoPanner()
+
+    source.connect(bass)
+    bass.connect(treble)
+    treble.connect(gain)
+    gain.connect(panner)
+    panner.connect(context.destination)
+
+    audioContextRef.current = context
+    sourceNodeRef.current = source
+    bassFilterRef.current = bass
+    trebleFilterRef.current = treble
+    gainNodeRef.current = gain
+    pannerNodeRef.current = panner
+
+    return () => {
+      source.disconnect()
+      bass.disconnect()
+      treble.disconnect()
+      gain.disconnect()
+      panner.disconnect()
+      context.close().catch(() => {})
+      audioContextRef.current = null
+      sourceNodeRef.current = null
+      bassFilterRef.current = null
+      trebleFilterRef.current = null
+      gainNodeRef.current = null
+      pannerNodeRef.current = null
+    }
+  }, [audioSrc])
+
+  useEffect(() => {
+    const audio = audioRef.current
+    if (audio) {
+      audio.volume = Math.min(Math.max(audioSettings.volume / 100, 0), 1)
+    }
+    if (bassFilterRef.current) {
+      bassFilterRef.current.gain.value = audioSettings.bass + (audioSettings.loudness ? 4 : 0)
+    }
+    if (trebleFilterRef.current) {
+      trebleFilterRef.current.gain.value = audioSettings.treble + (audioSettings.loudness ? 3 : 0)
+    }
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = audioSettings.loudness ? 1.12 : 1
+    }
+    if (pannerNodeRef.current) {
+      pannerNodeRef.current.pan.value = Math.min(Math.max(audioSettings.balance / 100, -1), 1)
+    }
+  }, [audioSettings])
 
   // When track changes, load new audio
   useEffect(() => {
@@ -38,6 +148,7 @@ export function NowPlaying({ state }: Props) {
     if (!audio || !audioSrc) return
 
     if (state?.is_playing) {
+      audioContextRef.current?.resume().catch(() => {})
       audio.play().catch((err) => {
         if (err.name === 'NotAllowedError') {
           setNeedsInteraction(true)
@@ -88,6 +199,7 @@ export function NowPlaying({ state }: Props) {
       {needsInteraction && (
         <div
           onClick={() => {
+            audioContextRef.current?.resume().catch(() => {})
             audioRef.current?.play().then(() => setNeedsInteraction(false)).catch(() => {})
           }}
           style={{
