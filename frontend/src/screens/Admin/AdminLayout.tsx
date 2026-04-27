@@ -650,11 +650,14 @@ function LibraryPanel() {
           Playlister med numre kan ikke slettes (beskyttelse mod fejl).
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '600px' }}>
-          {(playlists as import('@/api/client').Playlist[]).map(pl => (
+          {(playlists as import('@/api/client').Playlist[]).map(pl => {
+            console.log('[LibraryPanel] Playlist:', pl)
+            return (
             <div key={pl.id} className="glass-card" style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div style={{ flex: 1 }}>
                   <p style={{ fontWeight: 600, fontSize: '0.9rem' }}>{pl.name}</p>
+                  <p style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>ID: {pl.id}</p>
                 </div>
                 <button
                   className={pl.is_party_playlist ? 'btn btn-primary' : 'btn btn-ghost'}
@@ -671,7 +674,8 @@ function LibraryPanel() {
                 >
                   <Trash2 size={16} />
                 </button>
-              </div>
+            )
+          }   </div>
               <PartyPlaylistTracks playlistId={pl.id} introTrackId={pl.intro_track_id ?? null} isActive={pl.is_party_playlist} />
             </div>
           ))}
