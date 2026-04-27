@@ -29,8 +29,8 @@ export function AlbumBrowser() {
 
   const { data: tracks = [], isLoading: tracksLoading, isError: tracksError } = useQuery({
     queryKey: ['album-tracks', selectedAlbum?.id],
-    queryFn: () => libraryApi.albumTracks(selectedAlbum?.id ?? ''),
-    enabled: !!selectedAlbum?.id,
+    queryFn: () => libraryApi.albumTracks(selectedAlbum!.id),
+    enabled: selectedAlbum !== null,
   })
 
   useEffect(() => {
@@ -80,7 +80,14 @@ export function AlbumBrowser() {
           {tracksError && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '32px', color: 'var(--neon-red, #ff4444)', justifyContent: 'center' }}>
               <AlertCircle size={18} />
-              <span>Kunne ikke hente numre</span>
+              <span>Kunne ikke hente numre — se konsol for detaljer</span>
+            </div>
+          )}
+          {!tracksLoading && !tracksError && tracks.length === 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '32px', color: 'var(--text-dim)', justifyContent: 'center', flexDirection: 'column' }}>
+              <span style={{ fontSize: '2rem' }}>♩</span>
+              <span>Ingen numre fundet i dette album</span>
+              <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>album id: {selectedAlbum?.id}</span>
             </div>
           )}
           <AnimatePresence>
@@ -177,7 +184,7 @@ export function AlbumBrowser() {
                   transition={{ delay: Math.min(index * 0.02, 0.4) }}
                   whileHover={{ scale: 1.04, zIndex: 1 }}
                   whileTap={{ scale: 0.97 }}
-                  onClick={() => album.id && setSelectedAlbum(album)}
+                  onClick={() => { console.log('[jukebox] album click:', album); setSelectedAlbum(album) }}
                   style={{ cursor: 'pointer' }}
                 >
                   <div style={{
@@ -194,6 +201,9 @@ export function AlbumBrowser() {
                     </p>
                     <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {album.artist_name}
+                    </p>
+                    <p style={{ fontSize: '0.7rem', color: 'var(--text-dim)', opacity: 0.7 }}>
+                      {album.track_count} numre
                     </p>
                   </div>
                 </motion.div>
