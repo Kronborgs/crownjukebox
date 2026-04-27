@@ -395,7 +395,10 @@ func (s *Server) handleGetAlbumTracks(w http.ResponseWriter, r *http.Request) {
 	var tracks []db.Track
 	if err := s.db.Select(&tracks, `
 		SELECT
-			t.*,
+			t.id, t.album_id, t.artist_id, t.title,
+			t.track_number, t.disc_number, t.duration,
+			t.file_path, t.source_type, t.source_id, t.stream_url,
+			t.created_at, t.updated_at,
 			COALESCE(ar.name, '') AS artist,
 			COALESCE(al.title, '') AS album,
 			COALESCE(t.cover_art_id, al.cover_art_id) AS cover_art_id
@@ -415,7 +418,10 @@ func (s *Server) handleGetTrack(w http.ResponseWriter, r *http.Request) {
 	var track db.Track
 	if err := s.db.Get(&track, `
 		SELECT
-			t.*,
+			t.id, t.album_id, t.artist_id, t.title,
+			t.track_number, t.disc_number, t.duration,
+			t.file_path, t.source_type, t.source_id, t.stream_url,
+			t.created_at, t.updated_at,
 			COALESCE(ar.name, '') AS artist,
 			COALESCE(al.title, '') AS album,
 			COALESCE(t.cover_art_id, al.cover_art_id) AS cover_art_id
