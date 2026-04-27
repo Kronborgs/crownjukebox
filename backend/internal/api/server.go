@@ -191,6 +191,9 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/admin/sessions", s.handleAdminListSessions)
 		r.Post("/api/admin/sessions/{id}/revoke", s.handleAdminRevokeSession)
 
+		// Jukebox/room management
+		r.Get("/api/admin/jukeboxes", s.handleAdminListJukeboxes)
+
 		// Settings & scanning
 		r.Get("/api/settings", s.handleGetSettings)
 		r.Put("/api/settings", s.handleUpdateSettings)
@@ -767,18 +770,42 @@ func (s *Server) handlePartyState(w http.ResponseWriter, r *http.Request) {
 // Room middleware + helpers
 // ─────────────────────────────────────────────────────────────
 
-// roomMiddleware reads the X-Room-ID header (default: "default") and attaches
-// the corresponding *rooms.Room to the request context.
+// roomMiddleware attaches the user's personal room to the request context.
+// For normal users: room_id = user_id (each user has their own jukebox)
+// For admins: can override with X-Room-ID header to view/control other users' jukeboxes
 func (s *Server) roomMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		roomID := r.Header.Get("X-Room-ID")
+		sd, _ := auth.GetSessionFromContext(r.Context())
+		
+		var roomID string
+		
+		// Admin can override with X-Room-ID header to view any user's jukebox
+		if sd != nil && sd.User.Role == "admin" {
+			if headerRoomID := r.Header.Get("X-Room-ID"); headerRoomID != "" {
+				roomID = headerRoomID
+			}
+		}
+		
+		// Default: use authenticated user's ID as their room ID
+		if roomID == "" && sd != nil {
+			roomID = sd.User.ID
+		}
+		
+		// Fallback to "default" room if no user session (shouldn't happen for protected routes)
 		if roomID == "" {
 			roomID = "default"
 		}
+		
 		room := s.roomSvc.Get(r.Context(), roomID)
 		if room == nil {
-			room = s.roomSvc.Get(r.Context(), "default")
+			// Auto-create room for user if it doesn't exist
+			if sd != nil && roomID == sd.User.ID {
+				room = s.roomSvc.CreateForUser(r.Context(), sd.User.ID, sd.User.DisplayName)
+			} else {
+				room = s.roomSvc.Get(r.Context(), "default")
+			}
 		}
+		
 		ctx := context.WithValue(r.Context(), roomContextKey, room)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -1004,6 +1031,71 @@ func (s *Server) handleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 	_ = s.db.Select(&users, `SELECT * FROM users ORDER BY created_at DESC`)
 	// Never return hashes
 	jsonOK(w, sanitizeUsers(users))
+}
+
+// handleAdminListJukeboxes returns all user jukeboxes with their current playback status.
+func (s *Server) handleAdminListJukeboxes(w http.ResponseWriter, r *http.Request) {
+	// Get all users
+	var users []db.User
+	if err := s.db.Select(&users, `SELECT * FROM users ORDER BY display_name ASC`); err != nil {
+		jsonError(w, "failed to fetch users", http.StatusInternalServerError)
+		return
+	}
+
+	type JukeboxStatus struct {
+		UserID       string  `json:"user_id"`
+		DisplayName  string  `json:"display_name"`
+		RoomID       string  `json:"room_id"`
+		IsPlaying    bool    `json:"is_playing"`
+		IsPartyMode  bool    `json:"is_party_mode"`
+		CurrentTrack *struct {
+			ID     string `json:"id"`
+			Title  string `json:"title"`
+			Artist string `json:"artist"`
+		} `json:"current_track,omitempty"`
+		QueueLength int `json:"queue_length"`
+	}
+
+	result := make([]JukeboxStatus, 0, len(users))
+
+	for _, user := range users {
+		status := JukeboxStatus{
+			UserID:      user.ID,
+			DisplayName: user.DisplayName,
+			RoomID:      user.ID, // room_id = user_id
+		}
+
+		// Get playback state for user's room
+		room := s.roomSvc.Get(r.Context(), user.ID)
+		if room != nil {
+			state, _ := room.Playback.GetState(r.Context())
+			if state != nil {
+				status.IsPlaying = state.IsPlaying
+				status.IsPartyMode = state.IsPartyMode
+
+				// Get current track info
+				if state.CurrentTrack != nil {
+					status.CurrentTrack = &struct {
+						ID     string `json:"id"`
+						Title  string `json:"title"`
+						Artist string `json:"artist"`
+					}{
+						ID:     state.CurrentTrack.ID,
+						Title:  state.CurrentTrack.Title,
+						Artist: state.CurrentTrack.Artist,
+					}
+				}
+			}
+
+			// Get queue length
+			queue, _ := room.Queue.GetQueue(r.Context())
+			status.QueueLength = len(queue)
+		}
+
+		result = append(result, status)
+	}
+
+	jsonOK(w, result)
 }
 
 func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {

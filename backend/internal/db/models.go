@@ -202,11 +202,12 @@ type RoomPlaybackState struct {
 // ─────────────────────────────────────────────────────────────
 
 type Room struct {
-	ID              string    `db:"id"               json:"id"`
-	Name            string    `db:"name"             json:"name"`
+	ID              string    `db:"id"                json:"id"`
+	Name            string    `db:"name"              json:"name"`
+	OwnerUserID     *string   `db:"owner_user_id"     json:"owner_user_id,omitempty"`
 	PartyPlaylistID *string   `db:"party_playlist_id" json:"party_playlist_id,omitempty"`
-	CreatedAt       time.Time `db:"created_at"       json:"created_at"`
-	UpdatedAt       time.Time `db:"updated_at"       json:"updated_at"`
+	CreatedAt       time.Time `db:"created_at"        json:"created_at"`
+	UpdatedAt       time.Time `db:"updated_at"        json:"updated_at"`
 }
 
 // ─────────────────────────────────────────────────────────────

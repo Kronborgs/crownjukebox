@@ -104,6 +104,58 @@ func (s *Service) Create(ctx context.Context, name string) (*db.Room, error) {
 	return &info, nil
 }
 
+// CreateForUser creates a personal room for a user (room_id = user_id).
+// If the room already exists in DB, it loads and returns it.
+func (s *Service) CreateForUser(ctx context.Context, userID, displayName string) *Room {
+	// Check if room already exists in DB
+	var existing db.Room
+	err := s.db.GetContext(ctx, &existing, `SELECT * FROM rooms WHERE id = ?`, userID)
+	if err == nil {
+		// Room exists, build and cache it
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if r, ok := s.rooms[userID]; ok {
+			return r
+		}
+		r := s.buildRoom(existing)
+		s.rooms[userID] = r
+		return r
+	}
+
+	// Create new room for user
+	info := db.Room{
+		ID:          userID, // room_id = user_id
+		Name:        displayName + "s Jukebox",
+		OwnerUserID: &userID,
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO rooms (id, name, owner_user_id, created_at, updated_at) 
+		VALUES (?, ?, ?, ?, ?)`,
+		info.ID, info.Name, info.OwnerUserID, info.CreatedAt, info.UpdatedAt,
+	)
+	if err != nil {
+		// If insert fails (race condition), try to load it
+		if r := s.Get(ctx, userID); r != nil {
+			return r
+		}
+		return nil
+	}
+
+	// Create initial playback state for the room
+	_, _ = s.db.ExecContext(ctx, `
+		INSERT OR IGNORE INTO room_playback_state (room_id, is_playing, position_seconds, updated_at)
+		VALUES (?, 0, 0, CURRENT_TIMESTAMP)`, userID)
+
+	s.mu.Lock()
+	r := s.buildRoom(info)
+	s.rooms[info.ID] = r
+	s.mu.Unlock()
+
+	return r
+}
+
 // Delete removes a room and its associated runtime state.
 func (s *Service) Delete(ctx context.Context, roomID string) error {
 	if roomID == "default" {

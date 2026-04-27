@@ -150,9 +150,24 @@ export interface KeyboardBinding {
 export interface Room {
   id: string
   name: string
-  party_playlist_id: string | null
+  owner_user_id?: string
+  party_playlist_id?: string
   created_at: string
   updated_at: string
+}
+
+export interface JukeboxStatus {
+  user_id: string
+  display_name: string
+  room_id: string
+  is_playing: boolean
+  is_party_mode: boolean
+  current_track?: {
+    id: string
+    title: string
+    artist: string
+  }
+  queue_length: number
 }
 
 // ─── Room ID helper ───────────────────────────────────────────────
@@ -388,6 +403,9 @@ export const adminApi = {
   deleteRoom: (id: string) => del(`/api/admin/rooms/${id}`),
   setRoomPartyPlaylist: (roomId: string, playlistId: string) =>
     put<void>(`/api/admin/rooms/${roomId}/party-playlist`, { playlist_id: playlistId }),
+
+  // Jukebox monitoring (admin)
+  jukeboxes: () => getList<JukeboxStatus>('/api/admin/jukeboxes'),
 }
 
 // ─── Rooms ────────────────────────────────────────────────────────

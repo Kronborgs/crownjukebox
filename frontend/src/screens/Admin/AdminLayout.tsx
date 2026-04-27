@@ -1,10 +1,10 @@
 import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { adminApi, User } from '@/api/client'
-import { ChevronLeft, Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound } from 'lucide-react'
+import { adminApi, User, setCurrentRoomId } from '@/api/client'
+import { ChevronLeft, Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio } from 'lucide-react'
 
-type AdminTab = 'users' | 'settings' | 'library'
+type AdminTab = 'users' | 'jukeboxes' | 'settings' | 'library'
 
 export function AdminLayout() {
   const [tab, setTab] = useState<AdminTab>('users')
@@ -25,9 +25,10 @@ export function AdminLayout() {
       {/* Tab bar */}
       <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'var(--bg-panel)', flexShrink: 0 }}>
         {([
-          { id: 'users',    icon: <UserCheck size={16} />, label: 'Brugere' },
-          { id: 'library',  icon: <Music2 size={16} />,    label: 'Bibliotek' },
-          { id: 'settings', icon: <Settings size={16} />,  label: 'Indstillinger' },
+          { id: 'users',     icon: <UserCheck size={16} />, label: 'Brugere' },
+          { id: 'jukeboxes', icon: <Radio size={16} />,     label: 'Jukeboxes' },
+          { id: 'library',   icon: <Music2 size={16} />,    label: 'Bibliotek' },
+          { id: 'settings',  icon: <Settings size={16} />,  label: 'Indstillinger' },
         ] as { id: AdminTab; icon: React.ReactNode; label: string }[]).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             display: 'flex', alignItems: 'center', gap: '6px',
@@ -43,10 +44,122 @@ export function AdminLayout() {
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
-        {tab === 'users'    && <UsersPanel />}
-        {tab === 'library'  && <LibraryPanel />}
-        {tab === 'settings' && <SettingsPanel />}
+        {tab === 'users'     && <UsersPanel />}
+        {tab === 'jukeboxes' && <JukeboxesPanel />}
+        {tab === 'library'   && <LibraryPanel />}
+        {tab === 'settings'  && <SettingsPanel />}
       </div>
+    </div>
+  )
+}
+
+// ─── Jukeboxes panel ─────────────────────────────────────────────
+
+function JukeboxesPanel() {
+  const { data: jukeboxes = [], refetch } = useQuery({
+    queryKey: ['admin-jukeboxes'],
+    queryFn: adminApi.jukeboxes,
+    refetchInterval: 3000, // Auto-refresh every 3 seconds
+  })
+
+  const viewJukebox = (roomId: string) => {
+    setCurrentRoomId(roomId)
+    window.location.href = '/' // Reload to user's jukebox view
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+        <h2 style={{ fontSize: '1.1rem', fontWeight: 700 }}>Bruger Jukeboxes</h2>
+        <button className="btn btn-ghost" onClick={() => refetch()} style={{ fontSize: '0.85rem', padding: '6px 12px' }}>
+          <RefreshCw size={14} /> Opdater
+        </button>
+      </div>
+      <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem', marginBottom: '24px' }}>
+        Oversigt over alle brugeres jukeboxes. Hver bruger har sin egen afspilningskø og tilstand.
+      </p>
+
+      <div style={{ display: 'grid', gap: '16px', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
+        {jukeboxes.map((jb) => (
+          <div
+            key={jb.user_id}
+            className="glass-card"
+            style={{
+              padding: '18px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              position: 'relative',
+            }}
+          >
+            {/* Status indicator */}
+            <div
+              style={{
+                position: 'absolute',
+                top: '12px',
+                right: '12px',
+                width: '12px',
+                height: '12px',
+                borderRadius: '50%',
+                background: jb.is_playing ? 'var(--neon-green)' : 'var(--text-dim)',
+                boxShadow: jb.is_playing ? '0 0 12px var(--neon-green)' : 'none',
+                animation: jb.is_playing ? 'pulse 2s infinite' : 'none',
+              }}
+            />
+
+            <div>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--chrome-bright)', marginBottom: '4px' }}>
+                {jb.display_name}
+              </h3>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
+                ID: {jb.user_id.slice(0, 8)}...
+              </p>
+            </div>
+
+            {jb.current_track && (
+              <div style={{ padding: '10px 12px', background: 'rgba(191, 0, 255, 0.08)', borderRadius: '6px', borderLeft: '3px solid var(--neon-primary)' }}>
+                <p style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '2px' }}>
+                  {jb.current_track.title}
+                </p>
+                <p style={{ fontSize: '0.75rem', color: 'var(--neon-teal)' }}>
+                  {jb.current_track.artist}
+                </p>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: '16px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+              <div>
+                <span style={{ color: 'var(--text-dim)' }}>Status:</span>{' '}
+                <span style={{ color: jb.is_playing ? 'var(--neon-green)' : 'var(--text-dim)' }}>
+                  {jb.is_playing ? 'Afspiller' : 'Pause'}
+                </span>
+              </div>
+              <div>
+                <span style={{ color: 'var(--text-dim)' }}>Kø:</span>{' '}
+                <span>{jb.queue_length} numre</span>
+              </div>
+              {jb.is_party_mode && (
+                <span style={{ color: 'var(--neon-amber)', fontWeight: 700 }}>🍻 SKÅL</span>
+              )}
+            </div>
+
+            <button
+              className="btn btn-primary"
+              style={{ marginTop: '8px', fontSize: '0.85rem' }}
+              onClick={() => viewJukebox(jb.room_id)}
+            >
+              Vis Jukebox →
+            </button>
+          </div>
+        ))}
+      </div>
+
+      {jukeboxes.length === 0 && (
+        <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-dim)' }}>
+          <Music2 size={48} style={{ opacity: 0.3, marginBottom: '16px' }} />
+          <p>Ingen brugere endnu</p>
+        </div>
+      )}
     </div>
   )
 }
