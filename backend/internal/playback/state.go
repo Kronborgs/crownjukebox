@@ -2,7 +2,6 @@ package playback
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"sync"
 	"time"
