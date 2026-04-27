@@ -75,7 +75,7 @@ func (s *Scanner) Scan(progress chan<- ScanProgress) error {
 	log.Printf("[scanner] found %d audio files", total)
 
 	for i, filePath := range files {
-		if err := s.indexFile(filePath); err != nil {
+		if err := s.indexFile(filePath, ""); err != nil {
 			log.Printf("[scanner] error indexing %s: %v", filePath, err)
 		}
 
@@ -106,11 +106,16 @@ func (s *Scanner) Scan(progress chan<- ScanProgress) error {
 
 // IndexFile indexes one specific audio file path.
 func (s *Scanner) IndexFile(filePath string) error {
-	return s.indexFile(filePath)
+	return s.indexFile(filePath, "")
+}
+
+// IndexFileWithOriginalName indexes a file, using originalFilename as fallback title if no tags exist.
+func (s *Scanner) IndexFileWithOriginalName(filePath, originalFilename string) error {
+	return s.indexFile(filePath, originalFilename)
 }
 
 // indexFile reads metadata from a single audio file and upserts it.
-func (s *Scanner) indexFile(filePath string) error {
+func (s *Scanner) indexFile(filePath, originalFilename string) error {
 	f, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("open file: %w", err)
@@ -123,7 +128,7 @@ func (s *Scanner) indexFile(filePath string) error {
 		m = nil
 	}
 
-	meta := extractMetadata(filePath, m)
+	meta := extractMetadata(filePath, originalFilename, m)
 
 	// Upsert artist
 	artistID, err := s.upsertArtist(meta.AlbumArtist)
@@ -163,9 +168,15 @@ type Metadata struct {
 	Duration    int
 }
 
-func extractMetadata(filePath string, m tag.Metadata) Metadata {
+func extractMetadata(filePath, originalFilename string, m tag.Metadata) Metadata {
+	// Use original filename if provided, otherwise use actual file path
+	titleFallback := filepath.Base(strings.TrimSuffix(filePath, filepath.Ext(filePath)))
+	if originalFilename != "" {
+		titleFallback = strings.TrimSuffix(originalFilename, filepath.Ext(originalFilename))
+	}
+
 	meta := Metadata{
-		Title:       filepath.Base(strings.TrimSuffix(filePath, filepath.Ext(filePath))),
+		Title:       titleFallback,
 		Artist:      "Unknown Artist",
 		AlbumArtist: "Unknown Artist",
 		Album:       "Unknown Album",

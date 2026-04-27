@@ -1790,7 +1790,7 @@ func (s *Server) handleUploadPartyPlaylistTracks(w http.ResponseWriter, r *http.
 			continue
 		}
 
-		if err := s.scanner.IndexFile(destPath); err != nil {
+		if err := s.scanner.IndexFileWithOriginalName(destPath, fileHeader.Filename); err != nil {
 			_ = os.Remove(destPath)
 			continue
 		}
