@@ -121,12 +121,13 @@ export interface PlaybackHistory {
 }
 
 export interface Playlist {
-  id: string
-  name: string
-  source_type: string
-  is_party_playlist: boolean
-  intro_track_id: string | null
-  created_at: string
+  ID: string
+  Name: string
+  SourceType: string
+  SourceID: string
+  IsPartyPlaylist: boolean
+  IntroTrackID: string | null
+  CreatedAt: string
 }
 
 export interface PartyPlaylistUploadResult {

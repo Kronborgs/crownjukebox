@@ -653,29 +653,29 @@ function LibraryPanel() {
           {(playlists as import('@/api/client').Playlist[]).map(pl => {
             console.log('[LibraryPanel] Playlist:', pl)
             return (
-            <div key={pl.id} className="glass-card" style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div key={pl.ID} className="glass-card" style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div style={{ flex: 1 }}>
-                  <p style={{ fontWeight: 600, fontSize: '0.9rem' }}>{pl.name}</p>
-                  <p style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>ID: {pl.id}</p>
+                  <p style={{ fontWeight: 600, fontSize: '0.9rem' }}>{pl.Name}</p>
+                  <p style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>ID: {pl.ID}</p>
                 </div>
                 <button
-                  className={pl.is_party_playlist ? 'btn btn-primary' : 'btn btn-ghost'}
+                  className={pl.IsPartyPlaylist ? 'btn btn-primary' : 'btn btn-ghost'}
                   style={{ padding: '6px 14px', fontSize: '0.8rem' }}
-                  onClick={() => setPartyPlaylist(pl.id, !pl.is_party_playlist)}
+                  onClick={() => setPartyPlaylist(pl.ID, !pl.IsPartyPlaylist)}
                 >
-                  {pl.is_party_playlist ? '★ Aktiv SKÅL!' : 'Brug til SKÅL!'}
+                  {pl.IsPartyPlaylist ? '★ Aktiv SKÅL!' : 'Brug til SKÅL!'}
                 </button>
                 <button
                   className="btn btn-ghost"
                   style={{ padding: '6px 10px', fontSize: '0.8rem', color: 'var(--neon-red)' }}
-                  onClick={() => deletePlaylist(pl.id, pl.name)}
+                  onClick={() => deletePlaylist(pl.ID, pl.Name)}
                   title="Slet playliste"
                 >
                   <Trash2 size={16} />
                 </button>
               </div>
-              <PartyPlaylistTracks playlistId={pl.id} introTrackId={pl.intro_track_id ?? null} isActive={pl.is_party_playlist} />
+              <PartyPlaylistTracks playlistId={pl.ID} introTrackId={pl.IntroTrackID ?? null} isActive={pl.IsPartyPlaylist} />
             </div>
             )
           })}
