@@ -462,6 +462,11 @@ body {
   100% { transform: translateX(-50%); }
 }
 
+@keyframes led-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-33.33%); }
+}
+
 /* ─── Party overlay ────────────────────────── */
 .party-overlay {
   position: fixed;

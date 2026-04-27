@@ -18,6 +18,65 @@ function formatTime(secs: number) {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
+interface LEDScrollingTextProps {
+  text: string
+  color: string
+  size: string
+}
+
+function LEDScrollingText({ text, color, size }: LEDScrollingTextProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const textRef = useRef<HTMLDivElement>(null)
+  const [shouldScroll, setShouldScroll] = useState(false)
+
+  useEffect(() => {
+    if (!containerRef.current || !textRef.current) return
+    const containerWidth = containerRef.current.offsetWidth
+    const textWidth = textRef.current.scrollWidth
+    setShouldScroll(textWidth > containerWidth)
+  }, [text])
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        width: '100%',
+        overflow: 'hidden',
+        background: 'rgba(0,0,0,0.4)',
+        borderRadius: '4px',
+        padding: '8px 12px',
+        position: 'relative',
+        boxShadow: `inset 0 2px 8px rgba(0,0,0,0.5), 0 0 6px ${color}22`,
+      }}
+    >
+      <div
+        ref={textRef}
+        style={{
+          display: 'inline-block',
+          whiteSpace: 'nowrap',
+          fontSize: size,
+          fontWeight: 700,
+          color: color,
+          textShadow: `0 0 8px ${color}, 0 0 4px ${color}`,
+          fontFamily: 'var(--font-display)',
+          letterSpacing: '1px',
+          animation: shouldScroll ? 'led-scroll 15s linear infinite' : 'none',
+        }}
+      >
+        {text}
+        {shouldScroll && (
+          <>
+            &nbsp;&nbsp;&nbsp;•••&nbsp;&nbsp;&nbsp;
+            {text}
+            &nbsp;&nbsp;&nbsp;•••&nbsp;&nbsp;&nbsp;
+            {text}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function NowPlaying({ state, refreshState }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -30,6 +89,7 @@ export function NowPlaying({ state, refreshState }: Props) {
   const resumePositionRef = useRef<number | null>(null)
   const [audioSrc, setAudioSrc] = useState<string | null>(null)
   const [needsInteraction, setNeedsInteraction] = useState(false)
+  const [currentTime, setCurrentTime] = useState(0)
   const [audioSettings, setAudioSettings] = useState({
     volume: 85,
     bass: 0,
@@ -219,6 +279,19 @@ export function NowPlaying({ state, refreshState }: Props) {
     return () => clearInterval(id)
   }, [audioSrc])
 
+  // Track currentTime for smooth progress bar updates
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+    let rafId: number
+    const updateTime = () => {
+      setCurrentTime(audio.currentTime)
+      rafId = requestAnimationFrame(updateTime)
+    }
+    rafId = requestAnimationFrame(updateTime)
+    return () => cancelAnimationFrame(rafId)
+  }, [audioSrc])
+
   // Track ended → signal server
   useEffect(() => {
     const audio = audioRef.current
@@ -243,7 +316,7 @@ export function NowPlaying({ state, refreshState }: Props) {
   }, [audioSrc, track?.id])
 
   const duration  = track?.duration_secs ?? 0
-  const position  = state?.position_secs ?? 0
+  const position  = currentTime // Use local currentTime for smooth updates
   const progress  = duration > 0 ? Math.min((position / duration) * 100, 100) : 0
 
   const titleText  = track?.title   ?? 'Ingen sang afspilles'
@@ -303,14 +376,10 @@ export function NowPlaying({ state, refreshState }: Props) {
       </motion.div>
 
       {/* Track info */}
-      <div style={{ width: '100%', textAlign: 'center' }}>
-        <div className="marquee-wrap" style={{ marginBottom: '4px' }}>
-          <div className="marquee-inner" style={{ fontSize: '1.3rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-            {titleText}&nbsp;&nbsp;&nbsp;{titleText}&nbsp;&nbsp;&nbsp;
-          </div>
-        </div>
-        <p style={{ color: 'var(--neon-primary)', fontSize: '1rem', marginBottom: '2px' }}>{artistText}</p>
-        <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>{albumText}</p>
+      <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <LEDScrollingText text={titleText} color="var(--neon-primary)" size="1.3rem" />
+        <LEDScrollingText text={artistText} color="var(--neon-teal)" size="1rem" />
+        <LEDScrollingText text={albumText} color="var(--text-dim)" size="0.85rem" />
       </div>
 
       {/* Progress bar */}
