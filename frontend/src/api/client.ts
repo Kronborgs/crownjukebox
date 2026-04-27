@@ -255,10 +255,29 @@ export const authApi = {
 
 // ─── Library ──────────────────────────────────────────────────────
 
+// Normalize album objects from either lowercase (current backend) or PascalCase
+// (older backend builds that lacked json struct tags) field names.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeAlbum(raw: any): Album {
+  return {
+    id:           raw.id           ?? raw.ID           ?? '',
+    title:        raw.title        ?? raw.Title        ?? '',
+    artist_id:    raw.artist_id    ?? raw.ArtistID     ?? '',
+    year:         raw.year         ?? raw.Year         ?? null,
+    genre:        raw.genre        ?? raw.Genre        ?? '',
+    cover_art_id: raw.cover_art_id ?? raw.CoverArtID  ?? '',
+    track_count:  raw.track_count  ?? raw.TrackCount   ?? 0,
+    artist_name:  raw.artist_name  ?? raw.ArtistName,
+    cover_url:    raw.cover_url    ?? raw.CoverURL,
+  }
+}
+
 export const libraryApi = {
   artists: () => getList<Artist>('/api/library/artists'),
-  albums:  (artistId?: string, page = 1, limit = 40) =>
-    getList<Album>(`/api/library/albums?${artistId ? `artist_id=${artistId}&` : ''}page=${page}&limit=${limit}`),
+  albums:  async (artistId?: string, page = 1, limit = 40): Promise<Album[]> => {
+    const data = await getList<unknown>(`/api/library/albums?${artistId ? `artist_id=${artistId}&` : ''}page=${page}&limit=${limit}`)
+    return data.map(normalizeAlbum)
+  },
   album:      (id: string) => get<Album>(`/api/library/albums/${id}`),
   albumTracks: (id: string) => getList<Track>(`/api/library/albums/${id}/tracks`),
   track:      (id: string) => get<Track>(`/api/library/tracks/${id}`),

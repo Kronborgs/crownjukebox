@@ -30,7 +30,7 @@ export function AlbumBrowser() {
   const { data: tracks = [], isLoading: tracksLoading, isError: tracksError } = useQuery({
     queryKey: ['album-tracks', selectedAlbum?.id],
     queryFn: () => libraryApi.albumTracks(selectedAlbum!.id),
-    enabled: selectedAlbum !== null,
+    enabled: selectedAlbum !== null && !!selectedAlbum?.id,
   })
 
   useEffect(() => {
