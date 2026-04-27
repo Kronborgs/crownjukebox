@@ -55,6 +55,7 @@ type Manager struct {
 	savedPositionSecs float64  // position when party started
 	savedWasPlaying   bool     // was it playing (vs. paused) when party started
 	savedIsAutoplay   bool     // was it an autoplay track
+}
 
 func NewManager(database *sqlx.DB, hub *events.Hub, qMgr *queue.Manager, partyEng PartyEnder, roomID string) *Manager {
 	m := &Manager{
