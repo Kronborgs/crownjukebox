@@ -444,7 +444,7 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
 
 // ─── Library panel ────────────────────────────────────────────────
 
-function PartyPlaylistTracks({ playlistId, introTrackId }: { playlistId: string; introTrackId: string | null }) {
+function PartyPlaylistTracks({ playlistId, introTrackId, isActive }: { playlistId: string; introTrackId: string | null; isActive: boolean }) {
   const qc = useQueryClient()
   const { data: tracks = [] } = useQuery({
     queryKey: ['playlist-tracks', playlistId],
@@ -470,9 +470,11 @@ function PartyPlaylistTracks({ playlistId, introTrackId }: { playlistId: string;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '12px' }}>
-      <p style={{ fontSize: '0.75rem', color: 'var(--neon-amber)', marginBottom: '6px' }}>
-        ✓ = Intro (spilles ALTID først når SKÅL! trykkes) → Derefter EN tilfældig sang → Tilbage til normal kø
-      </p>
+      {isActive && (
+        <p style={{ fontSize: '0.75rem', color: 'var(--neon-amber)', marginBottom: '6px' }}>
+          ✓ = Intro (spilles ALTID først når SKÅL! trykkes) → Derefter EN tilfældig sang → Tilbage til normal kø
+        </p>
+      )}
       {tracks.map(t => (
         <div
           key={t.id}
@@ -665,9 +667,7 @@ function LibraryPanel() {
                   <Trash2 size={16} />
                 </button>
               </div>
-              {pl.is_party_playlist && (
-                <PartyPlaylistTracks playlistId={pl.id} introTrackId={pl.intro_track_id ?? null} />
-              )}
+              <PartyPlaylistTracks playlistId={pl.id} introTrackId={pl.intro_track_id ?? null} isActive={pl.is_party_playlist} />
             </div>
           ))}
         </div>
