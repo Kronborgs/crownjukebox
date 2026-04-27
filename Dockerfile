@@ -9,7 +9,8 @@ RUN go mod download
 COPY backend/ .
 
 ARG TARGETOS TARGETARCH
-RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w" -o crownjukebox ./cmd/server
+ARG GIT_COMMIT=unknown
+RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w -X main.Version=${GIT_COMMIT}" -o crownjukebox ./cmd/server
 
 # ─── Stage 2: Build frontend ──────────────────────────────────
 # Always build on native host platform — JS output is platform-independent

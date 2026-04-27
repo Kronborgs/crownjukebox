@@ -22,6 +22,9 @@ import (
 	"github.com/crownjukebox/crownjukebox/internal/music"
 )
 
+// Version is set at build time via -ldflags "-X main.Version=<git-sha>"
+var Version = "dev"
+
 func main() {
 	cfg := config.Load()
 
@@ -83,7 +86,7 @@ func main() {
 				log.Println("[startup] artwork extraction complete")
 			}
 		}
-	}()
+	}(), Version
 
 	// ─── HTTP server ───────────────────────────────────────
 	srv := api.NewServer(cfg, database)

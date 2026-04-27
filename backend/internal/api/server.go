@@ -36,6 +36,7 @@ const roomContextKey contextKey = "room"
 // Server holds all service dependencies.
 type Server struct {
 	cfg      *config.Config
+	version  string
 	db       *sqlx.DB
 	hub      *events.Hub
 	authSvc  *auth.Service
@@ -47,7 +48,7 @@ type Server struct {
 }
 
 // NewServer creates the API server with all wired dependencies.
-func NewServer(cfg *config.Config, database *sqlx.DB) *Server {
+func NewServer(cfg *config.Config, database *sqlx.DB, version string) *Server {
 	hub := events.NewHub()
 	authSvc := auth.NewService(database, cfg.SessionTTLHours)
 	qrSvc := auth.NewQRService(database, getBaseURL(cfg))
@@ -58,6 +59,7 @@ func NewServer(cfg *config.Config, database *sqlx.DB) *Server {
 
 	return &Server{
 		cfg:      cfg,
+		version:  version,
 		db:       database,
 		hub:      hub,
 		authSvc:  authSvc,
@@ -105,6 +107,7 @@ func (s *Server) Router() http.Handler {
 	}))
 
 	// ─── Public endpoints ─────────────────────────────────────
+	r.Get("/healthz", s.handleHealthz)
 	r.Post("/api/auth/login", s.handleLogin)
 	r.Post("/api/auth/qr-login", s.handleQRLogin)
 	r.Get("/api/setup/status", s.handleSetupStatus)
@@ -391,8 +394,16 @@ func (s *Server) handleGetAlbumTracks(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var tracks []db.Track
 	if err := s.db.Select(&tracks, `
-		SELECT * FROM tracks WHERE album_id = ?
-		ORDER BY disc_number, track_number`, id); err != nil {
+		SELECT
+			t.*,
+			COALESCE(ar.name, '') AS artist,
+			COALESCE(al.title, '') AS album,
+			COALESCE(t.cover_art_id, al.cover_art_id) AS cover_art_id
+		FROM tracks t
+		LEFT JOIN artists ar ON ar.id = t.artist_id
+		LEFT JOIN albums al ON al.id = t.album_id
+		WHERE t.album_id = ?
+		ORDER BY t.disc_number, t.track_number`, id); err != nil {
 		jsonError(w, "tracks not found", http.StatusNotFound)
 		return
 	}
@@ -402,7 +413,16 @@ func (s *Server) handleGetAlbumTracks(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleGetTrack(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var track db.Track
-	if err := s.db.Get(&track, `SELECT * FROM tracks WHERE id = ?`, id); err != nil {
+	if err := s.db.Get(&track, `
+		SELECT
+			t.*,
+			COALESCE(ar.name, '') AS artist,
+			COALESCE(al.title, '') AS album,
+			COALESCE(t.cover_art_id, al.cover_art_id) AS cover_art_id
+		FROM tracks t
+		LEFT JOIN artists ar ON ar.id = t.artist_id
+		LEFT JOIN albums al ON al.id = t.album_id
+		WHERE t.id = ?`, id); err != nil {
 		jsonError(w, "track not found", http.StatusNotFound)
 		return
 	}
@@ -425,7 +445,17 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	_ = s.db.Select(&albums, `SELECT * FROM albums WHERE title LIKE ? LIMIT 20`, like)
 
 	var tracks []db.Track
-	_ = s.db.Select(&tracks, `SELECT * FROM tracks WHERE title LIKE ? LIMIT 30`, like)
+	_ = s.db.Select(&tracks, `
+		SELECT
+			t.*,
+			COALESCE(ar.name, '') AS artist,
+			COALESCE(al.title, '') AS album,
+			COALESCE(t.cover_art_id, al.cover_art_id) AS cover_art_id
+		FROM tracks t
+		LEFT JOIN artists ar ON ar.id = t.artist_id
+		LEFT JOIN albums al ON al.id = t.album_id
+		WHERE t.title LIKE ?
+		LIMIT 30`, like)
 
 	jsonOK(w, map[string]any{
 		"artists": artists,
@@ -744,6 +774,10 @@ func getRoomFromCtx(ctx context.Context) *rooms.Room {
 // ─────────────────────────────────────────────────────────────
 // Setup handlers
 // ─────────────────────────────────────────────────────────────
+
+func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	jsonOK(w, map[string]string{"status": "ok", "version": s.version})
+}
 
 func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 	var adminCount int
