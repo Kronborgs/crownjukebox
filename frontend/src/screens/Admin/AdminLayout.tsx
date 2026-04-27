@@ -470,6 +470,9 @@ function PartyPlaylistTracks({ playlistId, introTrackId }: { playlistId: string;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '12px' }}>
+      <p style={{ fontSize: '0.75rem', color: 'var(--neon-amber)', marginBottom: '6px' }}>
+        ✓ = Intro (spilles ALTID først når SKÅL! trykkes) → Derefter EN tilfældig sang → Tilbage til normal kø
+      </p>
       {tracks.map(t => (
         <div
           key={t.id}
@@ -478,35 +481,35 @@ function PartyPlaylistTracks({ playlistId, introTrackId }: { playlistId: string;
             alignItems: 'center',
             gap: '10px',
             padding: '8px 12px',
-            background: 'rgba(255,255,255,0.04)',
-            borderRadius: '6px'
+            background: introTrackId === t.id ? 'rgba(191,0,255,0.1)' : 'rgba(255,255,255,0.04)',
+            borderRadius: '6px',
+            border: introTrackId === t.id ? '1px solid var(--neon-primary)' : '1px solid transparent'
           }}
         >
+          <button
+            onClick={() => setIntro(t.id)}
+            style={{
+              width: '24px',
+              height: '24px',
+              borderRadius: '4px',
+              border: introTrackId === t.id ? '2px solid var(--neon-primary)' : '2px solid rgba(255,255,255,0.3)',
+              background: introTrackId === t.id ? 'var(--neon-primary)' : 'transparent',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer',
+              flexShrink: 0
+            }}
+            title={introTrackId === t.id ? 'Intro-nummer' : 'Klik for at gøre til intro'}
+          >
+            {introTrackId === t.id && (
+              <span style={{ color: 'var(--bg-base)', fontSize: '16px', fontWeight: 'bold' }}>✓</span>
+            )}
+          </button>
           <div style={{ flex: 1 }}>
             <p style={{ fontWeight: 600, fontSize: '0.85rem' }}>{t.title}</p>
             <p style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>{t.artist}</p>
           </div>
-          {introTrackId === t.id && (
-            <span
-              style={{
-                padding: '2px 8px',
-                fontSize: '0.7rem',
-                background: 'var(--neon-primary)',
-                color: 'var(--bg-base)',
-                borderRadius: '4px',
-                fontWeight: 700
-              }}
-            >
-              INTRO
-            </span>
-          )}
-          <button
-            className={introTrackId === t.id ? 'btn btn-primary' : 'btn btn-ghost'}
-            style={{ padding: '4px 10px', fontSize: '0.75rem' }}
-            onClick={() => setIntro(t.id)}
-          >
-            {introTrackId === t.id ? '★ Intro' : '☆ Sæt intro'}
-          </button>
           <button
             className="btn btn-ghost"
             style={{ padding: '4px 8px', fontSize: '0.75rem', color: 'var(--neon-red)' }}
@@ -558,8 +561,16 @@ function LibraryPanel() {
   }
 
   async function deletePlaylist(id: string, name: string) {
-    if (!confirm(`Slet playlisten "${name}"? Alle numre i playlisten vil blive fjernet.`)) return
     try {
+      // Check if playlist has tracks
+      const tracks = await adminApi.playlistTracks(id)
+      if (tracks.length > 0) {
+        alert(`Kan ikke slette "${name}" — playlisten indeholder ${tracks.length} nummer(e). Fjern numrene først.`)
+        return
+      }
+      
+      if (!confirm(`Slet den tomme playliste "${name}"?`)) return
+      
       await adminApi.deletePlaylist(id)
       qc.invalidateQueries({ queryKey: ['admin-playlists'] })
       setScanStatus(`Playlisten "${name}" er slettet`)
@@ -610,7 +621,7 @@ function LibraryPanel() {
           onClick={() => fileInputRef.current?.click()}
           disabled={uploadingPartyFiles}
         >
-          <Plus size={16} /> {uploadingPartyFiles ? 'Uploader SKÅLE-filer…' : 'Upload filer til global SKÅLE-liste'}
+          <Plus size={16} /> {uploadingPartyFiles ? 'Uploader filer…' : 'Upload filer til SKÅL!'}
         </button>
         {scanStatus && (
           <p style={{ color: 'var(--neon-teal)', fontSize: '0.85rem', marginTop: '8px' }}>{scanStatus}</p>
@@ -620,15 +631,16 @@ function LibraryPanel() {
       {/* Playlist management */}
       <div style={{ marginTop: '32px' }}>
         <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '16px', color: 'var(--chrome-bright)' }}>
-          SKÅLE-playliste
+          🍻 SKÅL!
         </h3>
         <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '12px' }}>
-          Når nogen trykker på SKÅLE-knappen, spilles først <strong>intro-nummeret</strong> (markeret med ★), 
-          derefter et <strong>tilfældigt nummer</strong> fra resten af playlisten.
+          <strong>SKÅL!-knappen overstyrer al musik</strong> — når nogen trykker på den, pauses den nuværende kø, 
+          og systemet spiller først <strong>intro-nummeret</strong> (✓), derefter et <strong>tilfældigt nummer</strong> 
+          fra playlisten. Bagefter fortsætter den normale kø hvor den slap.
         </p>
         <p style={{ fontSize: '0.8rem', color: 'var(--neon-amber)', marginBottom: '16px' }}>
-          💡 Upload-knappen ovenfor gemmer filer i en global playliste som alle brugere kan bruge. 
-          Marker hvilken playliste der skal bruges til SKÅLE — kun én kan være aktiv ad gangen.
+          💡 Upload filer permanent med knappen ovenfor. Marker hvilken playliste SKÅL! skal bruge — kun én kan være aktiv.
+          Playlister med numre kan ikke slettes (beskyttelse mod fejl).
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '600px' }}>
           {(playlists as import('@/api/client').Playlist[]).map(pl => (
@@ -642,7 +654,7 @@ function LibraryPanel() {
                   style={{ padding: '6px 14px', fontSize: '0.8rem' }}
                   onClick={() => setPartyPlaylist(pl.id, !pl.is_party_playlist)}
                 >
-                  {pl.is_party_playlist ? '★ Aktiv SKÅLE' : 'Brug til SKÅLE'}
+                  {pl.is_party_playlist ? '★ Aktiv SKÅL!' : 'Brug til SKÅL!'}
                 </button>
                 <button
                   className="btn btn-ghost"
