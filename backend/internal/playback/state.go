@@ -2,6 +2,7 @@ package playback
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -47,7 +48,13 @@ type Manager struct {
 	positionSecs    float64
 	updatedAt       time.Time
 	historyID       string
-}
+
+	// Party save/restore
+	partyQueue        []string // remaining party track IDs after the current one
+	savedTrackID      string   // track that was playing when party started
+	savedPositionSecs float64  // position when party started
+	savedWasPlaying   bool     // was it playing (vs. paused) when party started
+	savedIsAutoplay   bool     // was it an autoplay track
 
 func NewManager(database *sqlx.DB, hub *events.Hub, qMgr *queue.Manager, partyEng PartyEnder, roomID string) *Manager {
 	m := &Manager{
@@ -266,20 +273,71 @@ func (m *Manager) Skip(ctx context.Context, userID string, wasSkipped bool) erro
 func (m *Manager) TrackEnded(ctx context.Context, trackID, userID string) error {
 	m.mu.Lock()
 	wasParty := m.isPartyMode && m.partyTrackID == trackID
+
+	// If party is ongoing and there are more tracks in the sequence, play the next one
+	if wasParty && len(m.partyQueue) > 0 {
+		nextID := m.partyQueue[0]
+		m.partyQueue = m.partyQueue[1:]
+		m.partyTrackID = nextID
+		m.endCurrentHistoryLocked(ctx, false)
+		m.mu.Unlock()
+		log.Printf("[party] room=%s next party track=%s", m.roomID, nextID)
+		return m.Play(ctx, nextID, userID)
+	}
+
 	if wasParty {
 		m.isPartyMode = false
 		m.partyTrackID = ""
 	}
 	m.endCurrentHistoryLocked(ctx, false)
+
+	// Capture and clear saved state atomically
+	savedID := m.savedTrackID
+	savedPos := m.savedPositionSecs
+	savedPlaying := m.savedWasPlaying
+	savedAutoplay := m.savedIsAutoplay
+	m.savedTrackID = ""
+	m.savedPositionSecs = 0
+	m.savedWasPlaying = false
+	m.savedIsAutoplay = false
 	m.mu.Unlock()
 
-	if wasParty && m.partyEng != nil {
-		m.partyEng.EndParty(ctx)
+	if wasParty {
+		if savedID != "" {
+			// Restore what was playing/paused before the party started
+			m.mu.Lock()
+			m.currentTrackID = savedID
+			m.positionSecs = savedPos
+			m.isPlaying = savedPlaying
+			m.isAutoplayTrack = savedAutoplay
+			m.isPartyMode = false
+			m.updatedAt = time.Now()
+			m.saveState()
+			m.mu.Unlock()
+
+			// Tell the frontend to restore volume and seek to saved position
+			m.hub.BroadcastToRoom(m.roomID, events.EventPartyEnded, map[string]any{
+				"resume_position_secs": savedPos,
+			})
+			// Broadcast restored track and play state
+			state, _ := m.GetState(ctx)
+			m.hub.BroadcastToRoom(m.roomID, events.EventNowPlayingChanged, state)
+			m.hub.BroadcastToRoom(m.roomID, events.EventPlaybackStateChanged, map[string]any{
+				"is_playing":    savedPlaying,
+				"position_secs": savedPos,
+			})
+			log.Printf("[party] room=%s restored track=%s pos=%.1f", m.roomID, savedID, savedPos)
+			return nil
+		}
+
+		// Nothing was playing — just end party cleanly
+		if m.partyEng != nil {
+			m.partyEng.EndParty(ctx)
+		}
+		return nil
 	}
 
-	log.Printf("[playback] track ended: %s (party=%v)", trackID, wasParty)
-
-	// Try to advance to next in queue
+	log.Printf("[playback] track ended: %s", trackID)
 	return m.Play(ctx, "", userID)
 }
 
@@ -306,4 +364,32 @@ func (m *Manager) SetPartyMode(on bool, partyTrackID string) {
 	m.isPartyMode = on
 	m.partyTrackID = partyTrackID
 	m.saveState()
+}
+
+// StartParty saves the current playback state, then starts playing the party sequence.
+// The first track in tracks plays immediately; the rest are queued as party tracks.
+func (m *Manager) StartParty(ctx context.Context, tracks []db.Track, userID string) error {
+	if len(tracks) == 0 {
+		return fmt.Errorf("skåle-playlisten er tom")
+	}
+
+	m.mu.Lock()
+	// Save whatever was playing so we can restore it after party
+	m.savedTrackID = m.currentTrackID
+	m.savedPositionSecs = m.positionSecs
+	m.savedWasPlaying = m.isPlaying
+	m.savedIsAutoplay = m.isAutoplayTrack
+
+	// Build the party play queue (everything after the first track)
+	m.partyQueue = make([]string, 0, len(tracks)-1)
+	for _, t := range tracks[1:] {
+		m.partyQueue = append(m.partyQueue, t.ID)
+	}
+
+	m.isPartyMode = true
+	m.partyTrackID = tracks[0].ID
+	m.isAutoplayTrack = false
+	m.mu.Unlock()
+
+	return m.Play(ctx, tracks[0].ID, userID)
 }

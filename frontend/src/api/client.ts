@@ -125,6 +125,7 @@ export interface Playlist {
   name: string
   source_type: string
   is_party_playlist: boolean
+  intro_track_id: string | null
   created_at: string
 }
 
@@ -361,6 +362,9 @@ export const adminApi = {
     post<Playlist>('/api/admin/playlists', { name, is_party_playlist: isParty }),
   updatePlaylist:     (id: string, isPartyPlaylist: boolean) =>
     patch<void>(`/api/admin/playlists/${id}`, { is_party_playlist: isPartyPlaylist }),
+  playlistTracks:     (playlistId: string) => getList<Track>(`/api/admin/playlists/${playlistId}/tracks`),
+  setIntroTrack:      (playlistId: string, trackId: string | null) =>
+    put<void>(`/api/admin/playlists/${playlistId}/intro-track`, { track_id: trackId ?? '' }),
   addPlaylistTrack:    (playlistId: string, trackId: string) =>
     post<void>(`/api/admin/playlists/${playlistId}/tracks`, { track_id: trackId }),
   removePlaylistTrack: (playlistId: string, trackId: string) =>

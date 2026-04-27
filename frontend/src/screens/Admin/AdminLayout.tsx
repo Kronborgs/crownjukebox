@@ -331,6 +331,68 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
 
 // ─── Library panel ────────────────────────────────────────────────
 
+function PartyPlaylistTracks({ playlistId, introTrackId }: { playlistId: string; introTrackId: string | null }) {
+  const qc = useQueryClient()
+  const { data: tracks = [] } = useQuery({
+    queryKey: ['playlist-tracks', playlistId],
+    queryFn: () => adminApi.playlistTracks(playlistId)
+  })
+
+  async function setIntro(trackId: string) {
+    const newIntro = introTrackId === trackId ? null : trackId
+    await adminApi.setIntroTrack(playlistId, newIntro)
+    qc.invalidateQueries({ queryKey: ['admin-playlists'] })
+  }
+
+  if (tracks.length === 0) {
+    return <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', marginTop: '12px' }}>Ingen numre i playlisten endnu.</p>
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '12px' }}>
+      {tracks.map(t => (
+        <div
+          key={t.id}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            padding: '8px 12px',
+            background: 'rgba(255,255,255,0.04)',
+            borderRadius: '6px'
+          }}
+        >
+          <div style={{ flex: 1 }}>
+            <p style={{ fontWeight: 600, fontSize: '0.85rem' }}>{t.title}</p>
+            <p style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>{t.artist}</p>
+          </div>
+          {introTrackId === t.id && (
+            <span
+              style={{
+                padding: '2px 8px',
+                fontSize: '0.7rem',
+                background: 'var(--neon-primary)',
+                color: 'var(--bg-base)',
+                borderRadius: '4px',
+                fontWeight: 700
+              }}
+            >
+              INTRO
+            </span>
+          )}
+          <button
+            className={introTrackId === t.id ? 'btn btn-primary' : 'btn btn-ghost'}
+            style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+            onClick={() => setIntro(t.id)}
+          >
+            {introTrackId === t.id ? '★ Intro' : '☆ Sæt intro'}
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function LibraryPanel() {
   const qc = useQueryClient()
   const [scanStatus, setScanStatus] = useState('')
@@ -429,17 +491,22 @@ function LibraryPanel() {
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '480px' }}>
           {(playlists as import('@/api/client').Playlist[]).map(pl => (
-            <div key={pl.id} className="glass-card" style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <div style={{ flex: 1 }}>
-                <p style={{ fontWeight: 600, fontSize: '0.9rem' }}>{pl.name}</p>
+            <div key={pl.id} className="glass-card" style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ flex: 1 }}>
+                  <p style={{ fontWeight: 600, fontSize: '0.9rem' }}>{pl.name}</p>
+                </div>
+                <button
+                  className={pl.is_party_playlist ? 'btn btn-primary' : 'btn btn-ghost'}
+                  style={{ padding: '6px 14px', fontSize: '0.8rem' }}
+                  onClick={() => setPartyPlaylist(pl.id, !pl.is_party_playlist)}
+                >
+                  {pl.is_party_playlist ? '★ Aktiv SKÅLE' : 'Brug til SKÅLE'}
+                </button>
               </div>
-              <button
-                className={pl.is_party_playlist ? 'btn btn-primary' : 'btn btn-ghost'}
-                style={{ padding: '6px 14px', fontSize: '0.8rem' }}
-                onClick={() => setPartyPlaylist(pl.id, !pl.is_party_playlist)}
-              >
-                {pl.is_party_playlist ? '★ Aktiv SKÅLE' : 'Brug til SKÅLE'}
-              </button>
+              {pl.is_party_playlist && (
+                <PartyPlaylistTracks playlistId={pl.id} introTrackId={pl.intro_track_id ?? null} />
+              )}
             </div>
           ))}
         </div>
@@ -479,6 +546,7 @@ function SettingsPanel() {
 
   const settingKeys = [
     { key: 'autoplay_enabled', label: 'Autoplay aktiveret (true/false)' },
+    { key: 'party_volume_boost', label: 'SKÅLE volumen-boost (1-30%)' },
   ]
 
   return (

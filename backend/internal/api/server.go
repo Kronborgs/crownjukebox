@@ -207,6 +207,8 @@ func (s *Server) Router() http.Handler {
 		r.Patch("/api/admin/playlists/{id}", s.handleUpdatePlaylist)
 		r.Post("/api/admin/playlists/{id}/tracks", s.handleAddPlaylistTrack)
 		r.Delete("/api/admin/playlists/{id}/tracks/{trackId}", s.handleRemovePlaylistTrack)
+		r.Get("/api/admin/playlists/{id}/tracks", s.handleGetPlaylistTracks)
+		r.Put("/api/admin/playlists/{id}/intro-track", s.handleSetPlaylistIntroTrack)
 		r.Post("/api/admin/party-playlist/upload", s.handleUploadPartyPlaylistTracks)
 	})
 
@@ -727,21 +729,28 @@ func (s *Server) handleCheers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rm := getRoomFromCtx(r.Context())
-	track, err := rm.Party.TriggerCheers(r.Context(), userID)
+
+	// Prevent double-triggering while party is already running
+	if state, _ := rm.Playback.GetState(r.Context()); state != nil && state.IsPartyMode {
+		jsonError(w, "skål er allerede i gang", http.StatusConflict)
+		return
+	}
+
+	seq, err := rm.Party.TriggerCheers(r.Context(), userID)
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// Start playing the party track
-	rm.Playback.SetPartyMode(true, track.ID)
-	if err := rm.Playback.Play(r.Context(), track.ID, userID); err != nil {
-		log.Printf("[party] play error: %v", err)
+	if err := rm.Playback.StartParty(r.Context(), seq.Tracks, userID); err != nil {
+		log.Printf("[party] start error: %v", err)
 	}
 
 	jsonOK(w, map[string]any{
-		"track":  track,
-		"status": "party started",
+		"track":        seq.Tracks[0],
+		"status":       "party started",
+		"track_count":  len(seq.Tracks),
+		"volume_boost": seq.VolumeBoost,
 	})
 }
 
@@ -1521,6 +1530,58 @@ func (s *Server) handleAddPlaylistTrack(w http.ResponseWriter, r *http.Request) 
 		playlistID, req.TrackID, maxPos+1)
 
 	jsonOK(w, map[string]string{"status": "added"})
+}
+
+func (s *Server) handleGetPlaylistTracks(w http.ResponseWriter, r *http.Request) {
+	playlistID := chi.URLParam(r, "id")
+	var tracks []db.Track
+	_ = s.db.Select(&tracks, `
+		SELECT
+			t.id, t.album_id, t.artist_id, t.title,
+			t.track_number, t.disc_number, t.duration,
+			t.file_path, t.source_type, t.source_id, t.stream_url,
+			t.created_at, t.updated_at,
+			COALESCE(ar.name, '') AS artist,
+			COALESCE(al.title, '') AS album,
+			COALESCE(t.cover_art_id, al.cover_art_id) AS cover_art_id
+		FROM tracks t
+		JOIN playlist_tracks pt ON pt.track_id = t.id
+		LEFT JOIN artists ar ON ar.id = t.artist_id
+		LEFT JOIN albums al ON al.id = t.album_id
+		WHERE pt.playlist_id = ?
+		ORDER BY pt.position`, playlistID)
+	jsonOK(w, tracks)
+}
+
+func (s *Server) handleSetPlaylistIntroTrack(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req struct {
+		TrackID string `json:"track_id"` // empty = clear
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	if req.TrackID == "" {
+		_, err := s.db.Exec(`UPDATE playlists SET intro_track_id = NULL WHERE id = ?`, id)
+		if err != nil {
+			jsonError(w, "db error", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		var count int
+		_ = s.db.Get(&count, `SELECT COUNT(*) FROM playlist_tracks WHERE playlist_id = ? AND track_id = ?`, id, req.TrackID)
+		if count == 0 {
+			jsonError(w, "track not in playlist", http.StatusBadRequest)
+			return
+		}
+		_, err := s.db.Exec(`UPDATE playlists SET intro_track_id = ? WHERE id = ?`, req.TrackID, id)
+		if err != nil {
+			jsonError(w, "db error", http.StatusInternalServerError)
+			return
+		}
+	}
+	jsonOK(w, map[string]string{"status": "updated"})
 }
 
 func (s *Server) handleRemovePlaylistTrack(w http.ResponseWriter, r *http.Request) {

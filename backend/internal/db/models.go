@@ -74,6 +74,7 @@ type Playlist struct {
 	SourceType      string    `db:"source_type"` // local | subsonic
 	SourceID        string    `db:"source_id"`
 	IsPartyPlaylist bool      `db:"is_party_playlist"`
+	IntroTrackID    *string   `db:"intro_track_id"`
 	CreatedAt       time.Time `db:"created_at"`
 }
 

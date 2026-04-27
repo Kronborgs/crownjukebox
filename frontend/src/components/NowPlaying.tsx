@@ -26,6 +26,8 @@ export function NowPlaying({ state, refreshState }: Props) {
   const trebleFilterRef = useRef<BiquadFilterNode | null>(null)
   const gainNodeRef = useRef<GainNode | null>(null)
   const pannerNodeRef = useRef<StereoPannerNode | null>(null)
+  const partyVolumeRef = useRef<number | null>(null)
+  const resumePositionRef = useRef<number | null>(null)
   const [audioSrc, setAudioSrc] = useState<string | null>(null)
   const [needsInteraction, setNeedsInteraction] = useState(false)
   const [audioSettings, setAudioSettings] = useState({
@@ -83,6 +85,23 @@ export function NowPlaying({ state, refreshState }: Props) {
         balance: Number(next.audio_balance ?? current.balance),
         loudness: (next.audio_loudness ?? (current.loudness ? '1' : '0')) === '1',
       }))
+    },
+    party_started: (data) => {
+      const d = data as { volume_boost?: number }
+      if (d.volume_boost && d.volume_boost > 0) {
+        partyVolumeRef.current = audioSettings.volume
+        updateAudioSetting('volume', Math.min(100, audioSettings.volume + d.volume_boost))
+      }
+    },
+    party_ended: (data) => {
+      if (partyVolumeRef.current !== null) {
+        updateAudioSetting('volume', partyVolumeRef.current)
+        partyVolumeRef.current = null
+      }
+      const d = data as { resume_position_secs?: number }
+      if (d.resume_position_secs && d.resume_position_secs > 0) {
+        resumePositionRef.current = d.resume_position_secs
+      }
     },
   })
 
@@ -172,6 +191,11 @@ export function NowPlaying({ state, refreshState }: Props) {
     if (!audio || !audioSrc) return
 
     if (state?.is_playing) {
+      // Handle resume position for same-track case (party restore)
+      if (resumePositionRef.current !== null && audio.readyState >= 2) {
+        audio.currentTime = resumePositionRef.current
+        resumePositionRef.current = null
+      }
       audioContextRef.current?.resume().catch(() => {})
       audio.play().catch((err) => {
         if (err.name === 'NotAllowedError' || err.name === 'NotSupportedError') {
@@ -204,9 +228,19 @@ export function NowPlaying({ state, refreshState }: Props) {
         playbackApi.trackEnded(track.id)
       }
     }
+    const onCanPlay = () => {
+      if (resumePositionRef.current !== null) {
+        audio.currentTime = resumePositionRef.current
+        resumePositionRef.current = null
+      }
+    }
     audio.addEventListener('ended', onEnded)
-    return () => audio.removeEventListener('ended', onEnded)
-  }, [audioSrc])
+    audio.addEventListener('canplay', onCanPlay)
+    return () => {
+      audio.removeEventListener('ended', onEnded)
+      audio.removeEventListener('canplay', onCanPlay)
+    }
+  }, [audioSrc, track?.id])
 
   const duration  = track?.duration_secs ?? 0
   const position  = state?.position_secs ?? 0
