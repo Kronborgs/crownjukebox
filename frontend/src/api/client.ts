@@ -377,6 +377,7 @@ export const adminApi = {
     post<Playlist>('/api/admin/playlists', { name, is_party_playlist: isParty }),
   updatePlaylist:     (id: string, isPartyPlaylist: boolean) =>
     patch<void>(`/api/admin/playlists/${id}`, { is_party_playlist: isPartyPlaylist }),
+  deletePlaylist:     (id: string) => del(`/api/admin/playlists/${id}`),
   playlistTracks:     (playlistId: string) => getList<Track>(`/api/admin/playlists/${playlistId}/tracks`),
   setIntroTrack:      (playlistId: string, trackId: string | null) =>
     put<void>(`/api/admin/playlists/${playlistId}/intro-track`, { track_id: trackId ?? '' }),

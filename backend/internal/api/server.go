@@ -208,6 +208,7 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/admin/playlists", s.handleListPlaylists)
 		r.Post("/api/admin/playlists", s.handleCreatePlaylist)
 		r.Patch("/api/admin/playlists/{id}", s.handleUpdatePlaylist)
+		r.Delete("/api/admin/playlists/{id}", s.handleDeletePlaylist)
 		r.Post("/api/admin/playlists/{id}/tracks", s.handleAddPlaylistTrack)
 		r.Delete("/api/admin/playlists/{id}/tracks/{trackId}", s.handleRemovePlaylistTrack)
 		r.Get("/api/admin/playlists/{id}/tracks", s.handleGetPlaylistTracks)
@@ -1573,6 +1574,27 @@ func (s *Server) handleUpdatePlaylist(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	jsonOK(w, map[string]string{"status": "updated"})
+}
+
+func (s *Server) handleDeletePlaylist(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	// Check if this is the active party playlist
+	var currentPartyID string
+	_ = s.db.Get(&currentPartyID, `SELECT value FROM settings WHERE key = 'party_playlist_id' LIMIT 1`)
+	if currentPartyID == id {
+		// Clear the party playlist setting
+		s.db.Exec(`INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('party_playlist_id', '', CURRENT_TIMESTAMP)`)
+	}
+
+	// Delete playlist (will cascade delete tracks due to FK)
+	_, err := s.db.Exec(`DELETE FROM playlists WHERE id = ?`, id)
+	if err != nil {
+		jsonError(w, "kunne ikke slette playliste", http.StatusInternalServerError)
+		return
+	}
+
+	jsonOK(w, map[string]string{"status": "deleted"})
 }
 
 func (s *Server) handleCreatePlaylist(w http.ResponseWriter, r *http.Request) {

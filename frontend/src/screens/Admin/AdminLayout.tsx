@@ -457,6 +457,13 @@ function PartyPlaylistTracks({ playlistId, introTrackId }: { playlistId: string;
     qc.invalidateQueries({ queryKey: ['admin-playlists'] })
   }
 
+  async function removeTrack(trackId: string, title: string) {
+    if (!confirm(`Fjern "${title}" fra playlisten?`)) return
+    await adminApi.removePlaylistTrack(playlistId, trackId)
+    qc.invalidateQueries({ queryKey: ['playlist-tracks', playlistId] })
+    qc.invalidateQueries({ queryKey: ['admin-playlists'] })
+  }
+
   if (tracks.length === 0) {
     return <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', marginTop: '12px' }}>Ingen numre i playlisten endnu.</p>
   }
@@ -500,6 +507,14 @@ function PartyPlaylistTracks({ playlistId, introTrackId }: { playlistId: string;
           >
             {introTrackId === t.id ? '★ Intro' : '☆ Sæt intro'}
           </button>
+          <button
+            className="btn btn-ghost"
+            style={{ padding: '4px 8px', fontSize: '0.75rem', color: 'var(--neon-red)' }}
+            onClick={() => removeTrack(t.id, t.title)}
+            title="Fjern fra playliste"
+          >
+            <X size={14} />
+          </button>
         </div>
       ))}
     </div>
@@ -540,6 +555,17 @@ function LibraryPanel() {
   async function setPartyPlaylist(id: string, isParty: boolean) {
     await adminApi.updatePlaylist(id, isParty)
     qc.invalidateQueries({ queryKey: ['admin-playlists'] })
+  }
+
+  async function deletePlaylist(id: string, name: string) {
+    if (!confirm(`Slet playlisten "${name}"? Alle numre i playlisten vil blive fjernet.`)) return
+    try {
+      await adminApi.deletePlaylist(id)
+      qc.invalidateQueries({ queryKey: ['admin-playlists'] })
+      setScanStatus(`Playlisten "${name}" er slettet`)
+    } catch (err: unknown) {
+      setScanStatus(err instanceof Error ? err.message : 'Kunne ikke slette playliste')
+    }
   }
 
   async function uploadPartyFiles(files: FileList | null) {
@@ -596,13 +622,15 @@ function LibraryPanel() {
         <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '16px', color: 'var(--chrome-bright)' }}>
           SKÅLE-playliste
         </h3>
-        <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '16px' }}>
-          Marker hvilken playliste der bruges til SKÅLE-funktionen. Kun én kan være aktiv ad gangen.
+        <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '12px' }}>
+          Når nogen trykker på SKÅLE-knappen, spilles først <strong>intro-nummeret</strong> (markeret med ★), 
+          derefter et <strong>tilfældigt nummer</strong> fra resten af playlisten.
         </p>
         <p style={{ fontSize: '0.8rem', color: 'var(--neon-amber)', marginBottom: '16px' }}>
-          Upload-knappen ovenfor lægger filer i den samme globale SKÅLE-playliste for alle brugere og skærme.
+          💡 Upload-knappen ovenfor gemmer filer i en global playliste som alle brugere kan bruge. 
+          Marker hvilken playliste der skal bruges til SKÅLE — kun én kan være aktiv ad gangen.
         </p>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '480px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '600px' }}>
           {(playlists as import('@/api/client').Playlist[]).map(pl => (
             <div key={pl.id} className="glass-card" style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -616,6 +644,14 @@ function LibraryPanel() {
                 >
                   {pl.is_party_playlist ? '★ Aktiv SKÅLE' : 'Brug til SKÅLE'}
                 </button>
+                <button
+                  className="btn btn-ghost"
+                  style={{ padding: '6px 10px', fontSize: '0.8rem', color: 'var(--neon-red)' }}
+                  onClick={() => deletePlaylist(pl.id, pl.name)}
+                  title="Slet playliste"
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
               {pl.is_party_playlist && (
                 <PartyPlaylistTracks playlistId={pl.id} introTrackId={pl.intro_track_id ?? null} />
@@ -623,11 +659,11 @@ function LibraryPanel() {
             </div>
           ))}
         </div>
-
-        {/* Opret ny playliste */}
-        <div style={{ display: 'flex', gap: '8px', marginTop: '16px', maxWidth: '480px' }}>
+600px' }}>
           <input
             className="input"
+            style={{ flex: 1 }}
+            placeholder="Opret ny playliste
             style={{ flex: 1 }}
             placeholder="Ny playliste navn…"
             value={newPlaylistName}
