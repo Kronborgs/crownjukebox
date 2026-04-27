@@ -478,8 +478,7 @@ function SettingsPanel() {
   }
 
   const settingKeys = [
-    { key: 'party_playlist_id', label: 'Party playlist ID' },
-    { key: 'autoplay_enabled',  label: 'Autoplay aktiveret (true/false)' },
+    { key: 'autoplay_enabled', label: 'Autoplay aktiveret (true/false)' },
   ]
 
   return (
@@ -524,7 +523,7 @@ function SettingsPanel() {
             <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '6px' }}>{label}</label>
             <input
               className="input"
-              value={(merged as Record<string, string>)[key] ?? ''}
+              value={String((merged as Record<string, string>)[key] ?? '')}
               onChange={e => setLocal(l => ({ ...l, [key]: e.target.value }))}
             />
           </div>

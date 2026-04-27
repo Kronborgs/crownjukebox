@@ -138,11 +138,36 @@ func (m *Manager) Play(ctx context.Context, trackID, userID string) error {
 			return err
 		}
 		if item == nil {
-			// Queue empty — autoplay
+			// Queue empty — check if autoplay is enabled before selecting a random track
+			var autoplayEnabled string
+			_ = m.db.GetContext(ctx, &autoplayEnabled, `SELECT value FROM settings WHERE key = 'autoplay_enabled' LIMIT 1`)
+			if autoplayEnabled != "true" && autoplayEnabled != "1" {
+				// Autoplay disabled: stop playback gracefully
+				m.isPlaying = false
+				m.currentTrackID = ""
+				m.updatedAt = time.Now()
+				m.saveState()
+				m.mu.Unlock()
+				m.hub.BroadcastToRoom(m.roomID, events.EventPlaybackStateChanged, map[string]any{
+					"is_playing":    false,
+					"position_secs": 0,
+				})
+				return nil
+			}
+			// Autoplay enabled — pick based on last hour of history in this room
 			track, err := m.queueMgr.AutoplayNext(ctx)
 			if err != nil {
+				// No autoplay candidates (empty library or not enough history) — stop
+				m.isPlaying = false
+				m.currentTrackID = ""
+				m.updatedAt = time.Now()
+				m.saveState()
 				m.mu.Unlock()
-				return fmt.Errorf("queue empty and no autoplay tracks: %w", err)
+				m.hub.BroadcastToRoom(m.roomID, events.EventPlaybackStateChanged, map[string]any{
+					"is_playing":    false,
+					"position_secs": 0,
+				})
+				return nil
 			}
 			trackID = track.ID
 		} else {

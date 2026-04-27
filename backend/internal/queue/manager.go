@@ -127,8 +127,19 @@ func (m *Manager) Reorder(ctx context.Context, orderedIDs []string) error {
 	return tx.Commit()
 }
 
-// AutoplayNext selects a track for autoplay based on recent room history.
+// AutoplayNext selects a track for autoplay based on the last hour of room history.
+// Returns an error if there is no playback history in the last hour — caller should stop playback.
 func (m *Manager) AutoplayNext(ctx context.Context) (*db.Track, error) {
+	// Require at least one track played in the last hour; if not, signal stop.
+	var historyCount int
+	_ = m.db.GetContext(ctx, &historyCount, `
+		SELECT COUNT(*) FROM playback_history
+		WHERE started_at > datetime('now', '-60 minutes')
+		  AND room_id = ?`, m.roomID)
+	if historyCount == 0 {
+		return nil, fmt.Errorf("no recent history — autoplay stopped")
+	}
+
 	// Get genre distribution from last 60 minutes of this room's history
 	var recentGenres []string
 	_ = m.db.SelectContext(ctx, &recentGenres, `
@@ -189,11 +200,7 @@ func (m *Manager) AutoplayNext(ctx context.Context) (*db.Track, error) {
 		}
 	}
 
-	// Last resort: truly random
-	if err := m.db.GetContext(ctx, &track, `SELECT * FROM tracks ORDER BY RANDOM() LIMIT 1`); err != nil {
-		return nil, fmt.Errorf("no tracks available for autoplay")
-	}
-	return &track, nil
+	return nil, fmt.Errorf("no autoplay candidates based on recent history")
 }
 
 // IsEmpty reports whether the room's queue has no items.
