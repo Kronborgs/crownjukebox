@@ -3,8 +3,9 @@ import { motion } from 'framer-motion'
 import { CoverArt } from '@/components/CoverArt'
 import { adminApi, playbackApi } from '@/api/client'
 import { PlaybackState } from '@/api/client'
-import { Pause, Play } from 'lucide-react'
+import { Pause, Play, SkipForward } from 'lucide-react'
 import { useSSE } from '@/hooks/useSSE'
+import { useSession } from '@/hooks/useSession'
 import { RetroDial, RetroPushButton } from '@/components/RetroDial'
 
 interface Props {
@@ -78,6 +79,7 @@ function LEDScrollingText({ text, color, size }: LEDScrollingTextProps) {
 }
 
 export function NowPlaying({ state, refreshState }: Props) {
+  const { isAdmin } = useSession()
   const audioRef = useRef<HTMLAudioElement>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null)
@@ -424,6 +426,20 @@ export function NowPlaying({ state, refreshState }: Props) {
             ? <Pause size={24} />
             : <Play size={24} />}
         </button>
+        {isAdmin && track && (
+          <button
+            className="btn btn-ghost btn-icon"
+            onClick={async () => {
+              await playbackApi.skip()
+              refreshState?.().catch(console.error)
+            }}
+            aria-label="Spring over"
+            title="Spring over (kun admin)"
+            style={{ color: 'var(--neon-accent)' }}
+          >
+            <SkipForward size={24} />
+          </button>
+        )}
       </div>
 
       {/* Audio Controls */}
