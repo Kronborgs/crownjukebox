@@ -9,6 +9,7 @@ interface RetroDialProps {
 	onChange: (value: number) => void
 	accent?: 'purple' | 'green' | 'orange'
 	unit?: string
+	formatValue?: (value: number) => string
 }
 
 const ACCENT_COLORS: Record<NonNullable<RetroDialProps['accent']>, string> = {
@@ -30,6 +31,7 @@ export function RetroDial({
 	onChange,
 	accent = 'purple',
 	unit = '',
+	formatValue,
 }: RetroDialProps) {
 	const dialRef = useRef<HTMLDivElement | null>(null)
 	const accentColor = ACCENT_COLORS[accent]
@@ -96,7 +98,7 @@ export function RetroDial({
 				</div>
 			</div>
 			<div className="retro-dial-label">{label}</div>
-			<div className="retro-dial-value">{value}{unit}</div>
+			<div className="retro-dial-value">{formatValue ? formatValue(value) : `${value}${unit}`}</div>
 		</div>
 	)
 }

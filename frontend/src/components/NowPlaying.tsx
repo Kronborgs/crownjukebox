@@ -43,7 +43,12 @@ export function NowPlaying({ state, refreshState }: Props) {
     try {
       const stored = localStorage.getItem('cj_audio_settings')
       if (stored) {
-        setAudioSettings(prev => ({ ...prev, ...JSON.parse(stored) }))
+        const parsed = JSON.parse(stored)
+        // Migrate balance from old -100..100 range to new -10..10
+        if (typeof parsed.balance === 'number' && (parsed.balance > 10 || parsed.balance < -10)) {
+          parsed.balance = Math.round(parsed.balance / 10)
+        }
+        setAudioSettings(prev => ({ ...prev, ...parsed }))
         return
       }
     } catch {}
@@ -146,7 +151,7 @@ export function NowPlaying({ state, refreshState }: Props) {
       gainNodeRef.current.gain.value = audioSettings.loudness ? 1.12 : 1
     }
     if (pannerNodeRef.current) {
-      pannerNodeRef.current.pan.value = Math.min(Math.max(audioSettings.balance / 100, -1), 1)
+      pannerNodeRef.current.pan.value = Math.min(Math.max(audioSettings.balance / 10, -1), 1)
     }
   }, [audioSettings])
 
@@ -332,7 +337,7 @@ export function NowPlaying({ state, refreshState }: Props) {
           <RetroDial label="Volumen" value={audioSettings.volume}  min={0}   max={100} step={1} unit="%"   accent="purple" onChange={v => updateAudioSetting('volume', v)} />
           <RetroDial label="Bas"     value={audioSettings.bass}    min={-12} max={12}  step={1} unit=" dB" accent="green"  onChange={v => updateAudioSetting('bass', v)} />
           <RetroDial label="Diskant" value={audioSettings.treble}  min={-12} max={12}  step={1} unit=" dB" accent="orange" onChange={v => updateAudioSetting('treble', v)} />
-          <RetroDial label="Balance" value={audioSettings.balance} min={-100} max={100} step={1} unit=""  accent="purple" onChange={v => updateAudioSetting('balance', v)} />
+          <RetroDial label="L  Balance  R" value={audioSettings.balance} min={-10} max={10} step={1} accent="purple" onChange={v => updateAudioSetting('balance', v)} formatValue={v => v === 0 ? '0' : v < 0 ? `L${Math.abs(v)}` : `R${v}`} />
         </div>
       </div>
     </div>
