@@ -21,12 +21,13 @@ type PartyEnder interface {
 
 // State represents the current playback state returned to clients.
 type State struct {
-	IsPlaying    bool      `json:"is_playing"`
-	IsPartyMode  bool      `json:"is_party_mode"`
-	CurrentTrack *db.Track `json:"current_track,omitempty"`
-	PositionSecs float64   `json:"position_secs"`
-	QueueLength  int       `json:"queue_length"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	IsPlaying       bool      `json:"is_playing"`
+	IsPartyMode     bool      `json:"is_party_mode"`
+	IsAutoplayTrack bool      `json:"is_autoplay_track"`
+	CurrentTrack    *db.Track `json:"current_track,omitempty"`
+	PositionSecs    float64   `json:"position_secs"`
+	QueueLength     int       `json:"queue_length"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // Manager coordinates playback state and history.
@@ -38,13 +39,14 @@ type Manager struct {
 	partyEng PartyEnder
 	roomID   string
 
-	currentTrackID string
-	isPlaying      bool
-	isPartyMode    bool
-	partyTrackID   string
-	positionSecs   float64
-	updatedAt      time.Time
-	historyID      string
+	currentTrackID  string
+	isPlaying       bool
+	isPartyMode     bool
+	isAutoplayTrack bool
+	partyTrackID    string
+	positionSecs    float64
+	updatedAt       time.Time
+	historyID       string
 }
 
 func NewManager(database *sqlx.DB, hub *events.Hub, qMgr *queue.Manager, partyEng PartyEnder, roomID string) *Manager {
@@ -95,10 +97,11 @@ func (m *Manager) GetState(ctx context.Context) (*State, error) {
 	defer m.mu.RUnlock()
 
 	state := &State{
-		IsPlaying:    m.isPlaying,
-		IsPartyMode:  m.isPartyMode,
-		PositionSecs: m.positionSecs,
-		UpdatedAt:    m.updatedAt,
+		IsPlaying:       m.isPlaying,
+		IsPartyMode:     m.isPartyMode,
+		IsAutoplayTrack: m.isAutoplayTrack,
+		PositionSecs:    m.positionSecs,
+		UpdatedAt:       m.updatedAt,
 	}
 
 	if m.currentTrackID != "" {
@@ -129,9 +132,12 @@ func (m *Manager) GetState(ctx context.Context) (*State, error) {
 func (m *Manager) Play(ctx context.Context, trackID, userID string) error {
 	m.mu.Lock()
 
+	nextIsAutoplay := false
+
 	if trackID == "" {
-		if m.currentTrackID != "" && !m.isPlaying {
-			// Resume the paused track — do not advance queue
+		// Only resume the paused track if the queue is empty — otherwise always serve the queue
+		if m.currentTrackID != "" && !m.isPlaying && m.queueMgr.IsEmpty(ctx) {
+			// Resume the paused track — queue is empty, nothing else to play
 			m.isPlaying = true
 			m.updatedAt = time.Now()
 			m.saveState()
@@ -184,8 +190,10 @@ func (m *Manager) Play(ctx context.Context, trackID, userID string) error {
 				return nil
 			}
 			trackID = track.ID
+			nextIsAutoplay = true
 		} else {
 			trackID = item.TrackID
+			nextIsAutoplay = item.IsAutoplay
 		}
 	}
 
@@ -194,6 +202,7 @@ func (m *Manager) Play(ctx context.Context, trackID, userID string) error {
 
 	m.currentTrackID = trackID
 	m.isPlaying = true
+	m.isAutoplayTrack = nextIsAutoplay
 	m.positionSecs = 0
 	m.updatedAt = time.Now()
 
