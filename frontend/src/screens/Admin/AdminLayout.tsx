@@ -526,6 +526,36 @@ function SettingsPanel() {
         </div>
 
         <div className="glass-card" style={{ padding: '22px' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--chrome-bright)', marginBottom: '16px' }}>Køindstillinger</h3>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+            <div>
+              <p style={{ fontWeight: 600, fontSize: '0.9rem' }}>Bekræft før tilføjelse</p>
+              <p style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginTop: '4px' }}>
+                Når slået til, vises en bekræftelsesdialog inden et nummer tilføjes til køen.
+              </p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={merged['queue_confirm_add'] === '1'}
+              onClick={() => setLocal(l => ({ ...l, queue_confirm_add: merged['queue_confirm_add'] === '1' ? '0' : '1' }))}
+              style={{
+                flexShrink: 0,
+                width: '48px', height: '26px', borderRadius: '13px', border: 'none',
+                background: merged['queue_confirm_add'] === '1' ? 'var(--neon-primary)' : 'rgba(255,255,255,0.15)',
+                cursor: 'pointer', position: 'relative', transition: 'background 0.2s',
+              }}
+            >
+              <span style={{
+                position: 'absolute', top: '3px',
+                left: merged['queue_confirm_add'] === '1' ? '25px' : '3px',
+                width: '20px', height: '20px', borderRadius: '50%',
+                background: 'white', transition: 'left 0.2s',
+              }} />
+            </button>
+          </div>
+        </div>
+
+        <div className="glass-card" style={{ padding: '22px' }}>
           <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--chrome-bright)', marginBottom: '16px' }}>Øvrige indstillinger</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         {settingKeys.map(({ key, label }) => (

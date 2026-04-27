@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { libraryApi, Album, Track, queueApi } from '@/api/client'
+import { libraryApi, Album, Track, queueApi, adminApi } from '@/api/client'
 import { CoverArt } from '@/components/CoverArt'
-import { Plus, ChevronLeft, ChevronRight, Clock, Loader2, AlertCircle } from 'lucide-react'
+import { Plus, ChevronLeft, ChevronRight, Clock, Loader2, AlertCircle, Check } from 'lucide-react'
 
 const LETTERS = ['Alle', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'Æ', 'Ø', 'Å']
 const PAGE_SIZE = 24
@@ -20,6 +20,10 @@ export function AlbumBrowser() {
   const [addedTrackId, setAddedTrackId] = useState<string | null>(null)
   const [letterFilter, setLetterFilter] = useState('Alle')
   const [page, setPage] = useState(1)
+  const [confirmTrack, setConfirmTrack] = useState<Track | null>(null)
+
+  const { data: settings = {} } = useQuery({ queryKey: ['settings'], queryFn: adminApi.settings })
+  const confirmAdd = (settings as Record<string, string>)['queue_confirm_add'] === '1'
 
   const { data: albums = [], isLoading } = useQuery({
     queryKey: ['albums'],
@@ -54,9 +58,57 @@ export function AlbumBrowser() {
     qc.invalidateQueries({ queryKey: ['queue'] })
   }
 
+  function handleTrackClick(track: Track) {
+    if (confirmAdd) {
+      setConfirmTrack(track)
+    } else {
+      addToQueue(track)
+    }
+  }
+
   if (selectedAlbum) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, position: 'relative' }}>
+        {/* Bekræftelsesdialog */}
+        <AnimatePresence>
+          {confirmTrack && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              style={{
+                position: 'absolute', inset: 0, zIndex: 50,
+                background: 'rgba(0,0,0,0.75)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                padding: '24px',
+              }}
+              onClick={() => setConfirmTrack(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                onClick={e => e.stopPropagation()}
+                className="glass-card"
+                style={{ padding: '24px', maxWidth: '360px', width: '100%', display: 'flex', flexDirection: 'column', gap: '16px' }}
+              >
+                <p style={{ fontWeight: 700, fontSize: '1rem' }}>Tilføj til kø?</p>
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  <strong style={{ color: 'var(--chrome-bright)' }}>{confirmTrack.title}</strong>
+                  {confirmTrack.artist && <span> — {confirmTrack.artist}</span>}
+                </p>
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                  <button className="btn btn-ghost" onClick={() => setConfirmTrack(null)}>Annuller</button>
+                  <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                    onClick={() => { addToQueue(confirmTrack); setConfirmTrack(null) }}>
+                    <Check size={16} /> Tilføj
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         <div style={{ display: 'flex', gap: '16px', padding: '16px', background: 'var(--bg-panel)', alignItems: 'center' }}>
           <button className="btn btn-ghost btn-icon" onClick={() => setSelectedAlbum(null)}>
             <ChevronLeft size={20} />
@@ -87,30 +139,33 @@ export function AlbumBrowser() {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '32px', color: 'var(--text-dim)', justifyContent: 'center', flexDirection: 'column' }}>
               <span style={{ fontSize: '2rem' }}>♩</span>
               <span>Ingen numre fundet i dette album</span>
-              <span style={{ fontSize: '0.75rem', opacity: 0.6 }}>album id: {selectedAlbum?.id}</span>
             </div>
           )}
-          <AnimatePresence>
+          <AnimatePresence mode="popLayout">
             {(tracks as Track[]).map((track, index) => (
               <motion.div
                 key={track.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.03 }}
+                onClick={() => handleTrackClick(track)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: '12px',
                   padding: '12px 16px',
                   borderBottom: '1px solid rgba(255,255,255,0.04)',
+                  cursor: 'pointer',
                 }}
-                whileHover={{ backgroundColor: 'rgba(191,0,255,0.06)' }}
+                whileHover={{ backgroundColor: 'rgba(191,0,255,0.1)' }}
+                whileTap={{ scale: 0.98 }}
               >
                 <span style={{ color: 'var(--text-dim)', fontSize: '0.8rem', width: '24px', textAlign: 'right', flexShrink: 0 }}>
-                  {track.track_number || index + 1}
+                  {addedTrackId === track.id ? <Check size={14} style={{ color: 'var(--neon-primary)' }} /> : (track.track_number || index + 1)}
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p style={{ fontWeight: 600, fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <p style={{ fontWeight: 600, fontSize: '0.95rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                    color: addedTrackId === track.id ? 'var(--neon-primary)' : undefined }}>
                     {track.title}
                   </p>
                   {track.artist !== selectedAlbum.artist_name && (
@@ -121,15 +176,16 @@ export function AlbumBrowser() {
                   <Clock size={12} />
                   {formatTime(track.duration_secs)}
                 </span>
-                <motion.button
-                  className="btn btn-primary btn-icon"
-                  style={{ padding: '6px', flexShrink: 0 }}
-                  onClick={() => addToQueue(track)}
-                  aria-label="Tilføj til kø"
-                  animate={addedTrackId === track.id ? { scale: [1, 1.3, 1] } : {}}
+                <span
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
+                    background: addedTrackId === track.id ? 'var(--neon-primary)' : 'rgba(191,0,255,0.25)',
+                    color: 'white', transition: 'background 0.2s',
+                  }}
                 >
-                  <Plus size={16} />
-                </motion.button>
+                  {addedTrackId === track.id ? <Check size={14} /> : <Plus size={14} />}
+                </span>
               </motion.div>
             ))}
           </AnimatePresence>
@@ -184,7 +240,7 @@ export function AlbumBrowser() {
                   transition={{ delay: Math.min(index * 0.02, 0.4) }}
                   whileHover={{ scale: 1.04, zIndex: 1 }}
                   whileTap={{ scale: 0.97 }}
-                  onClick={() => { console.log('[jukebox] album click:', album); setSelectedAlbum(album) }}
+                  onClick={() => setSelectedAlbum(album)}
                   style={{ cursor: 'pointer' }}
                 >
                   <div style={{
