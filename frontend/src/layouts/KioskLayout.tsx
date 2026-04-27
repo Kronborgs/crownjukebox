@@ -20,7 +20,7 @@ type Tab = 'browse' | 'search' | 'queue'
  */
 export function KioskLayout() {
   const { logout, isAdmin, permissions } = useSession()
-  const playback = usePlayback()
+  const { state: playback, refreshState } = usePlayback()
   const [activeTab, setActiveTab]     = useState<Tab>('browse')
   const [partyActive, setPartyActive] = useState(false)
   const [partyTrack, setPartyTrack]   = useState('')
@@ -77,7 +77,7 @@ export function KioskLayout() {
 
         <main className="kiosk-main-grid">
           <section className="kiosk-now-playing chrome-border">
-            <NowPlaying state={playback} />
+            <NowPlaying state={playback} refreshState={refreshState} />
           </section>
 
           <section className="kiosk-browser chrome-border">

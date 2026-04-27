@@ -8,6 +8,7 @@ import { useSSE } from '@/hooks/useSSE'
 
 interface Props {
   state: PlaybackState | null
+  refreshState?: () => Promise<void>
 }
 
 function formatTime(secs: number) {
@@ -16,7 +17,7 @@ function formatTime(secs: number) {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-export function NowPlaying({ state }: Props) {
+export function NowPlaying({ state, refreshState }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null)
@@ -271,9 +272,9 @@ export function NowPlaying({ state }: Props) {
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
         <button
           className="btn btn-ghost btn-icon"
-          onClick={() => {
+          onClick={async () => {
             if (state?.is_playing) {
-              playbackApi.pause()
+              await playbackApi.pause()
             } else {
               // Resume AudioContext immediately within the user gesture
               audioContextRef.current?.resume().catch(() => {})
@@ -285,8 +286,10 @@ export function NowPlaying({ state }: Props) {
                   }
                 })
               }
-              playbackApi.play(track?.id)
+              await playbackApi.play(track?.id)
             }
+            // Proactively refresh — don't rely solely on SSE delivery
+            refreshState?.().catch(console.error)
           }}
           aria-label={state?.is_playing ? 'Pause' : 'Afspil'}
           title={state?.is_playing ? 'Pause' : 'Afspil'}
@@ -297,7 +300,10 @@ export function NowPlaying({ state }: Props) {
         </button>
         <button
           className="btn btn-ghost btn-icon"
-          onClick={() => playbackApi.skip()}
+          onClick={async () => {
+            await playbackApi.skip()
+            refreshState?.().catch(console.error)
+          }}
           aria-label="Skip"
           title="Skip"
         >

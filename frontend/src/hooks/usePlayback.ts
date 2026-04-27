@@ -46,5 +46,5 @@ export function usePlayback() {
     },
   })
 
-  return state
+  return { state, refreshState }
 }

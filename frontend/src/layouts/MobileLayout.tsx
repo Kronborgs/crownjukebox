@@ -21,7 +21,7 @@ type Tab = 'now' | 'browse' | 'search' | 'queue'
  */
 export function MobileLayout() {
   const { logout, permissions, isAdmin } = useSession()
-  const playback = usePlayback()
+  const { state: playback, refreshState } = usePlayback()
   const [activeTab, setActiveTab]     = useState<Tab>('now')
   const [partyActive, setPartyActive] = useState(false)
   const [partyTrack, setPartyTrack]   = useState('')
@@ -100,7 +100,7 @@ export function MobileLayout() {
             transition={{ duration: 0.18 }}
             style={{ height: '100%', overflow: 'auto' }}
           >
-            {activeTab === 'now'    && <NowPlaying state={playback} />}
+            {activeTab === 'now'    && <NowPlaying state={playback} refreshState={refreshState} />}
             {activeTab === 'browse' && <AlbumBrowser />}
             {activeTab === 'search' && <SearchScreen />}
             {activeTab === 'queue'  && <Queue />}
