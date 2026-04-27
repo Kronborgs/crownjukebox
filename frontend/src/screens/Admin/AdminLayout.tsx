@@ -573,11 +573,16 @@ function LibraryPanel() {
       
       if (!confirm(`Slet den tomme playliste "${name}"?`)) return
       
+      console.log('[deletePlaylist] Sletter playlist:', id, name)
       await adminApi.deletePlaylist(id)
-      qc.invalidateQueries({ queryKey: ['admin-playlists'] })
+      console.log('[deletePlaylist] Playlist slettet, opdaterer liste')
+      await qc.invalidateQueries({ queryKey: ['admin-playlists'] })
       setScanStatus(`Playlisten "${name}" er slettet`)
     } catch (err: unknown) {
-      setScanStatus(err instanceof Error ? err.message : 'Kunne ikke slette playliste')
+      console.error('[deletePlaylist] Fejl:', err)
+      const errorMsg = err instanceof Error ? err.message : 'Kunne ikke slette playliste'
+      setScanStatus(errorMsg)
+      alert(`Fejl ved sletning: ${errorMsg}`)
     }
   }
 
