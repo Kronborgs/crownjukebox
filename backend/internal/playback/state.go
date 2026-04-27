@@ -25,7 +25,7 @@ type State struct {
 	IsPlaying    bool      `json:"is_playing"`
 	IsPartyMode  bool      `json:"is_party_mode"`
 	CurrentTrack *db.Track `json:"current_track,omitempty"`
-	PositionSecs float64   `json:"position_seconds"`
+	PositionSecs float64   `json:"position_secs"`
 	QueueLength  int       `json:"queue_length"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -104,7 +104,16 @@ func (m *Manager) GetState(ctx context.Context) (*State, error) {
 
 	if m.currentTrackID != "" {
 		var t db.Track
-		if err := m.db.GetContext(ctx, &t, `SELECT * FROM tracks WHERE id = ?`, m.currentTrackID); err == nil {
+		if err := m.db.GetContext(ctx, &t, `
+			SELECT
+				t.*,
+				COALESCE(ar.name, '') AS artist,
+				COALESCE(al.title, '') AS album,
+				COALESCE(t.cover_art_id, al.cover_art_id) AS cover_art_id
+			FROM tracks t
+			LEFT JOIN artists ar ON ar.id = t.artist_id
+			LEFT JOIN albums al ON al.id = t.album_id
+			WHERE t.id = ?`, m.currentTrackID); err == nil {
 			state.CurrentTrack = &t
 		}
 	}
@@ -159,20 +168,11 @@ func (m *Manager) Play(ctx context.Context, trackID, userID string) error {
 	m.saveState()
 
 	// Fetch track info for SSE
-	var t db.Track
-	_ = m.db.GetContext(ctx, &t, `SELECT * FROM tracks WHERE id = ?`, trackID)
-
-	coverURL := ""
-	if t.CoverArtID != nil && *t.CoverArtID != "" {
-		coverURL = "/api/library/cover/" + *t.CoverArtID + "?size=large"
-	}
-	m.hub.BroadcastToRoom(m.roomID, events.EventNowPlayingChanged, map[string]any{
-		"track":     t,
-		"cover_url": coverURL,
-	})
+	state, _ := m.GetState(ctx)
+	m.hub.BroadcastToRoom(m.roomID, events.EventNowPlayingChanged, state)
 	m.hub.BroadcastToRoom(m.roomID, events.EventPlaybackStateChanged, map[string]any{
-		"is_playing": true,
-		"track_id":   trackID,
+		"is_playing":    true,
+		"position_secs": 0,
 	})
 
 	return nil
@@ -188,8 +188,8 @@ func (m *Manager) Pause(ctx context.Context) error {
 	m.saveState()
 
 	m.hub.BroadcastToRoom(m.roomID, events.EventPlaybackStateChanged, map[string]any{
-		"is_playing":   m.isPlaying,
-		"position_sec": m.positionSecs,
+		"is_playing":    m.isPlaying,
+		"position_secs": m.positionSecs,
 	})
 	return nil
 }

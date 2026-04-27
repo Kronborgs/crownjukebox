@@ -7,45 +7,47 @@ import "time"
 // ─────────────────────────────────────────────────────────────
 
 type Artist struct {
-	ID            string    `db:"id"`
-	Name          string    `db:"name"`
-	SortName      string    `db:"sort_name"`
-	MusicBrainzID string    `db:"musicbrainz_id"`
-	CreatedAt     time.Time `db:"created_at"`
-	UpdatedAt     time.Time `db:"updated_at"`
+	ID            string    `db:"id" json:"id"`
+	Name          string    `db:"name" json:"name"`
+	SortName      string    `db:"sort_name" json:"sort_name"`
+	MusicBrainzID string    `db:"musicbrainz_id" json:"musicbrainz_id"`
+	CreatedAt     time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt     time.Time `db:"updated_at" json:"updated_at"`
 }
 
 type Album struct {
-	ID            string    `db:"id"`
-	ArtistID      string    `db:"artist_id"`
-	AlbumArtistID string    `db:"album_artist_id"`
-	Title         string    `db:"title"`
-	Year          int       `db:"year"`
-	Genre         string    `db:"genre"`
-	SourceType    string    `db:"source_type"` // local | subsonic
-	SourceID      string    `db:"source_id"`
-	CoverArtID    *string   `db:"cover_art_id"`
-	CoverStatus   string    `db:"cover_status"` // found | missing | generated | error
-	TrackCount    int       `db:"track_count"`
-	CreatedAt     time.Time `db:"created_at"`
-	UpdatedAt     time.Time `db:"updated_at"`
+	ID            string    `db:"id" json:"id"`
+	ArtistID      string    `db:"artist_id" json:"artist_id"`
+	AlbumArtistID string    `db:"album_artist_id" json:"album_artist_id"`
+	Title         string    `db:"title" json:"title"`
+	Year          int       `db:"year" json:"year"`
+	Genre         string    `db:"genre" json:"genre"`
+	SourceType    string    `db:"source_type" json:"source_type"` // local | subsonic
+	SourceID      string    `db:"source_id" json:"source_id"`
+	CoverArtID    *string   `db:"cover_art_id" json:"cover_art_id"`
+	CoverStatus   string    `db:"cover_status" json:"cover_status"` // found | missing | generated | error
+	TrackCount    int       `db:"track_count" json:"track_count"`
+	CreatedAt     time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt     time.Time `db:"updated_at" json:"updated_at"`
 }
 
 type Track struct {
-	ID          string    `db:"id"`
-	AlbumID     string    `db:"album_id"`
-	ArtistID    string    `db:"artist_id"`
-	Title       string    `db:"title"`
-	TrackNumber int       `db:"track_number"`
-	DiscNumber  int       `db:"disc_number"`
+	ID          string    `db:"id" json:"id"`
+	AlbumID     string    `db:"album_id" json:"album_id"`
+	ArtistID    string    `db:"artist_id" json:"artist_id"`
+	Title       string    `db:"title" json:"title"`
+	Artist      string    `db:"artist" json:"artist"`
+	Album       string    `db:"album" json:"album"`
+	TrackNumber int       `db:"track_number" json:"track_number"`
+	DiscNumber  int       `db:"disc_number" json:"disc_number"`
 	Duration    int       `db:"duration" json:"duration_secs"`
-	FilePath    string    `db:"file_path"`
-	SourceType  string    `db:"source_type"` // local | subsonic
-	SourceID    string    `db:"source_id"`
-	StreamURL   string    `db:"stream_url"`
-	CoverArtID  *string   `db:"cover_art_id"`
-	CreatedAt   time.Time `db:"created_at"`
-	UpdatedAt   time.Time `db:"updated_at"`
+	FilePath    string    `db:"file_path" json:"file_path"`
+	SourceType  string    `db:"source_type" json:"source_type"` // local | subsonic
+	SourceID    string    `db:"source_id" json:"source_id"`
+	StreamURL   string    `db:"stream_url" json:"stream_url"`
+	CoverArtID  *string   `db:"cover_art_id" json:"cover_art_id"`
+	CreatedAt   time.Time `db:"created_at" json:"created_at"`
+	UpdatedAt   time.Time `db:"updated_at" json:"updated_at"`
 }
 
 type AlbumArt struct {

@@ -112,6 +112,7 @@ func (s *Server) Router() http.Handler {
 	r.Post("/api/auth/qr-login", s.handleQRLogin)
 	r.Get("/api/setup/status", s.handleSetupStatus)
 	r.Post("/api/setup", s.handleSetupComplete)
+	r.Get("/api/library/cover/{id}", s.handleCoverArt) // cover art served publicly (no sensitive data)
 
 	// ─── Authenticated endpoints ──────────────────────────────
 	r.Group(func(r chi.Router) {
@@ -128,7 +129,6 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/library/albums/{id}/tracks", s.handleGetAlbumTracks)
 		r.Get("/api/library/tracks/{id}", s.handleGetTrack)
 		r.Get("/api/library/search", auth.RequirePermission(s.authSvc, "can_search")(http.HandlerFunc(s.handleSearch)).ServeHTTP)
-		r.Get("/api/library/cover/{id}", s.handleCoverArt)
 		r.Get("/api/library/missing-covers", s.handleMissingCovers)
 
 		// Rooms (list available rooms — all authenticated users)

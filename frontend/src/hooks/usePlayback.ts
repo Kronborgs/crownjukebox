@@ -12,9 +12,14 @@ export function usePlayback() {
   const [state, setState] = useState<PlaybackState | null>(null)
   const tickRef = useRef<ReturnType<typeof setInterval>>()
 
+  async function refreshState() {
+    const next = await playbackApi.state()
+    setState(next)
+  }
+
   // Initial fetch
   useEffect(() => {
-    playbackApi.state().then(setState).catch(console.error)
+    refreshState().catch(console.error)
   }, [])
 
   // Local position ticker
@@ -29,12 +34,12 @@ export function usePlayback() {
   }, [state?.is_playing, state?.current_track?.id])
 
   useSSE({
-    now_playing_changed: (data) => {
-      setState(data as PlaybackState)
+    now_playing_changed: () => {
+      refreshState().catch(console.error)
       qc.invalidateQueries({ queryKey: ['queue'] })
     },
-    playback_state_changed: (data) => {
-      setState(s => s ? { ...s, ...(data as Partial<PlaybackState>) } : (data as PlaybackState))
+    playback_state_changed: () => {
+      refreshState().catch(console.error)
     },
     queue_changed: () => {
       qc.invalidateQueries({ queryKey: ['queue'] })

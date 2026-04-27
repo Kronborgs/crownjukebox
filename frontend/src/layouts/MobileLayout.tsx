@@ -20,7 +20,7 @@ type Tab = 'now' | 'browse' | 'search' | 'queue'
  * kiosk runs on the main screen.
  */
 export function MobileLayout() {
-  const { logout, permissions } = useSession()
+  const { logout, permissions, isAdmin } = useSession()
   const playback = usePlayback()
   const [activeTab, setActiveTab]     = useState<Tab>('now')
   const [partyActive, setPartyActive] = useState(false)
@@ -109,7 +109,7 @@ export function MobileLayout() {
       </div>
 
       {/* ── SKÅL knap (vises over tab-bar hvis tilladelse) ── */}
-      {permissions?.can_use_party_button && (
+      {(isAdmin || permissions?.can_use_party_button) && (
         <div style={{ padding: '8px 16px 0', flexShrink: 0 }}>
           <button
             className="btn btn-party"

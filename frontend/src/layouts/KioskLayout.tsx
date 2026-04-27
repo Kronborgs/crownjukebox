@@ -113,7 +113,7 @@ export function KioskLayout() {
           </section>
         </main>
 
-        {permissions?.can_use_party_button && (
+        {(isAdmin || permissions?.can_use_party_button) && (
           <footer className="kiosk-footer">
             <button
               className="btn btn-party"
