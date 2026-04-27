@@ -38,26 +38,24 @@ export function RetroDial({
 		return -135 + ratio * 270
 	}, [value, min, max])
 
-	function updateFromPointer(clientX: number, clientY: number) {
-		const rect = dialRef.current?.getBoundingClientRect()
-		if (!rect) return
-		const centerX = rect.left + rect.width / 2
-		const centerY = rect.top + rect.height / 2
-		const radians = Math.atan2(clientY - centerY, clientX - centerX)
-		let degrees = radians * (180 / Math.PI) + 90
-		if (degrees < -180) degrees += 360
-		degrees = clamp(degrees, -135, 135)
-		const ratio = (degrees + 135) / 270
-		const rawValue = min + ratio * (max - min)
-		const snapped = Math.round(rawValue / step) * step
-		onChange(Number(clamp(snapped, min, max).toFixed(2)))
-	}
-
 	function startDrag(event: React.PointerEvent<HTMLDivElement>) {
 		event.preventDefault()
-		updateFromPointer(event.clientX, event.clientY)
+		;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
 
-		const handleMove = (moveEvent: PointerEvent) => updateFromPointer(moveEvent.clientX, moveEvent.clientY)
+		let lastX = event.clientX
+		let lastY = event.clientY
+		let currentValue = value
+
+		const handleMove = (moveEvent: PointerEvent) => {
+			const dx = moveEvent.clientX - lastX
+			const dy = lastY - moveEvent.clientY // up = positive
+			lastX = moveEvent.clientX
+			lastY = moveEvent.clientY
+			const sensitivity = (max - min) / 200
+			currentValue = clamp(currentValue + (dx + dy) * sensitivity, min, max)
+			const snapped = Math.round(currentValue / step) * step
+			onChange(Number(clamp(snapped, min, max).toFixed(2)))
+		}
 		const handleUp = () => {
 			window.removeEventListener('pointermove', handleMove)
 			window.removeEventListener('pointerup', handleUp)
