@@ -86,10 +86,10 @@ func main() {
 				log.Println("[startup] artwork extraction complete")
 			}
 		}
-	}(), Version
+	}()
 
-	// ─── HTTP server ───────────────────────────────────────
-	srv := api.NewServer(cfg, database)
+	// ─── HTTP server ─────────────────────────────────────
+	srv := api.NewServer(cfg, database, Version)
 	router := srv.Router()
 
 	// ─── Background: expire user access ───────────────────
