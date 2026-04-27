@@ -2,7 +2,6 @@ import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi, User } from '@/api/client'
-import { RetroDial, RetroPushButton } from '@/components/RetroDial'
 import { ChevronLeft, Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound } from 'lucide-react'
 
 type AdminTab = 'users' | 'settings' | 'library'
@@ -472,21 +471,6 @@ function SettingsPanel() {
   const [local, setLocal] = useState<Record<string, string>>({})
   const merged = { ...settings, ...local }
 
-  const audioSettings = {
-	volume: Number(merged.audio_volume ?? merged.volume ?? '85'),
-	bass: Number(merged.audio_bass ?? '0'),
-	treble: Number(merged.audio_treble ?? '0'),
-	balance: Number(merged.audio_balance ?? '0'),
-	loudness: (merged.audio_loudness ?? '0') === '1',
-  }
-
-  function setAudioSetting(key: string, value: string | number | boolean) {
-	setLocal((current) => ({
-		...current,
-		[key]: typeof value === 'boolean' ? (value ? '1' : '0') : String(value),
-	}))
-  }
-
   async function save() {
     await adminApi.updateSettings(local)
     qc.invalidateQueries({ queryKey: ['settings'] })
@@ -502,29 +486,6 @@ function SettingsPanel() {
     <div style={{ maxWidth: '860px' }}>
       <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '20px' }}>Indstillinger</h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
-        <div className="glass-card" style={{ padding: '22px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px', marginBottom: '18px', flexWrap: 'wrap' }}>
-            <div>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--chrome-bright)' }}>Lydkontroller</h3>
-              <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', marginTop: '6px' }}>
-                Gælder for den kiosk/skærm der afspiller lyden. Gem for at sende ændringer live til afspilleren.
-              </p>
-            </div>
-            <RetroPushButton
-              label="Loudness"
-              active={audioSettings.loudness}
-              onToggle={() => setAudioSetting('audio_loudness', !audioSettings.loudness)}
-            />
-          </div>
-
-          <div className="retro-dial-grid">
-            <RetroDial label="Volumen" value={audioSettings.volume} min={0} max={100} step={1} unit="%" accent="purple" onChange={(value) => setAudioSetting('audio_volume', value)} />
-            <RetroDial label="Bas" value={audioSettings.bass} min={-12} max={12} step={1} unit=" dB" accent="green" onChange={(value) => setAudioSetting('audio_bass', value)} />
-            <RetroDial label="Diskant" value={audioSettings.treble} min={-12} max={12} step={1} unit=" dB" accent="orange" onChange={(value) => setAudioSetting('audio_treble', value)} />
-            <RetroDial label="Balance" value={audioSettings.balance} min={-100} max={100} step={1} unit="" accent="purple" onChange={(value) => setAudioSetting('audio_balance', value)} />
-          </div>
-        </div>
-
         <div className="glass-card" style={{ padding: '22px' }}>
           <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--chrome-bright)', marginBottom: '16px' }}>Køindstillinger</h3>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>

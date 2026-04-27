@@ -3,8 +3,9 @@ import { motion } from 'framer-motion'
 import { CoverArt } from '@/components/CoverArt'
 import { adminApi, playbackApi } from '@/api/client'
 import { PlaybackState } from '@/api/client'
-import { SkipForward, Pause, Play } from 'lucide-react'
+import { Pause, Play } from 'lucide-react'
 import { useSSE } from '@/hooks/useSSE'
+import { RetroDial, RetroPushButton } from '@/components/RetroDial'
 
 interface Props {
   state: PlaybackState | null
@@ -37,7 +38,15 @@ export function NowPlaying({ state, refreshState }: Props) {
 
   const track = state?.current_track
 
+  // Load audio settings: localStorage first, then API (admin only) as fallback for defaults
   useEffect(() => {
+    try {
+      const stored = localStorage.getItem('cj_audio_settings')
+      if (stored) {
+        setAudioSettings(prev => ({ ...prev, ...JSON.parse(stored) }))
+        return
+      }
+    } catch {}
     adminApi.settings()
       .then((settings) => {
         setAudioSettings({
@@ -50,6 +59,14 @@ export function NowPlaying({ state, refreshState }: Props) {
       })
       .catch(() => {})
   }, [])
+
+  function updateAudioSetting<K extends keyof typeof audioSettings>(key: K, value: (typeof audioSettings)[K]) {
+    setAudioSettings(prev => {
+      const next = { ...prev, [key]: value }
+      try { localStorage.setItem('cj_audio_settings', JSON.stringify(next)) } catch {}
+      return next
+    })
+  }
 
   useSSE({
     settings_changed: (data) => {
@@ -269,7 +286,7 @@ export function NowPlaying({ state, refreshState }: Props) {
       </div>
 
       {/* Controls */}
-      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', justifyContent: 'center' }}>
         <button
           className="btn btn-ghost btn-icon"
           onClick={async () => {
@@ -298,17 +315,24 @@ export function NowPlaying({ state, refreshState }: Props) {
             ? <Pause size={24} />
             : <Play size={24} />}
         </button>
-        <button
-          className="btn btn-ghost btn-icon"
-          onClick={async () => {
-            await playbackApi.skip()
-            refreshState?.().catch(console.error)
-          }}
-          aria-label="Skip"
-          title="Skip"
-        >
-          <SkipForward size={24} />
-        </button>
+      </div>
+
+      {/* Audio Controls */}
+      <div style={{ width: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+          <span style={{ color: 'var(--text-dim)', fontSize: '0.72rem', letterSpacing: '2px', textTransform: 'uppercase' }}>Lydkontrol</span>
+          <RetroPushButton
+            label="Loudness"
+            active={audioSettings.loudness}
+            onToggle={() => updateAudioSetting('loudness', !audioSettings.loudness)}
+          />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', justifyItems: 'center' }}>
+          <RetroDial label="Volumen" value={audioSettings.volume}  min={0}   max={100} step={1} unit="%"   accent="purple" onChange={v => updateAudioSetting('volume', v)} />
+          <RetroDial label="Bas"     value={audioSettings.bass}    min={-12} max={12}  step={1} unit=" dB" accent="green"  onChange={v => updateAudioSetting('bass', v)} />
+          <RetroDial label="Diskant" value={audioSettings.treble}  min={-12} max={12}  step={1} unit=" dB" accent="orange" onChange={v => updateAudioSetting('treble', v)} />
+          <RetroDial label="Balance" value={audioSettings.balance} min={-100} max={100} step={1} unit=""  accent="purple" onChange={v => updateAudioSetting('balance', v)} />
+        </div>
       </div>
     </div>
   )
