@@ -659,13 +659,13 @@ function LibraryPanel() {
             </div>
           ))}
         </div>
-600px' }}>
+
+        {/* Opret ny playliste */}
+        <div style={{ display: 'flex', gap: '8px', marginTop: '16px', maxWidth: '600px' }}>
           <input
             className="input"
             style={{ flex: 1 }}
-            placeholder="Opret ny playliste
-            style={{ flex: 1 }}
-            placeholder="Ny playliste navn…"
+            placeholder="Opret ny playliste…"
             value={newPlaylistName}
             onChange={e => setNewPlaylistName(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && createPlaylist()}
