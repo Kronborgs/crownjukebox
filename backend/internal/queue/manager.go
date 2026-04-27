@@ -55,6 +55,13 @@ func (m *Manager) AddTrack(ctx context.Context, trackID, userID string) (*db.Que
 		return nil, fmt.Errorf("track not found: %s", trackID)
 	}
 
+	// Prevent duplicates: a track can only appear once in the queue at a time
+	var existing int
+	_ = m.db.GetContext(ctx, &existing, `SELECT COUNT(*) FROM queue_items WHERE room_id = ? AND track_id = ?`, m.roomID, trackID)
+	if existing > 0 {
+		return nil, fmt.Errorf("track is already in the queue")
+	}
+
 	// Get next position for this room
 	var maxPos int
 	_ = m.db.GetContext(ctx, &maxPos, `SELECT COALESCE(MAX(position), 0) FROM queue_items WHERE room_id = ?`, m.roomID)

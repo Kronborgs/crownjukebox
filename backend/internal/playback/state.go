@@ -125,11 +125,26 @@ func (m *Manager) GetState(ctx context.Context) (*State, error) {
 }
 
 // Play marks playback as active and optionally sets a new current track.
-// If trackID is empty, it advances from the queue.
+// If trackID is empty, it resumes the current track (if paused) or advances from the queue.
 func (m *Manager) Play(ctx context.Context, trackID, userID string) error {
 	m.mu.Lock()
 
 	if trackID == "" {
+		if m.currentTrackID != "" && !m.isPlaying {
+			// Resume the paused track — do not advance queue
+			m.isPlaying = true
+			m.updatedAt = time.Now()
+			m.saveState()
+			resumeTrackID := m.currentTrackID
+			m.mu.Unlock()
+			m.hub.BroadcastToRoom(m.roomID, events.EventPlaybackStateChanged, map[string]any{
+				"is_playing":    true,
+				"position_secs": m.positionSecs,
+			})
+			log.Printf("[playback] room=%s resumed track=%s", m.roomID, resumeTrackID)
+			return nil
+		}
+
 		// Advance from queue
 		item, err := m.queueMgr.Advance(ctx)
 		if err != nil {

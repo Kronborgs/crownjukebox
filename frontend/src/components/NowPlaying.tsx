@@ -303,7 +303,8 @@ export function NowPlaying({ state, refreshState }: Props) {
                   }
                 })
               }
-              await playbackApi.play(track?.id)
+              // Let the server decide: resume current track if paused, or advance queue
+              await playbackApi.play()
             }
             // Proactively refresh — don't rely solely on SSE delivery
             refreshState?.().catch(console.error)
