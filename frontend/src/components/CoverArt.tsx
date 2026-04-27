@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { libraryApi } from '@/api/client'
 
@@ -17,12 +17,17 @@ interface Props {
  * CoverArt — loads album art with skeleton + retro SVG fallback.
  */
 export function CoverArt({ artId, size = 'medium', alt = 'Album cover', className, style, width, height }: Props) {
-  const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>('loading')
-  const imgRef = useRef<HTMLImageElement>(null)
-
   const src = artId && artId !== 'null' && artId !== ''
     ? libraryApi.coverUrl(artId, size)
     : null
+
+  const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>(src ? 'loading' : 'error')
+  const imgRef = useRef<HTMLImageElement>(null)
+
+  // Reset status when artId changes (e.g. after artwork rescan)
+  useEffect(() => {
+    setStatus(src ? 'loading' : 'error')
+  }, [src])
 
   const boxStyle: React.CSSProperties = {
     width:  width  ?? '100%',

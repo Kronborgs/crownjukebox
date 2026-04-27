@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { libraryApi, Album, Track, queueApi } from '@/api/client'
 import { CoverArt } from '@/components/CoverArt'
-import { Plus, ChevronLeft, ChevronRight, Clock } from 'lucide-react'
+import { Plus, ChevronLeft, ChevronRight, Clock, Loader2, AlertCircle } from 'lucide-react'
 
 const LETTERS = ['Alle', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'Æ', 'Ø', 'Å']
 const PAGE_SIZE = 24
@@ -27,7 +27,7 @@ export function AlbumBrowser() {
     staleTime: 60_000,
   })
 
-  const { data: tracks = [] } = useQuery({
+  const { data: tracks = [], isLoading: tracksLoading, isError: tracksError } = useQuery({
     queryKey: ['album-tracks', selectedAlbum?.id],
     queryFn: () => libraryApi.albumTracks(selectedAlbum?.id ?? ''),
     enabled: !!selectedAlbum?.id,
@@ -56,7 +56,7 @@ export function AlbumBrowser() {
 
   if (selectedAlbum) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         <div style={{ display: 'flex', gap: '16px', padding: '16px', background: 'var(--bg-panel)', alignItems: 'center' }}>
           <button className="btn btn-ghost btn-icon" onClick={() => setSelectedAlbum(null)}>
             <ChevronLeft size={20} />
@@ -72,6 +72,17 @@ export function AlbumBrowser() {
         </div>
 
         <div style={{ overflowY: 'auto', flex: 1 }}>
+          {tracksLoading && (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: '32px', color: 'var(--text-dim)' }}>
+              <Loader2 size={24} style={{ animation: 'spin 1s linear infinite' }} />
+            </div>
+          )}
+          {tracksError && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '32px', color: 'var(--neon-red, #ff4444)', justifyContent: 'center' }}>
+              <AlertCircle size={18} />
+              <span>Kunne ikke hente numre</span>
+            </div>
+          )}
           <AnimatePresence>
             {(tracks as Track[]).map((track, index) => (
               <motion.div
