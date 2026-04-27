@@ -674,11 +674,11 @@ function LibraryPanel() {
                 >
                   <Trash2 size={16} />
                 </button>
-            )
-          }   </div>
+              </div>
               <PartyPlaylistTracks playlistId={pl.id} introTrackId={pl.intro_track_id ?? null} isActive={pl.is_party_playlist} />
             </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* Opret ny playliste */}
