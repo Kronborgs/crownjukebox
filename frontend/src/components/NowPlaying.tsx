@@ -132,8 +132,9 @@ export function NowPlaying({ state }: Props) {
     }
   }, [audioSettings])
 
-  // When track changes, load new audio
+  // When track changes, load new audio and reset interaction flag
   useEffect(() => {
+    setNeedsInteraction(false)
     if (!track?.id) {
       setAudioSrc(null)
       return
@@ -150,7 +151,7 @@ export function NowPlaying({ state }: Props) {
     if (state?.is_playing) {
       audioContextRef.current?.resume().catch(() => {})
       audio.play().catch((err) => {
-        if (err.name === 'NotAllowedError') {
+        if (err.name === 'NotAllowedError' || err.name === 'NotSupportedError') {
           setNeedsInteraction(true)
         }
       })
@@ -203,17 +204,20 @@ export function NowPlaying({ state }: Props) {
             audioRef.current?.play().then(() => setNeedsInteraction(false)).catch(() => {})
           }}
           style={{
-            position: 'absolute', inset: 0, zIndex: 100,
-            background: 'rgba(0,0,0,0.85)',
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.88)',
             display: 'flex', flexDirection: 'column',
             alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', borderRadius: 'var(--radius-md)',
-            gap: '0.75rem',
+            cursor: 'pointer',
+            gap: '1rem',
           }}
         >
-          <Play size={48} color="var(--neon-primary)" />
-          <p style={{ color: 'var(--neon-primary)', fontSize: '1.1rem', fontWeight: 700 }}>
+          <Play size={64} color="var(--neon-primary)" />
+          <p style={{ color: 'var(--neon-primary)', fontSize: '1.4rem', fontWeight: 700 }}>
             Tryk for at starte afspilning
+          </p>
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>
+            Browseren kræver en handling for at starte lyd
           </p>
         </div>
       )}
@@ -271,6 +275,16 @@ export function NowPlaying({ state }: Props) {
             if (state?.is_playing) {
               playbackApi.pause()
             } else {
+              // Resume AudioContext immediately within the user gesture
+              audioContextRef.current?.resume().catch(() => {})
+              // If audio is already loaded and paused, play it directly now
+              if (audioRef.current && audioSrc) {
+                audioRef.current.play().catch((err) => {
+                  if (err.name === 'NotAllowedError' || err.name === 'NotSupportedError') {
+                    setNeedsInteraction(true)
+                  }
+                })
+              }
               playbackApi.play(track?.id)
             }
           }}

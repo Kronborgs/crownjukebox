@@ -545,6 +545,11 @@ func (s *Server) handleAddToQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Auto-start playback if nothing is currently playing
+	if curState, _ := rm.Playback.GetState(r.Context()); curState != nil && !curState.IsPlaying && curState.CurrentTrack == nil {
+		_ = rm.Playback.Play(r.Context(), "", userID)
+	}
+
 	// Broadcast queue change
 	s.broadcastQueueChange(r.Context())
 
