@@ -56,5 +56,4 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: GIT_COMMIT=${{ github.sha }}
-          cache-from: type=gha,scope=combined
-          cache-to: type=gha,mode=max,scope=combined
+          no-cache: true
