@@ -776,26 +776,26 @@ func (s *Server) handlePartyState(w http.ResponseWriter, r *http.Request) {
 func (s *Server) roomMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		sd, _ := auth.GetSessionFromContext(r.Context())
-		
+
 		var roomID string
-		
+
 		// Admin can override with X-Room-ID header to view any user's jukebox
 		if sd != nil && sd.User.Role == "admin" {
 			if headerRoomID := r.Header.Get("X-Room-ID"); headerRoomID != "" {
 				roomID = headerRoomID
 			}
 		}
-		
+
 		// Default: use authenticated user's ID as their room ID
 		if roomID == "" && sd != nil {
 			roomID = sd.User.ID
 		}
-		
+
 		// Fallback to "default" room if no user session (shouldn't happen for protected routes)
 		if roomID == "" {
 			roomID = "default"
 		}
-		
+
 		room := s.roomSvc.Get(r.Context(), roomID)
 		if room == nil {
 			// Auto-create room for user if it doesn't exist
@@ -805,7 +805,7 @@ func (s *Server) roomMiddleware(next http.Handler) http.Handler {
 				room = s.roomSvc.Get(r.Context(), "default")
 			}
 		}
-		
+
 		ctx := context.WithValue(r.Context(), roomContextKey, room)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
@@ -1043,11 +1043,11 @@ func (s *Server) handleAdminListJukeboxes(w http.ResponseWriter, r *http.Request
 	}
 
 	type JukeboxStatus struct {
-		UserID       string  `json:"user_id"`
-		DisplayName  string  `json:"display_name"`
-		RoomID       string  `json:"room_id"`
-		IsPlaying    bool    `json:"is_playing"`
-		IsPartyMode  bool    `json:"is_party_mode"`
+		UserID       string `json:"user_id"`
+		DisplayName  string `json:"display_name"`
+		RoomID       string `json:"room_id"`
+		IsPlaying    bool   `json:"is_playing"`
+		IsPartyMode  bool   `json:"is_party_mode"`
 		CurrentTrack *struct {
 			ID     string `json:"id"`
 			Title  string `json:"title"`

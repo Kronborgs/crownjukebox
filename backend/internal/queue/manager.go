@@ -55,9 +55,9 @@ func (m *Manager) AddTrack(ctx context.Context, trackID, userID string) (*db.Que
 		return nil, fmt.Errorf("track not found: %s", trackID)
 	}
 
-	// Prevent duplicates: a track can only appear once in the queue at a time
+	// Prevent duplicates: a track can only appear once in the queue at a time (non-autoplay only)
 	var existing int
-	_ = m.db.GetContext(ctx, &existing, `SELECT COUNT(*) FROM queue_items WHERE room_id = ? AND track_id = ?`, m.roomID, trackID)
+	_ = m.db.GetContext(ctx, &existing, `SELECT COUNT(*) FROM queue_items WHERE room_id = ? AND track_id = ? AND is_autoplay = 0`, m.roomID, trackID)
 	if existing > 0 {
 		return nil, fmt.Errorf("track is already in the queue")
 	}

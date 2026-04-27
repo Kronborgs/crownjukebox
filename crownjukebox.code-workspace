@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {
+		"chat.tools.terminal.autoApprove": {
+			"/^go get github\\.com/go-chi/chi/v5 github\\.com/go-chi/cors github\\.com/jmoiron/sqlx modernc\\.org/sqlite github\\.com/dhowden/tag github\\.com/disintegration/imaging github\\.com/skip2/go-qrcode golang\\.org/x/crypto github\\.com/google/uuid 2>&1$/": {
+				"approve": true,
+				"matchCommandLine": true
+			},
+			"npx tsc": true,
+			"go": true,
+			"git commit": true,
+			"git push": true,
+			"git add": true
+		}
+	}
+}

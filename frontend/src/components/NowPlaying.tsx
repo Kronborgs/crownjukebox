@@ -200,22 +200,7 @@ export function NowPlaying({ state, refreshState }: Props) {
     trebleFilterRef.current = treble
     gainNodeRef.current = gain
     pannerNodeRef.current = panner
-
-    return () => {
-      source.disconnect()
-      bass.disconnect()
-      treble.disconnect()
-      gain.disconnect()
-      panner.disconnect()
-      context.close().catch(() => {})
-      audioContextRef.current = null
-      sourceNodeRef.current = null
-      bassFilterRef.current = null
-      trebleFilterRef.current = null
-      gainNodeRef.current = null
-      pannerNodeRef.current = null
-    }
-  }, [audioSrc])
+  }, []) // Only create once, never recreate
 
   useEffect(() => {
     const audio = audioRef.current

@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>CrownJukebox</Name>
+  <Repository>ghcr.io/kronborgs/crownjukebox:main</Repository>
+  <Registry>https://ghcr.io/kronborgs/crownjukebox</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/Kronborgs/crownjukebox</Support>
+  <Project>https://github.com/Kronborgs/crownjukebox</Project>
+  <Overview>CrownJukebox - Retro browser-based party jukebox. Frontend and backend in one container. Point it at your music folder and open it on a TV or touchscreen. Default internal port: 3000. The admin user is created in the first-run setup wizard.</Overview>
+  <Category>MediaApp:Music</Category>
+  <WebUI>http://[IP]:[PORT:3000]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/Kronborgs/crownjukebox/main/unraid-templates/crownjukebox.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/Kronborgs/crownjukebox/main/docs/icon.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled>0</DateInstalled>
+  <DonateText/>
+  <DonateLink/>
+
+  <Config Name="WebUI Port" Target="3000" Default="3000" Mode="tcp" Description="Host port for the CrownJukebox web interface. Container port is 3000." Type="Port" Display="always" Required="true" Mask="false">3000</Config>
+
+  <Config Name="Music Library" Target="/music" Default="/mnt/user/music" Mode="ro" Description="Path to your music library on Unraid. Mounted read-only. Change this to match your server, for example /mnt/user/media/music." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/music</Config>
+
+  <Config Name="App Data" Target="/data" Default="/mnt/user/appdata/crownjukebox" Mode="rw" Description="Path where CrownJukebox stores its database and persistent app data." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/crownjukebox</Config>
+
+  <Config Name="Artwork Cache" Target="/artwork_cache" Default="/mnt/user/appdata/crownjukebox/artwork" Mode="rw" Description="Path where CrownJukebox stores cached album artwork." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/crownjukebox/artwork</Config>
+
+  <Config Name="JWT Secret" Target="JWT_SECRET" Default="" Mode="" Description="Optional but recommended. Enter a long random secret for login/session signing. Do not publish your real secret in a public template. If left empty, CrownJukebox should generate or use its own persisted secret." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+
+  <Config Name="Session TTL Hours" Target="SESSION_TTL_HOURS" Default="168" Mode="" Description="Session timeout in hours. Default 168 = 7 days." Type="Variable" Display="advanced" Required="false" Mask="false">168</Config>
+
+  <Config Name="Subsonic URL" Target="SUBSONIC_URL" Default="" Mode="" Description="Optional. Set this if you use Subsonic/Navidrome, for example http://192.168.1.5:4533. Leave empty if unused." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="Subsonic Username" Target="SUBSONIC_USERNAME" Default="" Mode="" Description="Optional. Subsonic/Navidrome username, only used when SUBSONIC_URL is set." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+
+  <Config Name="Subsonic Password" Target="SUBSONIC_PASSWORD" Default="" Mode="" Description="Optional. Subsonic/Navidrome password, only used when SUBSONIC_URL is set." Type="Variable" Display="advanced" Required="false" Mask="true"></Config>
+  <Config Name="Reset setup ved næste start" Target="RESET_SETUP_ON_START" Default="" Mode="" Description="Valgfri ENGANGS-reset. Sæt til CONFIRM for at slette brugere/sessions og åbne setup-wizard igen (musikbibliotek bevares). VIGTIGT: fjern værdien igen efter opstart." Type="Variable" Display="advanced" Required="false" Mask="false"></Config>
+</Container>
