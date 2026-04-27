@@ -129,18 +129,19 @@ func (m *Manager) GetState(ctx context.Context) (*State, error) {
 // If trackID is empty, it advances from the queue.
 func (m *Manager) Play(ctx context.Context, trackID, userID string) error {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 
 	if trackID == "" {
 		// Advance from queue
 		item, err := m.queueMgr.Advance(ctx)
 		if err != nil {
+			m.mu.Unlock()
 			return err
 		}
 		if item == nil {
 			// Queue empty — autoplay
 			track, err := m.queueMgr.AutoplayNext(ctx)
 			if err != nil {
+				m.mu.Unlock()
 				return fmt.Errorf("queue empty and no autoplay tracks: %w", err)
 			}
 			trackID = track.ID
@@ -166,8 +167,9 @@ func (m *Manager) Play(ctx context.Context, trackID, userID string) error {
 	)
 
 	m.saveState()
+	m.mu.Unlock() // Release lock BEFORE calling GetState (which also acquires a read lock)
 
-	// Fetch track info for SSE
+	// Fetch track info for SSE — must not hold m.mu here
 	state, _ := m.GetState(ctx)
 	m.hub.BroadcastToRoom(m.roomID, events.EventNowPlayingChanged, state)
 	m.hub.BroadcastToRoom(m.roomID, events.EventPlaybackStateChanged, map[string]any{
