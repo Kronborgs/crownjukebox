@@ -1,10 +1,10 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { adminApi, User, setCurrentRoomId } from '@/api/client'
-import { Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio, LayoutDashboard, Mail } from 'lucide-react'
+import { adminApi, User, Track, Playlist, setCurrentRoomId } from '@/api/client'
+import { Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio, LayoutDashboard, Mail, PartyPopper, Upload, Star, ChevronUp, ChevronDown } from 'lucide-react'
 
-type AdminTab = 'dashboard' | 'users' | 'jukeboxes' | 'settings' | 'library' | 'smtp'
+type AdminTab = 'dashboard' | 'users' | 'jukeboxes' | 'settings' | 'library' | 'smtp' | 'skaal'
 
 export function AdminLayout() {
   const [tab, setTab] = useState<AdminTab>('dashboard')
@@ -23,11 +23,12 @@ export function AdminLayout() {
       <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'var(--bg-panel)', flexShrink: 0, overflowX: 'auto' }}>
         {([
           { id: 'dashboard', icon: <LayoutDashboard size={16} />, label: 'Dashboard' },
-          { id: 'users',     icon: <UserCheck size={16} />, label: 'Brugere' },
-          { id: 'jukeboxes', icon: <Radio size={16} />,     label: 'Jukeboxes' },
-          { id: 'library',   icon: <Music2 size={16} />,    label: 'Bibliotek' },
-          { id: 'smtp',      icon: <Mail size={16} />,      label: 'SMTP' },
-          { id: 'settings',  icon: <Settings size={16} />,  label: 'Indstillinger' },
+          { id: 'users',     icon: <UserCheck size={16} />,      label: 'Brugere' },
+          { id: 'jukeboxes', icon: <Radio size={16} />,          label: 'Jukeboxes' },
+          { id: 'skaal',     icon: <PartyPopper size={16} />,    label: 'SKÅL' },
+          { id: 'library',   icon: <Music2 size={16} />,         label: 'Bibliotek' },
+          { id: 'smtp',      icon: <Mail size={16} />,           label: 'SMTP' },
+          { id: 'settings',  icon: <Settings size={16} />,       label: 'Indstillinger' },
         ] as { id: AdminTab; icon: React.ReactNode; label: string }[]).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             display: 'flex', alignItems: 'center', gap: '6px',
@@ -46,6 +47,7 @@ export function AdminLayout() {
         {tab === 'dashboard' && <DashboardPanel />}
         {tab === 'users'     && <UsersPanel />}
         {tab === 'jukeboxes' && <JukeboxesPanel />}
+        {tab === 'skaal'     && <SkaalPanel />}
         {tab === 'library'   && <LibraryPanel />}
         {tab === 'smtp'      && <SmtpPanel />}
         {tab === 'settings'  && <SettingsPanel />}
@@ -1247,6 +1249,404 @@ function SettingsPanel() {
           Gem indstillinger
         </button>
       </div>
+    </div>
+  )
+}
+
+// ─── SKÅL Playlister panel ─────────────────────────────────────────
+
+function SkaalPanel() {
+  const qc = useQueryClient()
+  const uploadRef = useRef<HTMLInputElement>(null)
+  const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null)
+  const [createName, setCreateName] = useState('')
+  const [showCreate, setShowCreate] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+
+  const { data: playlists = [] } = useQuery({
+    queryKey: ['skaal-playlists'],
+    queryFn: adminApi.playlists,
+  })
+
+  const { data: uploadedTracks = [] } = useQuery({
+    queryKey: ['party-uploads'],
+    queryFn: adminApi.listPartyUploads,
+  })
+
+  const { data: playlistTracks = [], refetch: refetchTracks } = useQuery({
+    queryKey: ['playlist-tracks', selectedPlaylist?.ID],
+    queryFn: () => selectedPlaylist ? adminApi.playlistTracks(selectedPlaylist.ID) : Promise.resolve([]),
+    enabled: !!selectedPlaylist,
+  })
+
+  const { data: jukeboxes = [] } = useQuery({
+    queryKey: ['admin-jukeboxes'],
+    queryFn: adminApi.jukeboxes,
+  })
+
+  const createPlaylist = useMutation({
+    mutationFn: (name: string) => adminApi.createPlaylist(name, false),
+    onSuccess: (pl) => {
+      qc.invalidateQueries({ queryKey: ['skaal-playlists'] })
+      setSelectedPlaylist(pl)
+      setShowCreate(false)
+      setCreateName('')
+    },
+  })
+
+  const deletePlaylist = useMutation({
+    mutationFn: (id: string) => adminApi.deletePlaylist(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['skaal-playlists'] })
+      setSelectedPlaylist(null)
+    },
+  })
+
+  const setDefault = useMutation({
+    mutationFn: (id: string) => adminApi.updatePlaylist(id, true),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['skaal-playlists'] }),
+  })
+
+  const addTrack = useMutation({
+    mutationFn: ({ playlistId, trackId }: { playlistId: string; trackId: string }) =>
+      adminApi.addPlaylistTrack(playlistId, trackId),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['playlist-tracks', selectedPlaylist?.ID] }); refetchTracks() },
+  })
+
+  const removeTrack = useMutation({
+    mutationFn: ({ playlistId, trackId }: { playlistId: string; trackId: string }) =>
+      adminApi.removePlaylistTrack(playlistId, trackId),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['playlist-tracks', selectedPlaylist?.ID] }); refetchTracks() },
+  })
+
+  const toggleIntro = useMutation({
+    mutationFn: ({ playlistId, trackId, isIntro }: { playlistId: string; trackId: string; isIntro: boolean }) =>
+      adminApi.setIntroTrack(playlistId, trackId, isIntro),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['playlist-tracks', selectedPlaylist?.ID] }); refetchTracks() },
+  })
+
+  const setUserPlaylist = useMutation({
+    mutationFn: ({ roomId, playlistId }: { roomId: string; playlistId: string }) =>
+      adminApi.setRoomPartyPlaylist(roomId, playlistId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-jukeboxes'] }),
+  })
+
+  const moveTrack = useCallback(async (trackId: string, direction: 'up' | 'down') => {
+    if (!selectedPlaylist) return
+    const current = [...playlistTracks]
+    const idx = current.findIndex(t => t.id === trackId)
+    if (idx < 0) return
+    const swapIdx = direction === 'up' ? idx - 1 : idx + 1
+    if (swapIdx < 0 || swapIdx >= current.length) return
+    const newOrder = current.map(t => t.id)
+    ;[newOrder[idx], newOrder[swapIdx]] = [newOrder[swapIdx], newOrder[idx]]
+    await adminApi.setPlaylistTrackOrder(selectedPlaylist.ID, newOrder)
+    qc.invalidateQueries({ queryKey: ['playlist-tracks', selectedPlaylist.ID] })
+    refetchTracks()
+  }, [selectedPlaylist, playlistTracks, qc, refetchTracks])
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    if (files.length === 0) return
+    setUploading(true)
+    setUploadError('')
+    try {
+      await adminApi.uploadPartyFiles(files)
+      qc.invalidateQueries({ queryKey: ['party-uploads'] })
+    } catch (err: unknown) {
+      setUploadError(err instanceof Error ? err.message : 'Upload fejlede')
+    } finally {
+      setUploading(false)
+      if (uploadRef.current) uploadRef.current.value = ''
+    }
+  }
+
+  const isInPlaylist = (trackId: string) => playlistTracks.some(t => t.id === trackId)
+
+  const introTracks = playlistTracks.filter(t => t.is_intro).sort((a, b) => (a.track_number ?? 0) - (b.track_number ?? 0))
+  const extraTracks = playlistTracks.filter(t => !t.is_intro)
+
+  const formatDur = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+
+  const cardBase: React.CSSProperties = {
+    background: 'var(--bg-panel)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 'var(--radius-md)',
+    overflow: 'hidden',
+  }
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', gap: '20px', height: '100%', minHeight: 0 }}>
+
+      {/* ── Left: playlist list ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ fontSize: '1rem', fontWeight: 700 }}>SKÅL Playlister</h2>
+          <button className="btn btn-primary" style={{ padding: '6px 10px', fontSize: '0.8rem' }}
+            onClick={() => setShowCreate(v => !v)}>
+            <Plus size={14} /> Ny
+          </button>
+        </div>
+
+        {showCreate && (
+          <form onSubmit={e => { e.preventDefault(); if (createName.trim()) createPlaylist.mutate(createName.trim()) }}
+            style={{ display: 'flex', gap: '6px' }}>
+            <input className="input" value={createName} onChange={e => setCreateName(e.target.value)}
+              placeholder="Navn på playliste" autoFocus style={{ flex: 1, fontSize: '0.85rem' }} />
+            <button className="btn btn-primary" type="submit" style={{ padding: '6px 10px' }}>OK</button>
+          </form>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+          {playlists.map(pl => (
+            <div key={pl.ID}
+              onClick={() => setSelectedPlaylist(pl)}
+              style={{
+                padding: '10px 12px', borderRadius: '6px', cursor: 'pointer',
+                background: selectedPlaylist?.ID === pl.ID ? 'rgba(191,0,255,0.15)' : 'rgba(255,255,255,0.04)',
+                border: selectedPlaylist?.ID === pl.ID ? '1px solid rgba(191,0,255,0.4)' : '1px solid transparent',
+                display: 'flex', alignItems: 'center', gap: '8px',
+              }}>
+              {pl.IsPartyPlaylist && (
+                <Star size={12} style={{ color: 'var(--neon-amber)', flexShrink: 0 }} fill="currentColor" />
+              )}
+              <span style={{ flex: 1, fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {pl.Name}
+              </span>
+              {!pl.IsPartyPlaylist && (
+                <button className="btn btn-ghost btn-icon" style={{ padding: '3px', opacity: 0.5 }}
+                  title="Sæt som standard"
+                  onClick={e => { e.stopPropagation(); setDefault.mutate(pl.ID) }}>
+                  <Star size={12} />
+                </button>
+              )}
+              <button className="btn btn-ghost btn-icon" style={{ padding: '3px', color: 'var(--neon-accent)', opacity: 0.7 }}
+                title="Slet"
+                onClick={e => { e.stopPropagation(); if (confirm(`Slet "${pl.Name}"?`)) deletePlaylist.mutate(pl.ID) }}>
+                <Trash2 size={12} />
+              </button>
+            </div>
+          ))}
+          {playlists.length === 0 && (
+            <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', padding: '12px 0' }}>
+              Ingen playlister endnu
+            </p>
+          )}
+        </div>
+
+        {/* Per-user assignment */}
+        {selectedPlaylist && jukeboxes.length > 0 && (
+          <div style={{ ...cardBase, padding: '14px', marginTop: '8px' }}>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '10px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Tildel playliste til bruger
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {jukeboxes.map(jb => (
+                <div key={jb.room_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                  <span style={{ fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {jb.display_name}
+                  </span>
+                  <button className="btn btn-ghost" style={{ fontSize: '0.75rem', padding: '4px 8px', flexShrink: 0 }}
+                    onClick={() => setUserPlaylist.mutate({ roomId: jb.room_id, playlistId: selectedPlaylist.ID })}>
+                    Tildel
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Right: playlist detail ── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minHeight: 0 }}>
+        {selectedPlaylist ? (
+          <>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <h2 style={{ fontSize: '1.1rem', fontWeight: 700, flex: 1 }}>
+                {selectedPlaylist.IsPartyPlaylist && <Star size={14} style={{ color: 'var(--neon-amber)', marginRight: '6px' }} fill="currentColor" />}
+                {selectedPlaylist.Name}
+              </h2>
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>{playlistTracks.length} numre</span>
+              {selectedPlaylist.IsPartyPlaylist && (
+                <span className="badge badge-primary" style={{ fontSize: '0.7rem' }}>Standard</span>
+              )}
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', flex: 1, minHeight: 0 }}>
+
+              {/* ── Uploaded files pool ── */}
+              <div style={{ ...cardBase, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <Upload size={14} style={{ color: 'var(--neon-teal)' }} />
+                  <span style={{ fontWeight: 600, fontSize: '0.9rem', flex: 1 }}>Uploadede filer</span>
+                  <button className="btn btn-ghost" style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+                    onClick={() => uploadRef.current?.click()} disabled={uploading}>
+                    {uploading ? 'Uploader...' : '+ Upload MP3'}
+                  </button>
+                  <input ref={uploadRef} type="file" accept="audio/*" multiple hidden onChange={handleUpload} />
+                </div>
+                {uploadError && (
+                  <p style={{ padding: '8px 14px', color: 'var(--neon-accent)', fontSize: '0.8rem' }}>{uploadError}</p>
+                )}
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                  {uploadedTracks.map(t => (
+                    <div key={t.id}
+                      onDoubleClick={() => selectedPlaylist && !isInPlaylist(t.id) && addTrack.mutate({ playlistId: selectedPlaylist.ID, trackId: t.id })}
+                      style={{
+                        padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '10px',
+                        cursor: 'pointer', transition: 'background 0.15s',
+                        opacity: isInPlaylist(t.id) ? 0.4 : 1,
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.artist}</div>
+                      </div>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', flexShrink: 0 }}>{formatDur(t.duration_secs)}</span>
+                      {!isInPlaylist(t.id) && (
+                        <button className="btn btn-ghost btn-icon" style={{ padding: '3px', color: 'var(--neon-primary)' }}
+                          title="Tilføj til playliste"
+                          onClick={() => addTrack.mutate({ playlistId: selectedPlaylist.ID, trackId: t.id })}>
+                          <Plus size={14} />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {uploadedTracks.length === 0 && (
+                    <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.85rem' }}>
+                      Upload MP3-filer for at komme i gang
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ── Playlist contents ── */}
+              <div style={{ ...cardBase, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Playliste indhold</span>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '2px' }}>
+                    Intro-numre spilles i rækkefølge — resten vælges tilfældigt
+                  </p>
+                </div>
+
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                  {/* Intro tracks */}
+                  {introTracks.length > 0 && (
+                    <div>
+                      <div style={{ padding: '6px 14px', fontSize: '0.7rem', color: 'var(--neon-amber)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', background: 'rgba(255,165,0,0.06)' }}>
+                        Intro ({introTracks.length})
+                      </div>
+                      {introTracks.map((t, i) => (
+                        <PlaylistTrackRow key={t.id} track={t} isIntro index={i + 1}
+                          onToggleIntro={() => toggleIntro.mutate({ playlistId: selectedPlaylist.ID, trackId: t.id, isIntro: false })}
+                          onRemove={() => removeTrack.mutate({ playlistId: selectedPlaylist.ID, trackId: t.id })}
+                          onMoveUp={() => moveTrack(t.id, 'up')}
+                          onMoveDown={() => moveTrack(t.id, 'down')}
+                          showMoveUp={i > 0}
+                          showMoveDown={i < introTracks.length - 1}
+                          formatDur={formatDur} />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Non-intro tracks */}
+                  {extraTracks.length > 0 && (
+                    <div>
+                      <div style={{ padding: '6px 14px', fontSize: '0.7rem', color: 'var(--neon-teal)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', background: 'rgba(0,255,204,0.04)' }}>
+                        Ekstra / Tilfældig ({extraTracks.length})
+                      </div>
+                      {extraTracks.map(t => (
+                        <PlaylistTrackRow key={t.id} track={t} isIntro={false} index={null}
+                          onToggleIntro={() => toggleIntro.mutate({ playlistId: selectedPlaylist.ID, trackId: t.id, isIntro: true })}
+                          onRemove={() => removeTrack.mutate({ playlistId: selectedPlaylist.ID, trackId: t.id })}
+                          onMoveUp={() => {}} onMoveDown={() => {}}
+                          showMoveUp={false} showMoveDown={false}
+                          formatDur={formatDur} />
+                      ))}
+                    </div>
+                  )}
+
+                  {playlistTracks.length === 0 && (
+                    <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.85rem' }}>
+                      Dobbeltklik på et nummer til venstre for at tilføje det
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: '16px', color: 'var(--text-dim)' }}>
+            <PartyPopper size={48} style={{ opacity: 0.3 }} />
+            <p>Vælg en playliste til venstre for at redigere den</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+interface PlaylistTrackRowProps {
+  track: Track
+  isIntro: boolean
+  index: number | null
+  onToggleIntro: () => void
+  onRemove: () => void
+  onMoveUp: () => void
+  onMoveDown: () => void
+  showMoveUp: boolean
+  showMoveDown: boolean
+  formatDur: (s: number) => string
+}
+
+function PlaylistTrackRow({ track, isIntro, index, onToggleIntro, onRemove, onMoveUp, onMoveDown, showMoveUp, showMoveDown, formatDur }: PlaylistTrackRowProps) {
+  return (
+    <div style={{
+      padding: '8px 14px', display: 'flex', alignItems: 'center', gap: '8px',
+      transition: 'background 0.15s',
+    }}
+      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
+      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+      {isIntro && index !== null && (
+        <span style={{ fontSize: '0.7rem', color: 'var(--neon-amber)', fontWeight: 700, minWidth: '18px', textAlign: 'center' }}>
+          {index}
+        </span>
+      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.title}</div>
+        <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{track.artist}</div>
+      </div>
+      <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', flexShrink: 0 }}>{formatDur(track.duration_secs)}</span>
+
+      {isIntro && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+          {showMoveUp && (
+            <button className="btn btn-ghost btn-icon" style={{ padding: '1px' }} onClick={onMoveUp} title="Flyt op">
+              <ChevronUp size={12} />
+            </button>
+          )}
+          {showMoveDown && (
+            <button className="btn btn-ghost btn-icon" style={{ padding: '1px' }} onClick={onMoveDown} title="Flyt ned">
+              <ChevronDown size={12} />
+            </button>
+          )}
+        </div>
+      )}
+
+      <button className="btn btn-ghost btn-icon" style={{ padding: '3px', color: isIntro ? 'var(--neon-amber)' : 'var(--text-dim)' }}
+        title={isIntro ? 'Fjern intro-markering' : 'Sæt som intro'}
+        onClick={onToggleIntro}>
+        <Star size={12} fill={isIntro ? 'currentColor' : 'none'} />
+      </button>
+
+      <button className="btn btn-ghost btn-icon" style={{ padding: '3px', color: 'var(--neon-accent)' }}
+        title="Fjern fra playliste"
+        onClick={onRemove}>
+        <Trash2 size={12} />
+      </button>
     </div>
   )
 }

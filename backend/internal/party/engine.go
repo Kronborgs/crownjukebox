@@ -30,16 +30,25 @@ func NewEngine(database *sqlx.DB, hub *events.Hub, roomID string) *Engine {
 }
 
 func (e *Engine) getPartyPlaylistID(ctx context.Context) (*string, error) {
+	// 1. Room-specific playlist takes priority — this is the per-user override.
+	var roomPlaylistID *string
+	if err := e.db.GetContext(ctx, &roomPlaylistID, `SELECT party_playlist_id FROM rooms WHERE id = ?`, e.roomID); err == nil && roomPlaylistID != nil && *roomPlaylistID != "" {
+		return roomPlaylistID, nil
+	}
+
+	// 2. Fall back to global default (set via settings or is_party_playlist flag).
 	var globalPlaylistID string
 	if err := e.db.GetContext(ctx, &globalPlaylistID, `SELECT value FROM settings WHERE key = 'party_playlist_id' LIMIT 1`); err == nil && globalPlaylistID != "" {
 		return &globalPlaylistID, nil
 	}
 
-	var roomPlaylistID *string
-	if err := e.db.GetContext(ctx, &roomPlaylistID, `SELECT party_playlist_id FROM rooms WHERE id = ?`, e.roomID); err != nil {
-		return nil, err
+	// 3. Last resort: any playlist flagged as party playlist.
+	var anyID string
+	if err := e.db.GetContext(ctx, &anyID, `SELECT id FROM playlists WHERE is_party_playlist = 1 ORDER BY created_at LIMIT 1`); err == nil && anyID != "" {
+		return &anyID, nil
 	}
-	return roomPlaylistID, nil
+
+	return nil, nil
 }
 
 // BuildSequence builds the party track list and volume boost without any broadcast.

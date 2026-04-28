@@ -217,7 +217,12 @@ func (s *Server) Router() http.Handler {
 		r.Delete("/api/admin/playlists/{id}/tracks/{trackId}", s.handleRemovePlaylistTrack)
 		r.Get("/api/admin/playlists/{id}/tracks", s.handleGetPlaylistTracks)
 		r.Put("/api/admin/playlists/{id}/intro-track", s.handleSetPlaylistIntroTrack)
+		r.Put("/api/admin/playlists/{id}/track-order", s.handleSetPlaylistTrackOrder)
 		r.Post("/api/admin/party-playlist/upload", s.handleUploadPartyPlaylistTracks)
+
+		// Party uploads library (uploaded files not yet in any playlist)
+		r.Post("/api/admin/party-uploads", s.handleUploadPartyFiles)
+		r.Get("/api/admin/party-uploads", s.handleListPartyUploads)
 
 		// System monitoring
 		r.Get("/api/admin/system-metrics", s.handleSystemMetrics)
@@ -1860,6 +1865,159 @@ func (s *Server) handleUploadPartyPlaylistTracks(w http.ResponseWriter, r *http.
 		"playlist_id": playlistID,
 		"uploaded":    uploaded,
 	})
+}
+
+// handleUploadPartyFiles uploads MP3 files and indexes them as tracks but does NOT
+// assign them to any playlist. Returns the indexed track records so the admin can
+// drag/double-click them into a specific playlist via the UI.
+func (s *Server) handleUploadPartyFiles(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(200 << 20); err != nil {
+		jsonError(w, "kunne ikke læse upload", http.StatusBadRequest)
+		return
+	}
+
+	uploadDir := config.GlobalPartyUploadsDir(s.cfg.DBPath)
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		jsonError(w, "kunne ikke oprette upload-mappe", http.StatusInternalServerError)
+		return
+	}
+
+	files := r.MultipartForm.File["files"]
+	if len(files) == 0 {
+		jsonError(w, "vælg mindst én lydfil", http.StatusBadRequest)
+		return
+	}
+
+	type uploadedTrack struct {
+		TrackID  string `json:"track_id"`
+		Title    string `json:"title"`
+		Artist   string `json:"artist"`
+		Duration int    `json:"duration_secs"`
+	}
+	uploaded := make([]uploadedTrack, 0, len(files))
+
+	for _, fileHeader := range files {
+		ext := strings.ToLower(filepath.Ext(fileHeader.Filename))
+		if !music.SupportedExtension(ext) {
+			continue
+		}
+
+		src, err := fileHeader.Open()
+		if err != nil {
+			continue
+		}
+
+		safeName := uuid.NewString() + ext
+		destPath := filepath.Join(uploadDir, safeName)
+		dst, err := os.Create(destPath)
+		if err != nil {
+			src.Close()
+			continue
+		}
+		_, copyErr := io.Copy(dst, src)
+		dst.Close()
+		src.Close()
+		if copyErr != nil {
+			_ = os.Remove(destPath)
+			continue
+		}
+
+		if err := s.scanner.IndexFileWithOriginalName(destPath, fileHeader.Filename); err != nil {
+			_ = os.Remove(destPath)
+			continue
+		}
+
+		var track db.Track
+		if err := s.db.Get(&track, `
+			SELECT t.*, COALESCE(ar.name,'') AS artist, COALESCE(al.title,'') AS album
+			FROM tracks t
+			LEFT JOIN artists ar ON ar.id = t.artist_id
+			LEFT JOIN albums al ON al.id = t.album_id
+			WHERE t.file_path = ? LIMIT 1`, destPath); err != nil {
+			continue
+		}
+
+		// Extract artwork if available
+		var album db.Album
+		if err := s.db.Get(&album, `SELECT * FROM albums WHERE id = ? LIMIT 1`, track.AlbumID); err == nil {
+			_ = s.artExt.ExtractForAlbum(&album)
+		}
+
+		uploaded = append(uploaded, uploadedTrack{
+			TrackID:  track.ID,
+			Title:    track.Title,
+			Artist:   track.Artist,
+			Duration: track.Duration,
+		})
+	}
+
+	if len(uploaded) == 0 {
+		jsonError(w, "ingen gyldige lydfiler blev uploadet", http.StatusBadRequest)
+		return
+	}
+
+	jsonOK(w, map[string]any{"uploaded": uploaded})
+}
+
+// handleListPartyUploads returns all tracks whose file lives in the party uploads directory.
+// These are tracks that have been uploaded but may not yet belong to any playlist.
+func (s *Server) handleListPartyUploads(w http.ResponseWriter, r *http.Request) {
+	uploadDir := filepath.Clean(config.GlobalPartyUploadsDir(s.cfg.DBPath))
+	// SQLite LIKE requires % wildcard; use the cleaned path as prefix.
+	prefix := uploadDir + string(filepath.Separator) + "%"
+
+	var tracks []playlistTrackRow
+	if err := s.db.Select(&tracks, `
+		SELECT
+			t.id, t.album_id, t.artist_id, t.title,
+			t.track_number, t.disc_number, t.duration,
+			t.file_path, t.source_type, t.source_id, t.stream_url,
+			t.cover_art_id, t.created_at, t.updated_at,
+			COALESCE(ar.name, '') AS artist,
+			COALESCE(al.title, '') AS album,
+			0 AS is_intro
+		FROM tracks t
+		LEFT JOIN artists ar ON ar.id = t.artist_id
+		LEFT JOIN albums al ON al.id = t.album_id
+		WHERE t.file_path LIKE ?
+		ORDER BY t.created_at DESC`, prefix); err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	if tracks == nil {
+		tracks = []playlistTrackRow{}
+	}
+	jsonOK(w, tracks)
+}
+
+// handleSetPlaylistTrackOrder reorders the intro tracks within a playlist by setting
+// explicit positions. Body: { "order": ["track_id1", "track_id2", ...] }
+func (s *Server) handleSetPlaylistTrackOrder(w http.ResponseWriter, r *http.Request) {
+	playlistID := chi.URLParam(r, "id")
+	var req struct {
+		Order []string `json:"order"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Order) == 0 {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+	for i, trackID := range req.Order {
+		if _, err := tx.Exec(`UPDATE playlist_tracks SET position = ? WHERE playlist_id = ? AND track_id = ?`, i+1, playlistID, trackID); err != nil {
+			jsonError(w, "db error", http.StatusInternalServerError)
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w, map[string]string{"status": "reordered"})
 }
 
 // handleSystemMetrics returns current system resource usage.

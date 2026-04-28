@@ -131,6 +131,17 @@ export interface Playlist {
   CreatedAt: string
 }
 
+export interface PartyUploadedTrack {
+  track_id: string
+  title: string
+  artist: string
+  duration_secs: number
+}
+
+export interface PartyUploadResult {
+  uploaded: PartyUploadedTrack[]
+}
+
 export interface PartyPlaylistUploadResult {
   status: string
   playlist_id: string
@@ -429,11 +440,20 @@ export const adminApi = {
     post<void>(`/api/admin/playlists/${playlistId}/tracks`, { track_id: trackId }),
   removePlaylistTrack: (playlistId: string, trackId: string) =>
     del(`/api/admin/playlists/${playlistId}/tracks/${trackId}`),
+  setPlaylistTrackOrder: (playlistId: string, order: string[]) =>
+    put<void>(`/api/admin/playlists/${playlistId}/track-order`, { order }),
   uploadPartyPlaylistTracks: (files: File[]) => {
     const form = new FormData()
     files.forEach(file => form.append('files', file))
     return requestForm<PartyPlaylistUploadResult>('/api/admin/party-playlist/upload', form)
   },
+  // Upload files to the party uploads library (no playlist assignment)
+  uploadPartyFiles: (files: File[]) => {
+    const form = new FormData()
+    files.forEach(file => form.append('files', file))
+    return requestForm<PartyUploadResult>('/api/admin/party-uploads', form)
+  },
+  listPartyUploads: () => getList<Track>('/api/admin/party-uploads'),
 
   // Password management
   changePassword: (userId: string, newPassword: string) =>
