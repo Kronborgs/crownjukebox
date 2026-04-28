@@ -143,9 +143,10 @@ func (m *Manager) Play(ctx context.Context, trackID, userID string) error {
 	nextIsAutoplay := false
 
 	if trackID == "" {
-		// Only resume the paused track if the queue is empty — otherwise always serve the queue
-		if m.currentTrackID != "" && !m.isPlaying && m.queueMgr.IsEmpty(ctx) {
-			// Resume the paused track — queue is empty, nothing else to play
+		// If a track is paused, ALWAYS resume it — never jump to the queue.
+		// The play/pause button should only toggle the current track.
+		// Queue advancement only happens when a track naturally ends (TrackEnded).
+		if m.currentTrackID != "" && !m.isPlaying {
 			m.isPlaying = true
 			m.updatedAt = time.Now()
 			m.saveState()
@@ -376,6 +377,53 @@ func (m *Manager) endCurrentHistoryLocked(ctx context.Context, wasSkipped bool) 
 		)
 		m.historyID = ""
 	}
+}
+
+// ForceEndParty ends an ongoing or stuck party immediately, restoring previous playback.
+// Safe to call when no party is running (no-op).
+func (m *Manager) ForceEndParty(ctx context.Context, userID string) error {
+	m.mu.Lock()
+	if !m.isPartyMode {
+		m.mu.Unlock()
+		return nil
+	}
+	log.Printf("[party] room=%s force-ending party", m.roomID)
+	m.isPartyMode = false
+	m.partyTrackID = ""
+	m.partyQueue = nil
+	savedID := m.savedTrackID
+	savedPos := m.savedPositionSecs
+	savedPlaying := m.savedWasPlaying
+	savedAutoplay := m.savedIsAutoplay
+	m.savedTrackID = ""
+	m.savedPositionSecs = 0
+	m.savedWasPlaying = false
+	m.savedIsAutoplay = false
+	m.endCurrentHistoryLocked(ctx, false)
+	m.mu.Unlock()
+
+	m.hub.BroadcastToRoom(m.roomID, events.EventPartyEnded, map[string]any{
+		"resume_position_secs": savedPos,
+	})
+
+	if savedID != "" {
+		m.mu.Lock()
+		m.currentTrackID = savedID
+		m.positionSecs = savedPos
+		m.isPlaying = savedPlaying
+		m.isAutoplayTrack = savedAutoplay
+		m.updatedAt = time.Now()
+		m.saveState()
+		m.mu.Unlock()
+		state, _ := m.GetState(ctx)
+		m.hub.BroadcastToRoom(m.roomID, events.EventNowPlayingChanged, state)
+		m.hub.BroadcastToRoom(m.roomID, events.EventPlaybackStateChanged, map[string]any{
+			"is_playing":    savedPlaying,
+			"position_secs": savedPos,
+		})
+		return nil
+	}
+	return m.Play(ctx, "", userID)
 }
 
 // SetPartyMode toggles party (skåle) mode state.

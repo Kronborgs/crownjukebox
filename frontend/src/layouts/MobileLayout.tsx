@@ -184,7 +184,7 @@ export function MobileLayout() {
 
       <PartyOverlay
         active={partyActive}
-        onClose={() => { setPartyBusy(false) }}
+        onClose={async () => { try { await partyApi.end() } catch {} setPartyBusy(false) }}
       />
     </div>
   )

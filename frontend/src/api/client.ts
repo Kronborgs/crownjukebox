@@ -372,6 +372,7 @@ export const playbackApi = {
 
 export const partyApi = {
   cheers: () => post<{ track: Track; status: string }>('/api/party/cheers'),
+  end:    () => post<void>('/api/party/end'),
   state:  () => get<{ is_party_mode: boolean }>('/api/party/state'),
 }
 

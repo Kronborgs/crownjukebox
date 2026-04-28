@@ -142,7 +142,7 @@ export function KioskLayout() {
       {/* Party overlay — full screen */}
       <PartyOverlay
         active={partyActive}
-        onClose={() => { setPartyBusy(false) }}
+        onClose={async () => { try { await partyApi.end() } catch {} setPartyBusy(false) }}
       />
     </div>
   )

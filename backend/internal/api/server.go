@@ -155,6 +155,7 @@ func (s *Server) Router() http.Handler {
 
 		// Party
 		r.Post("/api/party/cheers", auth.RequirePermission(s.authSvc, "can_use_party_button")(http.HandlerFunc(s.handleCheers)).ServeHTTP)
+		r.Post("/api/party/end", s.handlePartyEnd)
 		r.Get("/api/party/state", s.handlePartyState)
 
 		// SSE (room_id via query param for EventSource)
@@ -776,6 +777,17 @@ func (s *Server) handleCheers(w http.ResponseWriter, r *http.Request) {
 		"track_count":  len(seq.Tracks),
 		"volume_boost": seq.VolumeBoost,
 	})
+}
+
+func (s *Server) handlePartyEnd(w http.ResponseWriter, r *http.Request) {
+	sd, _ := auth.GetSessionFromContext(r.Context())
+	userID := ""
+	if sd != nil {
+		userID = sd.User.ID
+	}
+	rm := getRoomFromCtx(r.Context())
+	_ = rm.Playback.ForceEndParty(r.Context(), userID)
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handlePartyState(w http.ResponseWriter, r *http.Request) {

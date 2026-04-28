@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { playbackApi, PlaybackState } from '@/api/client'
+import { playbackApi, partyApi, PlaybackState } from '@/api/client'
 import { useSSE } from './useSSE'
 
 /**
@@ -17,10 +17,19 @@ export function usePlayback() {
     setState(next)
   }
 
-  // Initial fetch
+  // Initial fetch — if party mode is stuck from a previous session (page reload / re-login),
+  // end it automatically so the jukebox is usable. Audio doesn't survive page load anyway.
   useEffect(() => {
-    refreshState().catch(console.error)
-  }, [])
+    playbackApi.state().then(async (next) => {
+      if (next?.is_party_mode) {
+        try { await partyApi.end() } catch {}
+        const clean = await playbackApi.state()
+        setState(clean)
+      } else {
+        setState(next)
+      }
+    }).catch(console.error)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Local position ticker
   useEffect(() => {
