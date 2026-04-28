@@ -21,21 +21,15 @@ export function PartyOverlay({ active, onClose }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval>>()
   const [frame, setFrame] = useState(0)
-  const [showHint, setShowHint] = useState(false)
 
   // Cycle through PNG animation frames at ~3fps.
-  // Hide the dismiss hint until one full cycle has completed (4 frames × 350ms = 1.4s).
   useEffect(() => {
     if (!active) {
       setFrame(0)
-      setShowHint(false)
       return
     }
-    setShowHint(false)
     const id = setInterval(() => setFrame(f => (f + 1) % ANIM_FRAMES.length), 350)
-    // Show hint after one full animation cycle
-    const hintTimer = setTimeout(() => setShowHint(true), ANIM_FRAMES.length * 350)
-    return () => { clearInterval(id); clearTimeout(hintTimer) }
+    return () => clearInterval(id)
   }, [active])
 
   // Confetti cannon
@@ -116,14 +110,7 @@ export function PartyOverlay({ active, onClose }: Props) {
                 filter: 'drop-shadow(0 0 24px #bf00ff) drop-shadow(0 0 12px #ff2d78)',
               }}
             />
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: showHint ? 1 : 0 }}
-              transition={{ duration: 0.5 }}
-              style={{ color: 'rgba(255,255,255,0.45)', fontSize: '0.85rem' }}
-            >
-              Tryk for at lukke
-            </motion.p>
+            
           </motion.div>
         </motion.div>
       )}
