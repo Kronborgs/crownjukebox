@@ -220,6 +220,11 @@ func (s *Server) Router() http.Handler {
 
 		// System monitoring
 		r.Get("/api/admin/system-metrics", s.handleSystemMetrics)
+
+		// SMTP settings
+		r.Get("/api/admin/smtp", s.handleGetSMTP)
+		r.Put("/api/admin/smtp", s.handleUpdateSMTP)
+		r.Post("/api/admin/smtp/test", s.handleTestSMTP)
 	})
 
 	return r
@@ -1867,6 +1872,96 @@ func (s *Server) handleSystemMetrics(w http.ResponseWriter, r *http.Request) {
 		},
 		"uptime_seconds": time.Since(s.startTime).Seconds(),
 	})
+}
+
+// ─────────────────────────────────────────────────────────────
+// SMTP handlers
+// ─────────────────────────────────────────────────────────────
+
+func (s *Server) handleGetSMTP(w http.ResponseWriter, r *http.Request) {
+	cfg, err := s.emailSvc.LoadConfig(r.Context())
+	if err != nil {
+		jsonError(w, "could not load smtp config", http.StatusInternalServerError)
+		return
+	}
+	// Never return the actual password - just indicate if it's set
+	jsonOK(w, map[string]any{
+		"enabled":      cfg.Enabled,
+		"host":         cfg.Host,
+		"port":         cfg.Port,
+		"username":     cfg.Username,
+		"password_set": cfg.Password != "",
+		"from":         cfg.From,
+		"from_name":    cfg.FromName,
+	})
+}
+
+func (s *Server) handleUpdateSMTP(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Enabled  bool   `json:"enabled"`
+		Host     string `json:"host"`
+		Port     int    `json:"port"`
+		Username string `json:"username"`
+		Password string `json:"password"`
+		From     string `json:"from"`
+		FromName string `json:"from_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	port := req.Port
+	if port == 0 {
+		port = 587
+	}
+	fromName := req.FromName
+	if fromName == "" {
+		fromName = "CrownJukebox"
+	}
+
+	enabled := "0"
+	if req.Enabled {
+		enabled = "1"
+	}
+
+	updates := map[string]string{
+		"smtp_enabled":   enabled,
+		"smtp_host":      req.Host,
+		"smtp_port":      fmt.Sprintf("%d", port),
+		"smtp_username":  req.Username,
+		"smtp_from":      req.From,
+		"smtp_from_name": fromName,
+	}
+	// Only update password if a new one was provided
+	if req.Password != "" {
+		updates["smtp_password"] = req.Password
+	}
+
+	for k, v := range updates {
+		if _, err := s.db.ExecContext(r.Context(), `UPDATE settings SET value = ? WHERE key = ?`, v, k); err != nil {
+			jsonError(w, "db error: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	jsonOK(w, map[string]string{"status": "saved"})
+}
+
+func (s *Server) handleTestSMTP(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		To string `json:"to"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.To == "" {
+		jsonError(w, "modtager email kræves", http.StatusBadRequest)
+		return
+	}
+
+	err := s.emailSvc.SendTest(r.Context(), req.To)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	jsonOK(w, map[string]string{"status": "sent"})
 }
 
 // ─────────────────────────────────────────────────────────────

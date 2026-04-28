@@ -192,6 +192,26 @@ export interface SystemMetrics {
   uptime_seconds: number
 }
 
+export interface SmtpConfig {
+  enabled: boolean
+  host: string
+  port: number
+  username: string
+  password_set: boolean
+  from: string
+  from_name: string
+}
+
+export interface SmtpSavePayload {
+  enabled: boolean
+  host: string
+  port: number
+  username: string
+  password: string
+  from: string
+  from_name: string
+}
+
 // ─── Room ID helper ───────────────────────────────────────────────
 
 export function getCurrentRoomId(): string {
@@ -432,6 +452,11 @@ export const adminApi = {
 
   // System metrics
   systemMetrics: () => get<SystemMetrics>('/api/admin/system-metrics'),
+
+  // SMTP
+  getSMTP: () => get<SmtpConfig>('/api/admin/smtp'),
+  updateSMTP: (data: SmtpSavePayload) => put<void>('/api/admin/smtp', data),
+  testSMTP: (to: string) => post<{ status: string }>('/api/admin/smtp/test', { to }),
 }
 
 // ─── Rooms ────────────────────────────────────────────────────────

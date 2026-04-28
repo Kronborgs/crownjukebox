@@ -2,9 +2,9 @@ import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi, User, setCurrentRoomId } from '@/api/client'
-import { ChevronLeft, Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio, LayoutDashboard } from 'lucide-react'
+import { ChevronLeft, Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio, LayoutDashboard, Mail } from 'lucide-react'
 
-type AdminTab = 'dashboard' | 'users' | 'jukeboxes' | 'settings' | 'library'
+type AdminTab = 'dashboard' | 'users' | 'jukeboxes' | 'settings' | 'library' | 'smtp'
 
 export function AdminLayout() {
   const [tab, setTab] = useState<AdminTab>('dashboard')
@@ -23,12 +23,13 @@ export function AdminLayout() {
       </div>
 
       {/* Tab bar */}
-      <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'var(--bg-panel)', flexShrink: 0 }}>
+      <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'var(--bg-panel)', flexShrink: 0, overflowX: 'auto' }}>
         {([
           { id: 'dashboard', icon: <LayoutDashboard size={16} />, label: 'Dashboard' },
           { id: 'users',     icon: <UserCheck size={16} />, label: 'Brugere' },
           { id: 'jukeboxes', icon: <Radio size={16} />,     label: 'Jukeboxes' },
           { id: 'library',   icon: <Music2 size={16} />,    label: 'Bibliotek' },
+          { id: 'smtp',      icon: <Mail size={16} />,      label: 'SMTP' },
           { id: 'settings',  icon: <Settings size={16} />,  label: 'Indstillinger' },
         ] as { id: AdminTab; icon: React.ReactNode; label: string }[]).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
@@ -49,6 +50,7 @@ export function AdminLayout() {
         {tab === 'users'     && <UsersPanel />}
         {tab === 'jukeboxes' && <JukeboxesPanel />}
         {tab === 'library'   && <LibraryPanel />}
+        {tab === 'smtp'      && <SmtpPanel />}
         {tab === 'settings'  && <SettingsPanel />}
       </div>
     </div>
@@ -894,6 +896,271 @@ function LibraryPanel() {
           <button className="btn btn-primary" onClick={createPlaylist}>
             <Plus size={16} />
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── SMTP panel ──────────────────────────────────────────────
+
+function SmtpPanel() {
+  const qc = useQueryClient()
+  const { data: smtp, isLoading } = useQuery({
+    queryKey: ['admin-smtp'],
+    queryFn: adminApi.getSMTP,
+  })
+
+  const [form, setForm] = useState({
+    enabled: false,
+    host: '',
+    port: 587,
+    username: '',
+    password: '',
+    from: '',
+    from_name: 'CrownJukebox',
+  })
+  const [testEmail, setTestEmail] = useState('')
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [testStatus, setTestStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
+  const [testError, setTestError] = useState('')
+
+  // Populate form when data loads
+  const initialized = useRef(false)
+  if (smtp && !initialized.current) {
+    initialized.current = true
+    setForm(f => ({
+      ...f,
+      enabled: smtp.enabled,
+      host: smtp.host,
+      port: smtp.port,
+      username: smtp.username,
+      from: smtp.from,
+      from_name: smtp.from_name,
+    }))
+  }
+
+  const set = (key: string, value: string | number | boolean) =>
+    setForm(f => ({ ...f, [key]: value }))
+
+  async function handleSave() {
+    setSaveStatus('saving')
+    try {
+      await adminApi.updateSMTP({ ...form })
+      qc.invalidateQueries({ queryKey: ['admin-smtp'] })
+      initialized.current = false
+      setSaveStatus('saved')
+      setTimeout(() => setSaveStatus('idle'), 3000)
+    } catch {
+      setSaveStatus('error')
+      setTimeout(() => setSaveStatus('idle'), 4000)
+    }
+  }
+
+  async function handleTest() {
+    if (!testEmail) return
+    setTestStatus('sending')
+    setTestError('')
+    try {
+      await adminApi.testSMTP(testEmail)
+      setTestStatus('sent')
+      setTimeout(() => setTestStatus('idle'), 5000)
+    } catch (e: unknown) {
+      setTestStatus('error')
+      setTestError(e instanceof Error ? e.message : 'Ukendt fejl')
+      setTimeout(() => setTestStatus('idle'), 6000)
+    }
+  }
+
+  if (isLoading) return <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-dim)' }}>Indlæser...</div>
+
+  return (
+    <div style={{ maxWidth: '620px' }}>
+      <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '6px' }}>SMTP E-mail indstillinger</h2>
+      <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', marginBottom: '24px' }}>
+        Konfigurer udgående mail til invitationer og notifikationer.
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {/* Enable toggle */}
+        <div className="glass-card" style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <p style={{ fontWeight: 600, fontSize: '0.95rem' }}>Aktiver SMTP</p>
+              <p style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginTop: '3px' }}>
+                Slå til for at sende e-mail invitationer.
+              </p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={form.enabled}
+              onClick={() => set('enabled', !form.enabled)}
+              style={{
+                flexShrink: 0,
+                width: '48px', height: '26px', borderRadius: '13px', border: 'none',
+                background: form.enabled ? 'var(--neon-primary)' : 'rgba(255,255,255,0.15)',
+                cursor: 'pointer', position: 'relative', transition: 'background 0.2s',
+              }}
+            >
+              <span style={{
+                position: 'absolute', top: '3px',
+                left: form.enabled ? '25px' : '3px',
+                width: '20px', height: '20px', borderRadius: '50%',
+                background: 'white', transition: 'left 0.2s',
+              }} />
+            </button>
+          </div>
+        </div>
+
+        {/* Server settings */}
+        <div className="glass-card" style={{ padding: '20px' }}>
+          <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--chrome-bright)', marginBottom: '16px' }}>
+            Serverindstillinger
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 110px', gap: '12px', alignItems: 'end' }}>
+            <div>
+              <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '5px' }}>
+                SMTP Host
+              </label>
+              <input
+                className="input"
+                placeholder="smtp.gmail.com"
+                value={form.host}
+                onChange={e => set('host', e.target.value)}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '5px' }}>
+                Port
+              </label>
+              <input
+                className="input"
+                type="number"
+                placeholder="587"
+                value={form.port}
+                onChange={e => set('port', parseInt(e.target.value) || 587)}
+              />
+            </div>
+          </div>
+          <p style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '8px' }}>
+            Port 587 = STARTTLS (anbefalet) · Port 465 = SSL/TLS · Port 25 = uden kryptering
+          </p>
+        </div>
+
+        {/* Auth */}
+        <div className="glass-card" style={{ padding: '20px' }}>
+          <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--chrome-bright)', marginBottom: '16px' }}>
+            Godkendelse
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '5px' }}>
+                Brugernavn
+              </label>
+              <input
+                className="input"
+                placeholder="din@email.dk"
+                value={form.username}
+                onChange={e => set('username', e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '5px' }}>
+                Adgangskode {smtp?.password_set && <span style={{ color: 'var(--neon-green)', fontSize: '0.7rem' }}>✓ sat</span>}
+              </label>
+              <input
+                className="input"
+                type="password"
+                placeholder={smtp?.password_set ? '••••••• (efterlad blank for at beholde)' : 'Adgangskode'}
+                value={form.password}
+                onChange={e => set('password', e.target.value)}
+                autoComplete="new-password"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* From */}
+        <div className="glass-card" style={{ padding: '20px' }}>
+          <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--chrome-bright)', marginBottom: '16px' }}>
+            Afsender
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '5px' }}>
+                Fra-adresse
+              </label>
+              <input
+                className="input"
+                placeholder="jukebox@dinserver.dk"
+                value={form.from}
+                onChange={e => set('from', e.target.value)}
+              />
+            </div>
+            <div>
+              <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '5px' }}>
+                Afsendernavn
+              </label>
+              <input
+                className="input"
+                placeholder="CrownJukebox"
+                value={form.from_name}
+                onChange={e => set('from_name', e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Save button */}
+        <button
+          className="btn btn-primary"
+          style={{ alignSelf: 'flex-start' }}
+          onClick={handleSave}
+          disabled={saveStatus === 'saving'}
+        >
+          {saveStatus === 'saving' ? 'Gemmer...' :
+           saveStatus === 'saved'  ? '✓ Gemt!' :
+           saveStatus === 'error'  ? '✗ Fejl ved gem' :
+           'Gem SMTP indstillinger'}
+        </button>
+
+        {/* Test section */}
+        <div className="glass-card" style={{ padding: '20px', borderColor: 'rgba(34,211,160,0.2)' }}>
+          <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--neon-teal)', marginBottom: '12px' }}>
+            Send test-mail
+          </h3>
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '14px' }}>
+            Gem indstillingerne ovenfor, og send en testmail for at bekræfte opsætningen.
+          </p>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <input
+              className="input"
+              placeholder="modtager@email.dk"
+              value={testEmail}
+              onChange={e => setTestEmail(e.target.value)}
+              style={{ flex: 1 }}
+            />
+            <button
+              className="btn btn-ghost"
+              style={{ flexShrink: 0, borderColor: 'var(--neon-teal)', color: 'var(--neon-teal)' }}
+              onClick={handleTest}
+              disabled={testStatus === 'sending' || !testEmail}
+            >
+              {testStatus === 'sending' ? 'Sender...' :
+               testStatus === 'sent'    ? '✓ Sendt!' :
+               testStatus === 'error'   ? '✗ Fejl' :
+               'Send test'}
+            </button>
+          </div>
+          {testStatus === 'error' && testError && (
+            <p style={{ color: 'var(--neon-red)', fontSize: '0.8rem', marginTop: '10px' }}>{testError}</p>
+          )}
+          {testStatus === 'sent' && (
+            <p style={{ color: 'var(--neon-green)', fontSize: '0.8rem', marginTop: '10px' }}>
+              Test-mail sendt! Tjek din indbakke.
+            </p>
+          )}
         </div>
       </div>
     </div>

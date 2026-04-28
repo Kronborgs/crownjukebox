@@ -109,6 +109,33 @@ func (s *Service) TestConnection(ctx context.Context) error {
 	return nil
 }
 
+// SendTest sends a test email to verify the full SMTP configuration.
+func (s *Service) SendTest(ctx context.Context, toEmail string) error {
+	cfg, err := s.LoadConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("load smtp config: %w", err)
+	}
+	if !cfg.Enabled || cfg.Host == "" || cfg.From == "" {
+		return fmt.Errorf("SMTP ikke konfigureret — udfyld og gem indstillingerne først")
+	}
+
+	subject := "CrownJukebox — SMTP test ✅"
+	body := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="da"><head><meta charset="UTF-8"></head>
+<body style="background:#0d0520;color:#e0d4ff;font-family:sans-serif;padding:32px;">
+  <div style="max-width:480px;margin:0 auto;background:#1a0a30;border-radius:12px;padding:32px;border:1px solid rgba(191,0,255,0.3)">
+    <div style="text-align:center;font-size:2.5rem;margin-bottom:8px;">♛</div>
+    <h1 style="text-align:center;font-size:1.2rem;letter-spacing:3px;text-transform:uppercase;color:#f0e6ff;">CrownJukebox</h1>
+    <p style="text-align:center;color:#22d3a0;font-size:1.1rem;margin:24px 0;">✅ SMTP fungerer korrekt!</p>
+    <p style="color:#8b6faa;font-size:0.9rem;text-align:center;">
+      Denne testmail blev sendt fra <strong>%s</strong><br>via <strong>%s:%d</strong>
+    </p>
+  </div>
+</body></html>`, cfg.From, cfg.Host, cfg.Port)
+
+	return s.send(cfg, toEmail, subject, body)
+}
+
 func (s *Service) send(cfg *Config, to, subject, htmlBody string) error {
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 
