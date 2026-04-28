@@ -339,10 +339,8 @@ export function NowPlaying({ state, refreshState }: Props) {
         </div>
       )}
 
-      {/* Hidden audio element */}
-      {audioSrc && (
-        <audio ref={audioRef} src={audioSrc} preload="auto" />
-      )}
+      {/* Hidden audio element — always rendered so AudioContext can be set up on mount */}
+      <audio ref={audioRef} src={audioSrc ?? undefined} preload="auto" style={{ display: 'none' }} />
 
       {/* Cover art — large */}
       <motion.div

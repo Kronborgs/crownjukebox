@@ -75,8 +75,8 @@ func (m *Manager) loadState() {
 	if err := m.db.Get(&state, `SELECT * FROM room_playback_state WHERE room_id = ?`, m.roomID); err == nil {
 		m.currentTrackID = state.CurrentTrackID
 		m.isPlaying = state.IsPlaying
-		m.isPartyMode = state.IsPartyMode
-		m.partyTrackID = state.PartyTrackID
+		m.isPartyMode = false // Never restore party mode — audio is gone after a server restart
+		m.partyTrackID = ""
 		m.positionSecs = state.PositionSecs
 		m.updatedAt = state.UpdatedAt
 	}

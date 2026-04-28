@@ -120,11 +120,11 @@ type Session struct {
 }
 
 type UserPermissions struct {
-	UserID            string `db:"user_id"`
-	CanAddToQueue     bool   `db:"can_add_to_queue"`
-	CanSearch         bool   `db:"can_search"`
-	CanUsePartyButton bool   `db:"can_use_party_button"`
-	CanViewQueue      bool   `db:"can_view_queue"`
+	UserID            string `db:"user_id"             json:"user_id"`
+	CanAddToQueue     bool   `db:"can_add_to_queue"    json:"can_add_to_queue"`
+	CanSearch         bool   `db:"can_search"          json:"can_search"`
+	CanUsePartyButton bool   `db:"can_use_party_button" json:"can_use_party_button"`
+	CanViewQueue      bool   `db:"can_view_queue"      json:"can_view_queue"`
 }
 
 type AccessLink struct {

@@ -1657,9 +1657,14 @@ func (s *Server) handleAddPlaylistTrack(w http.ResponseWriter, r *http.Request) 
 	jsonOK(w, map[string]string{"status": "added"})
 }
 
+type playlistTrackRow struct {
+	db.Track
+	IsIntro bool `db:"is_intro" json:"is_intro"`
+}
+
 func (s *Server) handleGetPlaylistTracks(w http.ResponseWriter, r *http.Request) {
 	playlistID := chi.URLParam(r, "id")
-	var tracks []db.Track
+	var tracks []playlistTrackRow
 	_ = s.db.Select(&tracks, `
 		SELECT
 			t.id, t.album_id, t.artist_id, t.title,
@@ -1668,7 +1673,8 @@ func (s *Server) handleGetPlaylistTracks(w http.ResponseWriter, r *http.Request)
 			t.created_at, t.updated_at,
 			COALESCE(ar.name, '') AS artist,
 			COALESCE(al.title, '') AS album,
-			COALESCE(t.cover_art_id, al.cover_art_id) AS cover_art_id
+			COALESCE(t.cover_art_id, al.cover_art_id) AS cover_art_id,
+			pt.is_intro
 		FROM tracks t
 		JOIN playlist_tracks pt ON pt.track_id = t.id
 		LEFT JOIN artists ar ON ar.id = t.artist_id
@@ -1678,33 +1684,31 @@ func (s *Server) handleGetPlaylistTracks(w http.ResponseWriter, r *http.Request)
 	jsonOK(w, tracks)
 }
 
+// handleSetPlaylistIntroTrack toggles is_intro on a specific playlist_tracks row.
+// Body: { "track_id": "...", "is_intro": true|false }
 func (s *Server) handleSetPlaylistIntroTrack(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	playlistID := chi.URLParam(r, "id")
 	var req struct {
-		TrackID string `json:"track_id"` // empty = clear
+		TrackID string `json:"track_id"`
+		IsIntro bool   `json:"is_intro"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.TrackID == "" {
 		jsonError(w, "invalid request", http.StatusBadRequest)
 		return
 	}
-	if req.TrackID == "" {
-		_, err := s.db.Exec(`UPDATE playlists SET intro_track_id = NULL WHERE id = ?`, id)
-		if err != nil {
-			jsonError(w, "db error", http.StatusInternalServerError)
-			return
-		}
-	} else {
-		var count int
-		_ = s.db.Get(&count, `SELECT COUNT(*) FROM playlist_tracks WHERE playlist_id = ? AND track_id = ?`, id, req.TrackID)
-		if count == 0 {
-			jsonError(w, "track not in playlist", http.StatusBadRequest)
-			return
-		}
-		_, err := s.db.Exec(`UPDATE playlists SET intro_track_id = ? WHERE id = ?`, req.TrackID, id)
-		if err != nil {
-			jsonError(w, "db error", http.StatusInternalServerError)
-			return
-		}
+	var count int
+	_ = s.db.Get(&count, `SELECT COUNT(*) FROM playlist_tracks WHERE playlist_id = ? AND track_id = ?`, playlistID, req.TrackID)
+	if count == 0 {
+		jsonError(w, "track not in playlist", http.StatusBadRequest)
+		return
+	}
+	isIntroVal := 0
+	if req.IsIntro {
+		isIntroVal = 1
+	}
+	if _, err := s.db.Exec(`UPDATE playlist_tracks SET is_intro = ? WHERE playlist_id = ? AND track_id = ?`, isIntroVal, playlistID, req.TrackID); err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
 	}
 	jsonOK(w, map[string]string{"status": "updated"})
 }

@@ -43,8 +43,8 @@ func (e *Engine) getPartyPlaylistID(ctx context.Context) (*string, error) {
 }
 
 // TriggerCheers builds the party sequence:
-// 1. Intro track (if one is marked on the playlist) — always first
-// 2. One random non-intro track from the rest of the playlist
+// 1. All intro tracks (is_intro=1) in playlist position order
+// 2. One random non-intro track from the remainder
 // It broadcasts party_started and returns the full sequence.
 func (e *Engine) TriggerCheers(ctx context.Context, triggeredByUserID string) (*PartySequence, error) {
 	playlistID, err := e.getPartyPlaylistID(ctx)
@@ -52,17 +52,27 @@ func (e *Engine) TriggerCheers(ctx context.Context, triggeredByUserID string) (*
 		return nil, fmt.Errorf("ingen skåle-playliste konfigureret for dette rum — admin skal vælge en")
 	}
 
-	// Get intro_track_id for the playlist (may be nil)
-	var introTrackID *string
-	_ = e.db.GetContext(ctx, &introTrackID, `SELECT intro_track_id FROM playlists WHERE id = ?`, *playlistID)
-
-	// Get all tracks in the party playlist
-	var allTracks []db.Track
-	if err := e.db.SelectContext(ctx, &allTracks, `
+	// Get intro tracks (ordered by position)
+	var introTracks []db.Track
+	if err := e.db.SelectContext(ctx, &introTracks, `
 		SELECT t.* FROM tracks t
 		JOIN playlist_tracks pt ON pt.track_id = t.id
-		WHERE pt.playlist_id = ?
-		ORDER BY pt.position`, *playlistID); err != nil || len(allTracks) == 0 {
+		WHERE pt.playlist_id = ? AND pt.is_intro = 1
+		ORDER BY pt.position`, *playlistID); err != nil {
+		introTracks = nil
+	}
+
+	// Get non-intro tracks for random pick
+	var extraTracks []db.Track
+	if err := e.db.SelectContext(ctx, &extraTracks, `
+		SELECT t.* FROM tracks t
+		JOIN playlist_tracks pt ON pt.track_id = t.id
+		WHERE pt.playlist_id = ? AND pt.is_intro = 0
+		ORDER BY pt.position`, *playlistID); err != nil {
+		extraTracks = nil
+	}
+
+	if len(introTracks) == 0 && len(extraTracks) == 0 {
 		return nil, fmt.Errorf("skåle-playlisten er tom")
 	}
 
@@ -74,23 +84,14 @@ func (e *Engine) TriggerCheers(ctx context.Context, triggeredByUserID string) (*
 		boost = n
 	}
 
-	// Build sequence: intro first (if configured and in playlist), then one random extra
-	var sequence []db.Track
-	var extras []db.Track
-
-	for _, t := range allTracks {
-		if introTrackID != nil && t.ID == *introTrackID {
-			sequence = append([]db.Track{t}, sequence...) // prepend intro
-		} else {
-			extras = append(extras, t)
-		}
-	}
-	if len(extras) > 0 {
-		sequence = append(sequence, extras[rand.Intn(len(extras))])
-	}
-	// Safety: if no intro was found, guarantee at least one track
-	if len(sequence) == 0 {
-		sequence = append(sequence, allTracks[rand.Intn(len(allTracks))])
+	// Build sequence: all intros in order, then one random non-intro
+	sequence := make([]db.Track, 0, len(introTracks)+1)
+	sequence = append(sequence, introTracks...)
+	if len(extraTracks) > 0 {
+		sequence = append(sequence, extraTracks[rand.Intn(len(extraTracks))])
+	} else if len(sequence) == 0 {
+		// Edge case: only intro tracks, no extras — play a random intro
+		sequence = append(sequence, introTracks[rand.Intn(len(introTracks))])
 	}
 
 	// Build cover URL for the first track (shown in overlay)

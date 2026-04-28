@@ -56,6 +56,7 @@ export interface Track {
   file_path: string
   file_size: number
   cover_art_id: string
+  is_intro?: boolean
 }
 
 export interface QueueItem {
@@ -421,8 +422,8 @@ export const adminApi = {
     patch<void>(`/api/admin/playlists/${id}`, { is_party_playlist: isPartyPlaylist }),
   deletePlaylist:     (id: string) => del(`/api/admin/playlists/${id}`),
   playlistTracks:     (playlistId: string) => getList<Track>(`/api/admin/playlists/${playlistId}/tracks`),
-  setIntroTrack:      (playlistId: string, trackId: string | null) =>
-    put<void>(`/api/admin/playlists/${playlistId}/intro-track`, { track_id: trackId ?? '' }),
+  setIntroTrack:      (playlistId: string, trackId: string, isIntro: boolean) =>
+    put<void>(`/api/admin/playlists/${playlistId}/intro-track`, { track_id: trackId, is_intro: isIntro }),
   addPlaylistTrack:    (playlistId: string, trackId: string) =>
     post<void>(`/api/admin/playlists/${playlistId}/tracks`, { track_id: trackId }),
   removePlaylistTrack: (playlistId: string, trackId: string) =>

@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi, User, setCurrentRoomId } from '@/api/client'
-import { ChevronLeft, Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio, LayoutDashboard, Mail } from 'lucide-react'
+import { Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio, LayoutDashboard, Mail } from 'lucide-react'
 
 type AdminTab = 'dashboard' | 'users' | 'jukeboxes' | 'settings' | 'library' | 'smtp'
 
@@ -13,9 +13,6 @@ export function AdminLayout() {
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-base)' }}>
       {/* Header */}
       <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(191,0,255,0.2)', display: 'flex', alignItems: 'center', gap: '16px', background: 'var(--bg-panel)' }}>
-        <Link to="/" style={{ color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px', textDecoration: 'none' }}>
-          <ChevronLeft size={18} /> Tilbage
-        </Link>
         <span className="neon-text-primary" style={{ fontSize: '1.4rem' }}>♛</span>
         <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', letterSpacing: '2px', textTransform: 'uppercase', color: 'var(--chrome-bright)' }}>
           Admin Panel
@@ -648,17 +645,19 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
 
 // ─── Library panel ────────────────────────────────────────────────
 
-function PartyPlaylistTracks({ playlistId, introTrackId, isActive }: { playlistId: string; introTrackId: string | null; isActive: boolean }) {
+function PartyPlaylistTracks({ playlistId, isActive }: { playlistId: string; isActive: boolean }) {
   const qc = useQueryClient()
   const { data: tracks = [] } = useQuery({
     queryKey: ['playlist-tracks', playlistId],
     queryFn: () => adminApi.playlistTracks(playlistId)
   })
 
-  async function setIntro(trackId: string) {
-    const newIntro = introTrackId === trackId ? null : trackId
-    await adminApi.setIntroTrack(playlistId, newIntro)
-    qc.invalidateQueries({ queryKey: ['admin-playlists'] })
+  // Determine intro order numbers (intros appear in the order they sit in the playlist)
+  let introCounter = 0
+
+  async function toggleIntro(trackId: string, currentIsIntro: boolean) {
+    await adminApi.setIntroTrack(playlistId, trackId, !currentIsIntro)
+    qc.invalidateQueries({ queryKey: ['playlist-tracks', playlistId] })
   }
 
   async function removeTrack(trackId: string, title: string) {
@@ -676,56 +675,62 @@ function PartyPlaylistTracks({ playlistId, introTrackId, isActive }: { playlistI
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '12px' }}>
       {isActive && (
         <p style={{ fontSize: '0.75rem', color: 'var(--neon-amber)', marginBottom: '6px' }}>
-          ✓ = Intro (spilles ALTID først når SKÅL! trykkes) → Derefter EN tilfældig sang → Tilbage til normal kø
+          ✓ = Intro-nummer (alle intros spilles i rækkefølge, derefter EN tilfældig sang → normal kø)
         </p>
       )}
-      {tracks.map(t => (
-        <div
-          key={t.id}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            padding: '8px 12px',
-            background: introTrackId === t.id ? 'rgba(191,0,255,0.1)' : 'rgba(255,255,255,0.04)',
-            borderRadius: '6px',
-            border: introTrackId === t.id ? '1px solid var(--neon-primary)' : '1px solid transparent'
-          }}
-        >
-          <button
-            onClick={() => setIntro(t.id)}
+      {tracks.map(t => {
+        const isIntro = !!t.is_intro
+        if (isIntro) introCounter++
+        const introNum = isIntro ? introCounter : 0
+        return (
+          <div
+            key={t.id}
             style={{
-              width: '24px',
-              height: '24px',
-              borderRadius: '4px',
-              border: introTrackId === t.id ? '2px solid var(--neon-primary)' : '2px solid rgba(255,255,255,0.3)',
-              background: introTrackId === t.id ? 'var(--neon-primary)' : 'transparent',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer',
-              flexShrink: 0
+              gap: '10px',
+              padding: '8px 12px',
+              background: isIntro ? 'rgba(191,0,255,0.1)' : 'rgba(255,255,255,0.04)',
+              borderRadius: '6px',
+              border: isIntro ? '1px solid var(--neon-primary)' : '1px solid transparent'
             }}
-            title={introTrackId === t.id ? 'Intro-nummer' : 'Klik for at gøre til intro'}
           >
-            {introTrackId === t.id && (
-              <span style={{ color: 'var(--bg-base)', fontSize: '16px', fontWeight: 'bold' }}>✓</span>
-            )}
-          </button>
-          <div style={{ flex: 1 }}>
-            <p style={{ fontWeight: 600, fontSize: '0.85rem' }}>{t.title}</p>
-            <p style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>{t.artist}</p>
+            <button
+              onClick={() => toggleIntro(t.id, isIntro)}
+              style={{
+                width: '28px',
+                height: '24px',
+                borderRadius: '4px',
+                border: isIntro ? '2px solid var(--neon-primary)' : '2px solid rgba(255,255,255,0.3)',
+                background: isIntro ? 'var(--neon-primary)' : 'transparent',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                flexShrink: 0,
+                fontSize: '12px',
+                fontWeight: 700,
+                color: isIntro ? 'var(--bg-base)' : 'rgba(255,255,255,0.4)'
+              }}
+              title={isIntro ? `Intro #${introNum} — klik for at fjerne` : 'Klik for at gøre til intro'}
+            >
+              {isIntro ? introNum : ''}
+            </button>
+            <div style={{ flex: 1 }}>
+              <p style={{ fontWeight: 600, fontSize: '0.85rem' }}>{t.title}</p>
+              <p style={{ color: 'var(--text-dim)', fontSize: '0.75rem' }}>{t.artist}</p>
+            </div>
+            <button
+              className="btn btn-ghost"
+              style={{ padding: '4px 8px', fontSize: '0.75rem', color: 'var(--neon-red)' }}
+              onClick={() => removeTrack(t.id, t.title)}
+              title="Fjern fra playliste"
+            >
+              <X size={14} />
+            </button>
           </div>
-          <button
-            className="btn btn-ghost"
-            style={{ padding: '4px 8px', fontSize: '0.75rem', color: 'var(--neon-red)' }}
-            onClick={() => removeTrack(t.id, t.title)}
-            title="Fjern fra playliste"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -797,6 +802,7 @@ function LibraryPanel() {
     try {
       const result = await adminApi.uploadPartyPlaylistTracks(Array.from(files))
       qc.invalidateQueries({ queryKey: ['admin-playlists'] })
+      qc.invalidateQueries({ queryKey: ['playlist-tracks'] })
       setScanStatus(`${result.uploaded.length} fil(er) lagt i den globale SKÅLE-playliste`)
     } catch (err: unknown) {
       setScanStatus(err instanceof Error ? err.message : 'Upload fejlede')
@@ -846,12 +852,12 @@ function LibraryPanel() {
         </h3>
         <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)', marginBottom: '12px' }}>
           <strong>SKÅL!-knappen overstyrer al musik</strong> — når nogen trykker på den, pauses den nuværende kø, 
-          og systemet spiller først <strong>intro-nummeret</strong> (✓), derefter et <strong>tilfældigt nummer</strong> 
+          og systemet spiller alle <strong>intro-numre</strong> i rækkefølge (markeret med nummer), derefter ét <strong>tilfældigt nummer</strong> 
           fra playlisten. Bagefter fortsætter den normale kø hvor den slap.
         </p>
         <p style={{ fontSize: '0.8rem', color: 'var(--neon-amber)', marginBottom: '16px' }}>
-          💡 Upload filer permanent med knappen ovenfor. Marker hvilken playliste SKÅL! skal bruge — kun én kan være aktiv.
-          Playlister med numre kan ikke slettes (beskyttelse mod fejl).
+          💡 Upload filer permanent med knappen ovenfor. Marker numre som intro ved at klikke checkmark-knappen — nummeret viser rækkefølgen.
+          Kun én playliste kan være aktiv SKÅL!-playliste.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '600px' }}>
           {(playlists as import('@/api/client').Playlist[]).map(pl => {
@@ -879,7 +885,7 @@ function LibraryPanel() {
                   <Trash2 size={16} />
                 </button>
               </div>
-              <PartyPlaylistTracks playlistId={pl.ID} introTrackId={pl.IntroTrackID ?? null} isActive={pl.IsPartyPlaylist} />
+              <PartyPlaylistTracks playlistId={pl.ID} isActive={pl.IsPartyPlaylist} />
             </div>
             )
           })}
