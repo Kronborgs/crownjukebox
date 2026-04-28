@@ -225,6 +225,7 @@ func (m *Manager) Play(ctx context.Context, trackID, userID string) error {
 	m.saveState()
 	m.mu.Unlock() // Release lock BEFORE calling GetState (which also acquires a read lock)
 
+	log.Printf("[playback] room=%s playing track=%s party=%v", m.roomID, trackID, m.isPartyMode)
 	// Fetch track info for SSE — must not hold m.mu here
 	state, _ := m.GetState(ctx)
 	m.hub.BroadcastToRoom(m.roomID, events.EventNowPlayingChanged, state)
@@ -398,5 +399,6 @@ func (m *Manager) StartParty(ctx context.Context, tracks []db.Track, userID stri
 	m.isAutoplayTrack = false
 	m.mu.Unlock()
 
+	log.Printf("[party] room=%s starting party: %d tracks, first=%s", m.roomID, len(tracks), tracks[0].ID)
 	return m.Play(ctx, tracks[0].ID, userID)
 }

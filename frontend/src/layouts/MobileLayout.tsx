@@ -24,21 +24,26 @@ export function MobileLayout() {
   const { state: playback, refreshState } = usePlayback()
   const [activeTab, setActiveTab]     = useState<Tab>('now')
   const [partyActive, setPartyActive] = useState(false)
+  const [partyBusy, setPartyBusy] = useState(false)
 
   useSSE({
     party_started: () => {
       setPartyActive(true)
+      setPartyBusy(true)
     },
-    party_ended:          () => setPartyActive(false),
+    party_ended:          () => { setPartyActive(false); setPartyBusy(false) },
     user_access_revoked:  () => logout(),
     user_access_expired:  () => logout(),
   })
 
   async function handleCheers() {
+    if (partyBusy) return
+    setPartyBusy(true)
     try {
       await partyApi.cheers()
     } catch (err) {
       console.error('[party]', err)
+      setPartyBusy(false)
     }
   }
 
@@ -110,8 +115,9 @@ export function MobileLayout() {
         <div style={{ padding: '8px 16px 0', flexShrink: 0 }}>
           <button
             className="btn btn-party"
-            style={{ width: '100%', fontSize: '1rem', padding: '14px' }}
+            style={{ width: '100%', fontSize: '1rem', padding: '14px', opacity: partyBusy ? 0.5 : 1 }}
             onClick={handleCheers}
+            disabled={partyBusy}
           >
             🥂 SKÅL!
           </button>
@@ -171,7 +177,7 @@ export function MobileLayout() {
 
       <PartyOverlay
         active={partyActive}
-        onClose={() => setPartyActive(false)}
+        onClose={() => { setPartyActive(false); setPartyBusy(false) }}
       />
     </div>
   )

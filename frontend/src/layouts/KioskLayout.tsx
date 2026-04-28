@@ -23,23 +23,28 @@ export function KioskLayout() {
   const { state: playback, refreshState } = usePlayback()
   const [activeTab, setActiveTab]     = useState<Tab>('browse')
   const [partyActive, setPartyActive] = useState(false)
+  const [partyBusy, setPartyBusy] = useState(false)
 
   // Listen for party events from SSE
   useSSE({
     party_started: () => {
       setPartyActive(true)
+      setPartyBusy(true)
     },
-    party_ended: () => setPartyActive(false),
+    party_ended: () => { setPartyActive(false); setPartyBusy(false) },
     user_access_revoked: () => { logout() },
     user_access_expired: () => { logout() },
   })
 
   async function handleCheers() {
+    if (partyBusy) return
+    setPartyBusy(true)
     try {
       await partyApi.cheers()
-      // SSE will broadcast party_started
+      // SSE will broadcast party_started and keep partyBusy=true
     } catch (err) {
       console.error('[party]', err)
+      setPartyBusy(false)
     }
   }
 
@@ -114,8 +119,9 @@ export function KioskLayout() {
           <footer className="kiosk-footer">
             <button
               className="btn btn-party"
-              style={{ minWidth: '280px' }}
+              style={{ minWidth: '280px', opacity: partyBusy ? 0.5 : 1 }}
               onClick={handleCheers}
+              disabled={partyBusy}
               aria-label="SKÅL!"
             >
               🥂 SKÅL!
@@ -127,7 +133,7 @@ export function KioskLayout() {
       {/* Party overlay — full screen */}
       <PartyOverlay
         active={partyActive}
-        onClose={() => setPartyActive(false)}
+        onClose={() => { setPartyActive(false); setPartyBusy(false) }}
       />
     </div>
   )

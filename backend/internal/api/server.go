@@ -765,7 +765,9 @@ func (s *Server) handleCheers(w http.ResponseWriter, r *http.Request) {
 		"track_count":  len(seq.Tracks),
 	}
 
-	_ = rm.Playback.StartParty(r.Context(), seq.Tracks, userID)
+	if err := rm.Playback.StartParty(r.Context(), seq.Tracks, userID); err != nil {
+		log.Printf("[party] StartParty error: %v", err)
+	}
 	s.hub.BroadcastToRoom(rm.Info.ID, events.EventPartyStarted, partyPayload)
 
 	jsonOK(w, map[string]any{
