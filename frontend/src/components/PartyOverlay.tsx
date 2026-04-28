@@ -9,10 +9,10 @@ interface Props {
 
 // PNG animation frames — served from /public/skaalanimation/
 const ANIM_FRAMES = [
-  '/skaalanimation/skalani1.png',
-  '/skaalanimation/skalani2.png',
-  '/skaalanimation/skalani3.png',
-  '/skaalanimation/skalani4.png',
+  '/skaalanimation/skalani1.png?v=2',
+  '/skaalanimation/skalani2.png?v=2',
+  '/skaalanimation/skalani3.png?v=2',
+  '/skaalanimation/skalani4.png?v=2',
 ]
 
 const PARTY_COLORS = ['#bf00ff', '#ff2d78', '#ffb300', '#00e5ff', '#39ff14']
