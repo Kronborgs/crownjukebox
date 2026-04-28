@@ -90,8 +90,8 @@ function AppRoutes() {
     )
   }
 
-  // Show room selector if user is logged in but hasn't selected a room yet
-  if (!roomSelected) {
+  // Show room selector if non-admin user is logged in but hasn't selected a room yet
+  if (!roomSelected && user.role !== 'admin') {
     return (
       <RoomSelector onRoomSelected={(id) => {
         setRoom(id)
@@ -102,9 +102,10 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/"      element={user.role === 'admin' ? <Navigate to="/admin" replace /> : (isMobile ? <MobileLayout /> : <KioskLayout />)} />
-      <Route path="/admin" element={user.role === 'admin' ? <AdminLayout /> : <Navigate to="/" replace />} />
-      <Route path="*"      element={<Navigate to="/" replace />} />
+      <Route path="/"        element={user.role === 'admin' ? <Navigate to="/admin" replace /> : (isMobile ? <MobileLayout /> : <KioskLayout />)} />
+      <Route path="/admin"   element={user.role === 'admin' ? <AdminLayout /> : <Navigate to="/" replace />} />
+      <Route path="/jukebox" element={user.role === 'admin' ? (isMobile ? <MobileLayout /> : <KioskLayout />) : <Navigate to="/" replace />} />
+      <Route path="*"        element={<Navigate to="/" replace />} />
     </Routes>
   )
 }

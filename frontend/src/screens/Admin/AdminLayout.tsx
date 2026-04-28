@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi, User, setCurrentRoomId } from '@/api/client'
 import { ChevronLeft, Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio, LayoutDashboard, Mail } from 'lucide-react'
@@ -60,6 +60,7 @@ export function AdminLayout() {
 // ─── Dashboard panel ─────────────────────────────────────────────
 
 function DashboardPanel() {
+  const navigate = useNavigate()
   const { data: metrics, refetch: refetchMetrics } = useQuery({
     queryKey: ['system-metrics'],
     queryFn: adminApi.systemMetrics,
@@ -83,7 +84,7 @@ function DashboardPanel() {
 
   const viewJukebox = (roomId: string) => {
     setCurrentRoomId(roomId)
-    window.location.href = '/'
+    navigate('/jukebox')
   }
 
   const activeJukeboxes = jukeboxes.filter(j => j.is_playing).length
@@ -258,6 +259,7 @@ function DashboardPanel() {
 // ─── Jukeboxes panel ─────────────────────────────────────────────
 
 function JukeboxesPanel() {
+  const navigate = useNavigate()
   const { data: jukeboxes = [], refetch } = useQuery({
     queryKey: ['admin-jukeboxes'],
     queryFn: adminApi.jukeboxes,
@@ -266,7 +268,7 @@ function JukeboxesPanel() {
 
   const viewJukebox = (roomId: string) => {
     setCurrentRoomId(roomId)
-    window.location.href = '/' // Reload to user's jukebox view
+    navigate('/jukebox')
   }
 
   return (
