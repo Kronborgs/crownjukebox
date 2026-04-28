@@ -73,7 +73,12 @@ func Migrate(db *sqlx.DB) error {
 		}
 
 		if _, err := db.Exec(string(sql)); err != nil {
-			return fmt.Errorf("execute migration %s: %w", version, err)
+			// Tolerate "duplicate column name" — the column may already exist in the
+			// production DB from a hotfix applied before this migration was written.
+			if !strings.Contains(err.Error(), "duplicate column name") {
+				return fmt.Errorf("execute migration %s: %w", version, err)
+			}
+			fmt.Printf("[db] migration %s: column already exists, marking as applied\n", version)
 		}
 
 		if _, err := db.Exec(`INSERT INTO schema_migrations (version) VALUES (?)`, version); err != nil {
