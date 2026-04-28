@@ -36,7 +36,7 @@ export function useSSE(
   const handlersRef = useRef(handlers)
   handlersRef.current = handlers
 
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const esRef = useRef<EventSource | null>(null)
 
   const connect = useCallback(() => {

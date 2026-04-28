@@ -23,10 +23,10 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom', 'react-router-dom'],
-          query: ['@tanstack/react-query'],
-          motion: ['framer-motion'],
+        manualChunks: (id: string) => {
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom') || id.includes('node_modules/react-router-dom')) return 'vendor'
+          if (id.includes('node_modules/@tanstack/react-query')) return 'query'
+          if (id.includes('node_modules/framer-motion')) return 'motion'
         },
       },
     },

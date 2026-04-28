@@ -10,7 +10,7 @@ import { useSSE } from './useSSE'
 export function usePlayback() {
   const qc = useQueryClient()
   const [state, setState] = useState<PlaybackState | null>(null)
-  const tickRef = useRef<ReturnType<typeof setInterval>>()
+  const tickRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
 
   async function refreshState() {
     const next = await playbackApi.state()

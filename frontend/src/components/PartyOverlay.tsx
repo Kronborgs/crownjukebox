@@ -19,7 +19,7 @@ const PARTY_COLORS = ['#bf00ff', '#ff2d78', '#ffb300', '#00e5ff', '#39ff14']
 
 export function PartyOverlay({ active, onClose }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const intervalRef = useRef<ReturnType<typeof setInterval>>()
+  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
   const [frame, setFrame] = useState(0)
 
   // Cycle through PNG animation frames at ~3fps.
