@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { NowPlaying } from '@/components/NowPlaying'
 import { AlbumBrowser } from '@/components/AlbumBrowser'
@@ -36,12 +36,21 @@ export function KioskLayout() {
     user_access_expired: () => { logout() },
   })
 
+  // Fallback polling: if SSE is blocked by an ad blocker, poll state every 3s during party mode.
+  // This ensures the overlay appears/disappears even without SSE.
+  useEffect(() => {
+    if (!partyActive) return
+    const id = setInterval(() => refreshState().catch(console.error), 3000)
+    return () => clearInterval(id)
+  }, [partyActive]) // eslint-disable-line react-hooks/exhaustive-deps
+
   async function handleCheers() {
     if (partyBusy) return
     setPartyBusy(true)
     try {
       await partyApi.cheers()
-      // SSE will broadcast party_started and keep partyBusy=true
+      // Immediately refresh state so overlay shows even if SSE is blocked by ad blocker
+      await refreshState()
     } catch (err) {
       console.error('[party]', err)
       setPartyBusy(false)

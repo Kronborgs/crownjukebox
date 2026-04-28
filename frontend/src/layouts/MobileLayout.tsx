@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { NowPlaying } from '@/components/NowPlaying'
 import { Queue } from '@/components/Queue'
@@ -35,11 +35,19 @@ export function MobileLayout() {
     user_access_expired:  () => logout(),
   })
 
+  // Fallback polling when SSE is blocked by ad blocker
+  useEffect(() => {
+    if (!partyActive) return
+    const id = setInterval(() => refreshState().catch(console.error), 3000)
+    return () => clearInterval(id)
+  }, [partyActive]) // eslint-disable-line react-hooks/exhaustive-deps
+
   async function handleCheers() {
     if (partyBusy) return
     setPartyBusy(true)
     try {
       await partyApi.cheers()
+      await refreshState()
     } catch (err) {
       console.error('[party]', err)
       setPartyBusy(false)
