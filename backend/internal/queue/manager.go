@@ -135,18 +135,9 @@ func (m *Manager) Reorder(ctx context.Context, orderedIDs []string) error {
 }
 
 // AutoplayNext selects a track for autoplay based on the last hour of room history.
-// Returns an error if there is no playback history in the last hour — caller should stop playback.
+// When there is no history yet (new room / first login) it falls back to a completely
+// random track so playback never stops unintentionally.
 func (m *Manager) AutoplayNext(ctx context.Context) (*db.Track, error) {
-	// Require at least one track played in the last hour; if not, signal stop.
-	var historyCount int
-	_ = m.db.GetContext(ctx, &historyCount, `
-		SELECT COUNT(*) FROM playback_history
-		WHERE started_at > datetime('now', '-60 minutes')
-		  AND room_id = ?`, m.roomID)
-	if historyCount == 0 {
-		return nil, fmt.Errorf("no recent history — autoplay stopped")
-	}
-
 	// Get genre distribution from last 60 minutes of this room's history
 	var recentGenres []string
 	_ = m.db.SelectContext(ctx, &recentGenres, `
@@ -207,7 +198,13 @@ func (m *Manager) AutoplayNext(ctx context.Context) (*db.Track, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("no autoplay candidates based on recent history")
+	// Absolute fallback: no history at all (first login, empty room) — pick any random track.
+	var track2 db.Track
+	if err := m.db.GetContext(ctx, &track2, `SELECT * FROM tracks ORDER BY RANDOM() LIMIT 1`); err == nil {
+		return &track2, nil
+	}
+
+	return nil, fmt.Errorf("no tracks in library")
 }
 
 // IsEmpty reports whether the room's queue has no items.
@@ -217,8 +214,8 @@ func (m *Manager) IsEmpty(ctx context.Context) bool {
 	return count == 0
 }
 
-// ClearAutoplayItems removes all autoplay items from the queue.
+// ClearAutoplayItems removes all autoplay items from the queue for this room.
 func (m *Manager) ClearAutoplayItems(ctx context.Context) error {
-	_, err := m.db.ExecContext(ctx, `DELETE FROM queue_items WHERE is_autoplay = 1`)
+	_, err := m.db.ExecContext(ctx, `DELETE FROM queue_items WHERE is_autoplay = 1 AND room_id = ?`, m.roomID)
 	return err
 }

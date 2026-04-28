@@ -73,11 +73,19 @@ func NewManager(database *sqlx.DB, hub *events.Hub, qMgr *queue.Manager, partyEn
 func (m *Manager) loadState() {
 	var state db.RoomPlaybackState
 	if err := m.db.Get(&state, `SELECT * FROM room_playback_state WHERE room_id = ?`, m.roomID); err == nil {
-		m.currentTrackID = state.CurrentTrackID
-		m.isPlaying = state.IsPlaying
 		m.isPartyMode = false // Never restore party mode — audio is gone after a server restart
 		m.partyTrackID = ""
-		m.positionSecs = state.PositionSecs
+		if state.IsPartyMode {
+			// Party was active when the server stopped — don't restore the party track.
+			// The frontend will autoplay normally from the queue/library instead.
+			m.currentTrackID = ""
+			m.isPlaying = false
+			m.positionSecs = 0
+		} else {
+			m.currentTrackID = state.CurrentTrackID
+			m.isPlaying = state.IsPlaying
+			m.positionSecs = state.PositionSecs
+		}
 		m.updatedAt = state.UpdatedAt
 	}
 }

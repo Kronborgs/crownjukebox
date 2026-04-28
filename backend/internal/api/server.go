@@ -563,8 +563,10 @@ func (s *Server) handleAddToQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Auto-start playback if nothing is playing, OR if only autoplay is running (user queue takes priority)
+	// Auto-start playback if nothing is playing, OR if only autoplay is running (user queue takes priority).
+	// Also clear any pending autoplay queue items so the user's explicit choices play uninterrupted.
 	if curState, _ := rm.Playback.GetState(r.Context()); curState != nil && (!curState.IsPlaying || curState.IsAutoplayTrack) {
+		_ = rm.Queue.ClearAutoplayItems(r.Context())
 		_ = rm.Playback.Play(r.Context(), "", userID)
 	}
 
