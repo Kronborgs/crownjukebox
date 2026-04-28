@@ -311,34 +311,12 @@ export function NowPlaying({ state, refreshState }: Props) {
   const albumText  = track?.album   ?? ''
   const coverArtId = track?.cover_art_id ?? ''
 
-  // ── Party mode: show NOTHING about the track — only keep audio alive ──────
-  if (state?.is_party_mode) {
-    return (
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px' }}>
-        {needsInteraction && (
-          <div
-            onClick={() => {
-              audioContextRef.current?.resume().catch(() => {})
-              audioRef.current?.play().then(() => setNeedsInteraction(false)).catch(() => {})
-            }}
-            style={{
-              position: 'fixed', inset: 0, zIndex: 9999,
-              background: 'rgba(0,0,0,0.88)',
-              display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center',
-              cursor: 'pointer', gap: '1rem',
-            }}
-          >
-            <Play size={64} color="var(--neon-primary)" />
-            <p style={{ color: 'var(--neon-primary)', fontSize: '1.4rem', fontWeight: 700 }}>Tryk for at starte afspilning</p>
-            <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>Browseren kræver en handling for at starte lyd</p>
-          </div>
-        )}
-        <audio ref={audioRef} src={audioSrc ?? undefined} preload="auto" style={{ display: 'none' }} />
-      </div>
-    )
-  }
+  const isParty = !!state?.is_party_mode
 
+  // CRITICAL: <audio> must ALWAYS be at the same tree position.
+  // Using an early-return with <audio> in a different JSX branch causes React to
+  // unmount/remount the element, which destroys the AudioContext and stops playback.
+  // Instead we keep ONE return and hide visual elements with {!isParty && ...}.
   return (
     <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem', padding: '1.5rem' }}>
       {/* Autoplay-policy overlay — shown when browser blocks autoplay */}
@@ -367,109 +345,110 @@ export function NowPlaying({ state, refreshState }: Props) {
         </div>
       )}
 
-      {/* Hidden audio element — always rendered so AudioContext can be set up on mount */}
+      {/* Hidden audio element — ALWAYS at this tree position, never moved */}
       <audio ref={audioRef} src={audioSrc ?? undefined} preload="auto" style={{ display: 'none' }} />
 
-      {/* Cover art — large */}
-      <motion.div
-        key={track?.id}
-        initial={{ opacity: 0, scale: 0.92 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.4 }}
-        style={{
-          width: '100%',
-          maxWidth: '320px',
-          aspectRatio: '1',
-          borderRadius: 'var(--radius-md)',
-          overflow: 'hidden',
-          boxShadow: '0 8px 40px rgba(0,0,0,0.6), 0 0 30px rgba(191,0,255,0.2)',
-        }}
-      >
-        <CoverArt artId={coverArtId} size="large" alt={titleText} />
-      </motion.div>
-
-      {/* Track info */}
-      <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <LEDScrollingText text={titleText} color="var(--neon-primary)" size="1.3rem" />
-        <LEDScrollingText text={artistText} color="var(--neon-teal)" size="1rem" />
-        <LEDScrollingText text={albumText} color="var(--text-dim)" size="0.85rem" />
-      </div>
-
-      {/* Progress bar */}
-      <div style={{ width: '100%' }}>
-        <div className="progress-bar">
-          <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', color: 'var(--text-dim)', fontSize: '0.8rem' }}>
-          <span>{formatTime(position)}</span>
-          <span>{formatTime(duration)}</span>
-        </div>
-      </div>
-
-      {/* Controls */}
-      <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', justifyContent: 'center' }}>
-        <button
-          className="btn btn-ghost btn-icon"
-          onClick={async () => {
-            if (state?.is_playing) {
-              await playbackApi.pause()
-            } else {
-              // Resume AudioContext immediately within the user gesture
-              audioContextRef.current?.resume().catch(() => {})
-              // If audio is already loaded and paused, play it directly now
-              if (audioRef.current && audioSrc) {
-                audioRef.current.play().catch((err) => {
-                  if (err.name === 'NotAllowedError' || err.name === 'NotSupportedError') {
-                    setNeedsInteraction(true)
-                  }
-                })
-              }
-              // Let the server decide: resume current track if paused, or advance queue
-              await playbackApi.play()
-            }
-            // Proactively refresh — don't rely solely on SSE delivery
-            refreshState?.().catch(console.error)
-          }}
-          aria-label={state?.is_playing ? 'Pause' : 'Afspil'}
-          title={state?.is_playing ? 'Pause' : 'Afspil'}
-        >
-          {state?.is_playing
-            ? <Pause size={24} />
-            : <Play size={24} />}
-        </button>
-        {isAdmin && track && (
-          <button
-            className="btn btn-ghost btn-icon"
-            onClick={async () => {
-              await playbackApi.skip()
-              refreshState?.().catch(console.error)
+      {/* All visual UI is hidden during party mode — only audio keeps playing */}
+      {!isParty && (
+        <>
+          {/* Cover art — large */}
+          <motion.div
+            key={track?.id}
+            initial={{ opacity: 0, scale: 0.92 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4 }}
+            style={{
+              width: '100%',
+              maxWidth: '320px',
+              aspectRatio: '1',
+              borderRadius: 'var(--radius-md)',
+              overflow: 'hidden',
+              boxShadow: '0 8px 40px rgba(0,0,0,0.6), 0 0 30px rgba(191,0,255,0.2)',
             }}
-            aria-label="Spring over"
-            title="Spring over (kun admin)"
-            style={{ color: 'var(--neon-accent)' }}
           >
-            <SkipForward size={24} />
-          </button>
-        )}
-      </div>
+            <CoverArt artId={coverArtId} size="large" alt={titleText} />
+          </motion.div>
 
-      {/* Audio Controls */}
-      <div style={{ width: '100%' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-          <span style={{ color: 'var(--text-dim)', fontSize: '0.72rem', letterSpacing: '2px', textTransform: 'uppercase' }}>Lydkontrol</span>
-          <RetroPushButton
-            label="Loudness"
-            active={audioSettings.loudness}
-            onToggle={() => updateAudioSetting('loudness', !audioSettings.loudness)}
-          />
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', justifyItems: 'center' }}>
-          <RetroDial label="Volumen" value={audioSettings.volume}  min={0}   max={100} step={1} unit="%"   accent="purple" onChange={v => updateAudioSetting('volume', v)} />
-          <RetroDial label="Bas"     value={audioSettings.bass}    min={-12} max={12}  step={1} unit=" dB" accent="green"  onChange={v => updateAudioSetting('bass', v)} />
-          <RetroDial label="Diskant" value={audioSettings.treble}  min={-12} max={12}  step={1} unit=" dB" accent="orange" onChange={v => updateAudioSetting('treble', v)} />
-          <RetroDial label="L  Balance  R" value={audioSettings.balance} min={-10} max={10} step={1} accent="purple" onChange={v => updateAudioSetting('balance', v)} formatValue={v => v === 0 ? '0' : v < 0 ? `L${Math.abs(v)}` : `R${v}`} />
-        </div>
-      </div>
+          {/* Track info */}
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <LEDScrollingText text={titleText} color="var(--neon-primary)" size="1.3rem" />
+            <LEDScrollingText text={artistText} color="var(--neon-teal)" size="1rem" />
+            <LEDScrollingText text={albumText} color="var(--text-dim)" size="0.85rem" />
+          </div>
+
+          {/* Progress bar */}
+          <div style={{ width: '100%' }}>
+            <div className="progress-bar">
+              <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', color: 'var(--text-dim)', fontSize: '0.8rem' }}>
+              <span>{formatTime(position)}</span>
+              <span>{formatTime(duration)}</span>
+            </div>
+          </div>
+
+          {/* Controls */}
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', justifyContent: 'center' }}>
+            <button
+              className="btn btn-ghost btn-icon"
+              onClick={async () => {
+                if (state?.is_playing) {
+                  await playbackApi.pause()
+                } else {
+                  audioContextRef.current?.resume().catch(() => {})
+                  if (audioRef.current && audioSrc) {
+                    audioRef.current.play().catch((err) => {
+                      if (err.name === 'NotAllowedError' || err.name === 'NotSupportedError') {
+                        setNeedsInteraction(true)
+                      }
+                    })
+                  }
+                  await playbackApi.play()
+                }
+                refreshState?.().catch(console.error)
+              }}
+              aria-label={state?.is_playing ? 'Pause' : 'Afspil'}
+              title={state?.is_playing ? 'Pause' : 'Afspil'}
+            >
+              {state?.is_playing
+                ? <Pause size={24} />
+                : <Play size={24} />}
+            </button>
+            {isAdmin && track && (
+              <button
+                className="btn btn-ghost btn-icon"
+                onClick={async () => {
+                  await playbackApi.skip()
+                  refreshState?.().catch(console.error)
+                }}
+                aria-label="Spring over"
+                title="Spring over (kun admin)"
+                style={{ color: 'var(--neon-accent)' }}
+              >
+                <SkipForward size={24} />
+              </button>
+            )}
+          </div>
+
+          {/* Audio Controls */}
+          <div style={{ width: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <span style={{ color: 'var(--text-dim)', fontSize: '0.72rem', letterSpacing: '2px', textTransform: 'uppercase' }}>Lydkontrol</span>
+              <RetroPushButton
+                label="Loudness"
+                active={audioSettings.loudness}
+                onToggle={() => updateAudioSetting('loudness', !audioSettings.loudness)}
+              />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', justifyItems: 'center' }}>
+              <RetroDial label="Volumen" value={audioSettings.volume}  min={0}   max={100} step={1} unit="%"   accent="purple" onChange={v => updateAudioSetting('volume', v)} />
+              <RetroDial label="Bas"     value={audioSettings.bass}    min={-12} max={12}  step={1} unit=" dB" accent="green"  onChange={v => updateAudioSetting('bass', v)} />
+              <RetroDial label="Diskant" value={audioSettings.treble}  min={-12} max={12}  step={1} unit=" dB" accent="orange" onChange={v => updateAudioSetting('treble', v)} />
+              <RetroDial label="L  Balance  R" value={audioSettings.balance} min={-10} max={10} step={1} accent="purple" onChange={v => updateAudioSetting('balance', v)} formatValue={v => v === 0 ? '0' : v < 0 ? `L${Math.abs(v)}` : `R${v}`} />
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

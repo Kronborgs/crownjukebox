@@ -276,6 +276,25 @@ func (m *Manager) TrackEnded(ctx context.Context, trackID, userID string) error 
 	m.mu.Lock()
 	wasParty := m.isPartyMode && m.partyTrackID == trackID
 
+	// Safety valve: if party mode is stuck (is_party_mode=true but the track that
+	// ended is NOT the party track), reset party mode so the UI recovers automatically.
+	if m.isPartyMode && !wasParty {
+		log.Printf("[party] room=%s stuck party mode reset (ended=%s partyTrack=%s)", m.roomID, trackID, m.partyTrackID)
+		m.isPartyMode = false
+		m.partyTrackID = ""
+		m.partyQueue = nil
+		m.savedTrackID = ""
+		m.savedPositionSecs = 0
+		m.savedWasPlaying = false
+		m.savedIsAutoplay = false
+		m.endCurrentHistoryLocked(ctx, false)
+		m.mu.Unlock()
+		m.hub.BroadcastToRoom(m.roomID, events.EventPartyEnded, map[string]any{
+			"resume_position_secs": 0,
+		})
+		return m.Play(ctx, "", userID)
+	}
+
 	// If party is ongoing and there are more tracks in the sequence, play the next one
 	if wasParty && len(m.partyQueue) > 0 {
 		nextID := m.partyQueue[0]

@@ -44,6 +44,15 @@ function AppRoutes() {
       .catch(() => setNeedsSetup(false))
   }, [])
 
+  // Non-admin users always use their own room (room_id = user_id).
+  // Never show them a room selector — set their room automatically.
+  useEffect(() => {
+    if (user && user.role !== 'admin' && !roomSelected) {
+      setRoom(user.id)
+      setRoomSelected(true)
+    }
+  }, [user, roomSelected]) // eslint-disable-line react-hooks/exhaustive-deps
+
   if (isLoading) {
     return (
       <div style={{
@@ -87,16 +96,6 @@ function AppRoutes() {
       <Routes>
         <Route path="*" element={<LoginScreen />} />
       </Routes>
-    )
-  }
-
-  // Show room selector if non-admin user is logged in but hasn't selected a room yet
-  if (!roomSelected && user.role !== 'admin') {
-    return (
-      <RoomSelector onRoomSelected={(id) => {
-        setRoom(id)
-        setRoomSelected(true)
-      }} />
     )
   }
 
