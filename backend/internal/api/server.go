@@ -743,26 +743,47 @@ func (s *Server) handleCheers(w http.ResponseWriter, r *http.Request) {
 		userID = sd.User.ID
 	}
 
+	// Build the party sequence once — uses the global party playlist
 	rm := getRoomFromCtx(r.Context())
-
-	// Prevent double-triggering while party is already running
-	if state, _ := rm.Playback.GetState(r.Context()); state != nil && state.IsPartyMode {
-		jsonError(w, "skål er allerede i gang", http.StatusConflict)
-		return
-	}
-
-	seq, err := rm.Party.TriggerCheers(r.Context(), userID)
+	seq, err := rm.Party.BuildSequence(r.Context())
 	if err != nil {
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if err := rm.Playback.StartParty(r.Context(), seq.Tracks, userID); err != nil {
-		log.Printf("[party] start error: %v", err)
+	firstTrack := seq.Tracks[0]
+	coverURL := ""
+	if firstTrack.CoverArtID != nil && *firstTrack.CoverArtID != "" {
+		coverURL = "/api/library/cover/" + *firstTrack.CoverArtID + "?size=large"
+	}
+	partyPayload := map[string]any{
+		"track":        firstTrack,
+		"cover_url":    coverURL,
+		"triggered_by": userID,
+		"volume_boost": seq.VolumeBoost,
+		"track_count":  len(seq.Tracks),
+	}
+
+	// Trigger party on ALL rooms simultaneously.
+	// This ensures every connected jukebox starts playing at the same time.
+	allRooms, err := s.roomSvc.List(r.Context())
+	if err != nil || len(allRooms) == 0 {
+		// Fallback: just the caller's room
+		_ = rm.Playback.StartParty(r.Context(), seq.Tracks, userID)
+		s.hub.BroadcastToRoom(rm.Info.ID, events.EventPartyStarted, partyPayload)
+	} else {
+		for _, roomInfo := range allRooms {
+			room := s.roomSvc.Get(r.Context(), roomInfo.ID)
+			if room == nil {
+				continue
+			}
+			_ = room.Playback.StartParty(r.Context(), seq.Tracks, userID)
+			s.hub.BroadcastToRoom(roomInfo.ID, events.EventPartyStarted, partyPayload)
+		}
 	}
 
 	jsonOK(w, map[string]any{
-		"track":        seq.Tracks[0],
+		"track":        firstTrack,
 		"status":       "party started",
 		"track_count":  len(seq.Tracks),
 		"volume_boost": seq.VolumeBoost,

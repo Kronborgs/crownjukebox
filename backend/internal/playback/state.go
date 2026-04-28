@@ -369,12 +369,18 @@ func (m *Manager) SetPartyMode(on bool, partyTrackID string) {
 
 // StartParty saves the current playback state, then starts playing the party sequence.
 // The first track in tracks plays immediately; the rest are queued as party tracks.
+// Calling StartParty while a party is already running force-cancels the old one.
 func (m *Manager) StartParty(ctx context.Context, tracks []db.Track, userID string) error {
 	if len(tracks) == 0 {
 		return fmt.Errorf("skåle-playlisten er tom")
 	}
 
 	m.mu.Lock()
+	// Force-cancel any lingering party mode so SKÅL can always be re-triggered
+	m.isPartyMode = false
+	m.partyTrackID = ""
+	m.partyQueue = nil
+
 	// Save whatever was playing so we can restore it after party
 	m.savedTrackID = m.currentTrackID
 	m.savedPositionSecs = m.positionSecs

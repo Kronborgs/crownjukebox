@@ -42,14 +42,12 @@ func (e *Engine) getPartyPlaylistID(ctx context.Context) (*string, error) {
 	return roomPlaylistID, nil
 }
 
-// TriggerCheers builds the party sequence:
-// 1. All intro tracks (is_intro=1) in playlist position order
-// 2. One random non-intro track from the remainder
-// It broadcasts party_started and returns the full sequence.
-func (e *Engine) TriggerCheers(ctx context.Context, triggeredByUserID string) (*PartySequence, error) {
+// BuildSequence builds the party track list and volume boost without any broadcast.
+// It reads from the global party playlist (or room-specific if no global is set).
+func (e *Engine) BuildSequence(ctx context.Context) (*PartySequence, error) {
 	playlistID, err := e.getPartyPlaylistID(ctx)
 	if err != nil || playlistID == nil || *playlistID == "" {
-		return nil, fmt.Errorf("ingen skåle-playliste konfigureret for dette rum — admin skal vælge en")
+		return nil, fmt.Errorf("ingen skåle-playliste konfigureret — admin skal vælge en")
 	}
 
 	// Get intro tracks (ordered by position)
@@ -90,12 +88,24 @@ func (e *Engine) TriggerCheers(ctx context.Context, triggeredByUserID string) (*
 	if len(extraTracks) > 0 {
 		sequence = append(sequence, extraTracks[rand.Intn(len(extraTracks))])
 	} else if len(sequence) == 0 {
-		// Edge case: only intro tracks, no extras — play a random intro
 		sequence = append(sequence, introTracks[rand.Intn(len(introTracks))])
 	}
 
+	return &PartySequence{Tracks: sequence, VolumeBoost: boost}, nil
+}
+
+// TriggerCheers builds the party sequence:
+// 1. All intro tracks (is_intro=1) in playlist position order
+// 2. One random non-intro track from the remainder
+// It broadcasts party_started and returns the full sequence.
+func (e *Engine) TriggerCheers(ctx context.Context, triggeredByUserID string) (*PartySequence, error) {
+	seq, err := e.BuildSequence(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// Build cover URL for the first track (shown in overlay)
-	firstTrack := sequence[0]
+	firstTrack := seq.Tracks[0]
 	coverURL := ""
 	if firstTrack.CoverArtID != nil && *firstTrack.CoverArtID != "" {
 		coverURL = "/api/library/cover/" + *firstTrack.CoverArtID + "?size=large"
@@ -106,11 +116,11 @@ func (e *Engine) TriggerCheers(ctx context.Context, triggeredByUserID string) (*
 		"track":        firstTrack,
 		"cover_url":    coverURL,
 		"triggered_by": triggeredByUserID,
-		"volume_boost": boost,
-		"track_count":  len(sequence),
+		"volume_boost": seq.VolumeBoost,
+		"track_count":  len(seq.Tracks),
 	})
 
-	return &PartySequence{Tracks: sequence, VolumeBoost: boost}, nil
+	return seq, nil
 }
 
 // EndParty broadcasts party ended to this room.
