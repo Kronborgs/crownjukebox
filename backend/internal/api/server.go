@@ -743,7 +743,8 @@ func (s *Server) handleCheers(w http.ResponseWriter, r *http.Request) {
 		userID = sd.User.ID
 	}
 
-	// Build the party sequence once — uses the global party playlist
+	// SKÅL kun på den jukebox der hører til den bruger der trykkede knappen.
+	// Bruger 1's SKÅL-knap rammer kun rum 1 — ikke rum 2, 3 eller 4.
 	rm := getRoomFromCtx(r.Context())
 	seq, err := rm.Party.BuildSequence(r.Context())
 	if err != nil {
@@ -764,23 +765,8 @@ func (s *Server) handleCheers(w http.ResponseWriter, r *http.Request) {
 		"track_count":  len(seq.Tracks),
 	}
 
-	// Trigger party on ALL rooms simultaneously.
-	// This ensures every connected jukebox starts playing at the same time.
-	allRooms, err := s.roomSvc.List(r.Context())
-	if err != nil || len(allRooms) == 0 {
-		// Fallback: just the caller's room
-		_ = rm.Playback.StartParty(r.Context(), seq.Tracks, userID)
-		s.hub.BroadcastToRoom(rm.Info.ID, events.EventPartyStarted, partyPayload)
-	} else {
-		for _, roomInfo := range allRooms {
-			room := s.roomSvc.Get(r.Context(), roomInfo.ID)
-			if room == nil {
-				continue
-			}
-			_ = room.Playback.StartParty(r.Context(), seq.Tracks, userID)
-			s.hub.BroadcastToRoom(roomInfo.ID, events.EventPartyStarted, partyPayload)
-		}
-	}
+	_ = rm.Playback.StartParty(r.Context(), seq.Tracks, userID)
+	s.hub.BroadcastToRoom(rm.Info.ID, events.EventPartyStarted, partyPayload)
 
 	jsonOK(w, map[string]any{
 		"track":        firstTrack,
