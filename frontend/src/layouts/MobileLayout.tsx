@@ -23,15 +23,14 @@ export function MobileLayout() {
   const { logout, permissions, isAdmin } = useSession()
   const { state: playback, refreshState } = usePlayback()
   const [activeTab, setActiveTab]     = useState<Tab>('now')
-  const [partyActive, setPartyActive] = useState(false)
   const [partyBusy, setPartyBusy] = useState(false)
 
+  // partyActive derived from backend state — always correct on fresh login / page refresh
+  const partyActive = !!playback?.is_party_mode
+
   useSSE({
-    party_started: () => {
-      setPartyActive(true)
-      setPartyBusy(true)
-    },
-    party_ended:          () => { setPartyActive(false); setPartyBusy(false) },
+    party_started: () => { setPartyBusy(true) },
+    party_ended:   () => { setPartyBusy(false) },
     user_access_revoked:  () => logout(),
     user_access_expired:  () => logout(),
   })
@@ -177,7 +176,7 @@ export function MobileLayout() {
 
       <PartyOverlay
         active={partyActive}
-        onClose={() => { setPartyActive(false); setPartyBusy(false) }}
+        onClose={() => { setPartyBusy(false) }}
       />
     </div>
   )

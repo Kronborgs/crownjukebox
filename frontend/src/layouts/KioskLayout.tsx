@@ -22,16 +22,16 @@ export function KioskLayout() {
   const { logout, isAdmin, permissions } = useSession()
   const { state: playback, refreshState } = usePlayback()
   const [activeTab, setActiveTab]     = useState<Tab>('browse')
-  const [partyActive, setPartyActive] = useState(false)
   const [partyBusy, setPartyBusy] = useState(false)
+
+  // partyActive is derived from backend state so fresh login / page refresh always reflects reality.
+  // partyBusy is separate — it disables the button optimistically from the moment it's clicked.
+  const partyActive = !!playback?.is_party_mode
 
   // Listen for party events from SSE
   useSSE({
-    party_started: () => {
-      setPartyActive(true)
-      setPartyBusy(true)
-    },
-    party_ended: () => { setPartyActive(false); setPartyBusy(false) },
+    party_started: () => { setPartyBusy(true) },
+    party_ended:   () => { setPartyBusy(false) },
     user_access_revoked: () => { logout() },
     user_access_expired: () => { logout() },
   })
@@ -133,7 +133,7 @@ export function KioskLayout() {
       {/* Party overlay — full screen */}
       <PartyOverlay
         active={partyActive}
-        onClose={() => { setPartyActive(false); setPartyBusy(false) }}
+        onClose={() => { setPartyBusy(false) }}
       />
     </div>
   )

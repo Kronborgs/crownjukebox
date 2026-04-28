@@ -41,6 +41,12 @@ export function usePlayback() {
     playback_state_changed: () => {
       refreshState().catch(console.error)
     },
+    party_started: () => {
+      refreshState().catch(console.error)
+    },
+    party_ended: () => {
+      refreshState().catch(console.error)
+    },
     queue_changed: () => {
       qc.invalidateQueries({ queryKey: ['queue'] })
     },
