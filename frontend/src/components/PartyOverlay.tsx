@@ -107,7 +107,6 @@ export function PartyOverlay({ active, onClose }: Props) {
                 width: 'min(380px, 72vw)',
                 height: 'auto',
                 imageRendering: 'crisp-edges',
-                mixBlendMode: 'screen',
                 filter: 'drop-shadow(0 0 24px #bf00ff) drop-shadow(0 0 12px #ff2d78)',
               }}
             />
