@@ -311,6 +311,34 @@ export function NowPlaying({ state, refreshState }: Props) {
   const albumText  = track?.album   ?? ''
   const coverArtId = track?.cover_art_id ?? ''
 
+  // ── Party mode: show NOTHING about the track — only keep audio alive ──────
+  if (state?.is_party_mode) {
+    return (
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px' }}>
+        {needsInteraction && (
+          <div
+            onClick={() => {
+              audioContextRef.current?.resume().catch(() => {})
+              audioRef.current?.play().then(() => setNeedsInteraction(false)).catch(() => {})
+            }}
+            style={{
+              position: 'fixed', inset: 0, zIndex: 9999,
+              background: 'rgba(0,0,0,0.88)',
+              display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer', gap: '1rem',
+            }}
+          >
+            <Play size={64} color="var(--neon-primary)" />
+            <p style={{ color: 'var(--neon-primary)', fontSize: '1.4rem', fontWeight: 700 }}>Tryk for at starte afspilning</p>
+            <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>Browseren kræver en handling for at starte lyd</p>
+          </div>
+        )}
+        <audio ref={audioRef} src={audioSrc ?? undefined} preload="auto" style={{ display: 'none' }} />
+      </div>
+    )
+  }
+
   return (
     <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem', padding: '1.5rem' }}>
       {/* Autoplay-policy overlay — shown when browser blocks autoplay */}

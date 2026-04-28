@@ -23,13 +23,10 @@ export function KioskLayout() {
   const { state: playback, refreshState } = usePlayback()
   const [activeTab, setActiveTab]     = useState<Tab>('browse')
   const [partyActive, setPartyActive] = useState(false)
-  const [partyTrack, setPartyTrack]   = useState('')
 
   // Listen for party events from SSE
   useSSE({
-    party_started: (data: unknown) => {
-      const d = data as { track?: { title?: string } }
-      setPartyTrack(d?.track?.title ?? '')
+    party_started: () => {
       setPartyActive(true)
     },
     party_ended: () => setPartyActive(false),
@@ -130,7 +127,6 @@ export function KioskLayout() {
       {/* Party overlay — full screen */}
       <PartyOverlay
         active={partyActive}
-        trackTitle={partyTrack}
         onClose={() => setPartyActive(false)}
       />
     </div>
