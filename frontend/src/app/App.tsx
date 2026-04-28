@@ -102,7 +102,7 @@ function AppRoutes() {
 
   return (
     <Routes>
-      <Route path="/"      element={isMobile ? <MobileLayout /> : <KioskLayout />} />
+      <Route path="/"      element={user.role === 'admin' ? <Navigate to="/admin" replace /> : (isMobile ? <MobileLayout /> : <KioskLayout />)} />
       <Route path="/admin" element={user.role === 'admin' ? <AdminLayout /> : <Navigate to="/" replace />} />
       <Route path="*"      element={<Navigate to="/" replace />} />
     </Routes>

@@ -2,12 +2,12 @@ import { useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi, User, setCurrentRoomId } from '@/api/client'
-import { ChevronLeft, Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio } from 'lucide-react'
+import { ChevronLeft, Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio, LayoutDashboard } from 'lucide-react'
 
-type AdminTab = 'users' | 'jukeboxes' | 'settings' | 'library'
+type AdminTab = 'dashboard' | 'users' | 'jukeboxes' | 'settings' | 'library'
 
 export function AdminLayout() {
-  const [tab, setTab] = useState<AdminTab>('users')
+  const [tab, setTab] = useState<AdminTab>('dashboard')
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-base)' }}>
@@ -25,6 +25,7 @@ export function AdminLayout() {
       {/* Tab bar */}
       <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'var(--bg-panel)', flexShrink: 0 }}>
         {([
+          { id: 'dashboard', icon: <LayoutDashboard size={16} />, label: 'Dashboard' },
           { id: 'users',     icon: <UserCheck size={16} />, label: 'Brugere' },
           { id: 'jukeboxes', icon: <Radio size={16} />,     label: 'Jukeboxes' },
           { id: 'library',   icon: <Music2 size={16} />,    label: 'Bibliotek' },
@@ -44,10 +45,209 @@ export function AdminLayout() {
 
       {/* Content */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+        {tab === 'dashboard' && <DashboardPanel />}
         {tab === 'users'     && <UsersPanel />}
         {tab === 'jukeboxes' && <JukeboxesPanel />}
         {tab === 'library'   && <LibraryPanel />}
         {tab === 'settings'  && <SettingsPanel />}
+      </div>
+    </div>
+  )
+}
+
+// ─── Dashboard panel ─────────────────────────────────────────────
+
+function DashboardPanel() {
+  const { data: metrics, refetch: refetchMetrics } = useQuery({
+    queryKey: ['system-metrics'],
+    queryFn: adminApi.systemMetrics,
+    refetchInterval: 5000,
+  })
+
+  const { data: jukeboxes = [], refetch: refetchJukeboxes } = useQuery({
+    queryKey: ['admin-jukeboxes'],
+    queryFn: adminApi.jukeboxes,
+    refetchInterval: 3000,
+  })
+
+  const formatUptime = (seconds: number) => {
+    const days = Math.floor(seconds / 86400)
+    const hours = Math.floor((seconds % 86400) / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
+    if (days > 0) return `${days}d ${hours}t ${mins}m`
+    if (hours > 0) return `${hours}t ${mins}m`
+    return `${mins}m`
+  }
+
+  const viewJukebox = (roomId: string) => {
+    setCurrentRoomId(roomId)
+    window.location.href = '/'
+  }
+
+  const activeJukeboxes = jukeboxes.filter(j => j.is_playing).length
+  const partyMode = jukeboxes.filter(j => j.is_party_mode).length
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
+        <div>
+          <h2 style={{ fontSize: '1.3rem', fontWeight: 700, marginBottom: '4px' }}>Admin Dashboard</h2>
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>
+            Systemoversigt og jukebox status
+          </p>
+        </div>
+        <button 
+          className="btn btn-ghost" 
+          onClick={() => { refetchMetrics(); refetchJukeboxes(); }} 
+          style={{ fontSize: '0.85rem', padding: '6px 12px' }}
+        >
+          <RefreshCw size={14} /> Opdater
+        </button>
+      </div>
+
+      {/* System Metrics Grid */}
+      <div style={{ display: 'grid', gap: '16px', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', marginBottom: '24px' }}>
+        {/* Uptime */}
+        <div className="glass-card" style={{ padding: '20px' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+            Uptime
+          </div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--neon-teal)' }}>
+            {metrics ? formatUptime(metrics.uptime_seconds) : '...'}
+          </div>
+        </div>
+
+        {/* Memory */}
+        <div className="glass-card" style={{ padding: '20px' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+            Memory Usage
+          </div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--neon-primary)' }}>
+            {metrics ? `${metrics.memory.alloc_mb} MB` : '...'}
+          </div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '4px' }}>
+            System: {metrics?.memory.sys_mb} MB
+          </div>
+        </div>
+
+        {/* CPU/Goroutines */}
+        <div className="glass-card" style={{ padding: '20px' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+            Runtime
+          </div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--neon-amber)' }}>
+            {metrics?.runtime.goroutines ?? '...'}
+          </div>
+          <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)', marginTop: '4px' }}>
+            Goroutines • {metrics?.runtime.num_cpu} CPU
+          </div>
+        </div>
+
+        {/* Active Jukeboxes */}
+        <div className="glass-card" style={{ padding: '20px' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+            Aktive Jukeboxes
+          </div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--neon-green)' }}>
+            {activeJukeboxes} / {jukeboxes.length}
+          </div>
+          {partyMode > 0 && (
+            <div style={{ fontSize: '0.7rem', color: 'var(--neon-amber)', marginTop: '4px' }}>
+              🍻 {partyMode} i SKÅL mode
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Database Stats */}
+      {metrics && (
+        <div className="glass-card" style={{ padding: '20px', marginBottom: '24px' }}>
+          <h3 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '16px', color: 'var(--chrome-bright)' }}>
+            Bibliotek Statistik
+          </h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '16px' }}>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Tracks</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                {metrics.database.tracks.toLocaleString()}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Albums</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                {metrics.database.albums.toLocaleString()}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Artister</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                {metrics.database.artists.toLocaleString()}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Brugere</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                {metrics.database.users}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>Rum</div>
+              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                {metrics.database.rooms}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Jukebox Overview */}
+      <div>
+        <h3 style={{ fontSize: '0.9rem', fontWeight: 700, marginBottom: '16px', color: 'var(--chrome-bright)' }}>
+          Jukebox Oversigt
+        </h3>
+        <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+          {jukeboxes.map(jb => (
+            <div
+              key={jb.user_id}
+              className="glass-card"
+              style={{ padding: '14px', cursor: 'pointer', transition: 'all 0.2s' }}
+              onClick={() => viewJukebox(jb.room_id)}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                <div
+                  style={{
+                    width: '10px',
+                    height: '10px',
+                    borderRadius: '50%',
+                    background: jb.is_playing ? 'var(--neon-green)' : 'var(--text-dim)',
+                    boxShadow: jb.is_playing ? '0 0 10px var(--neon-green)' : 'none',
+                  }}
+                />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--chrome-bright)' }}>
+                    {jb.display_name}
+                  </div>
+                </div>
+                {jb.is_party_mode && (
+                  <span style={{ fontSize: '1rem' }}>🍻</span>
+                )}
+              </div>
+              {jb.current_track && (
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {jb.current_track.title}
+                </div>
+              )}
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-dim)' }}>
+                {jb.queue_length} numre i kø
+              </div>
+            </div>
+          ))}
+        </div>
+        {jukeboxes.length === 0 && (
+          <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-dim)' }}>
+            Ingen aktive jukeboxes
+          </div>
+        )}
       </div>
     </div>
   )

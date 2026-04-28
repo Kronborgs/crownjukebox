@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -35,16 +36,17 @@ const roomContextKey contextKey = "room"
 
 // Server holds all service dependencies.
 type Server struct {
-	cfg      *config.Config
-	version  string
-	db       *sqlx.DB
-	hub      *events.Hub
-	authSvc  *auth.Service
-	qrSvc    *auth.QRService
-	roomSvc  *rooms.Service
-	emailSvc *email.Service
-	artExt   *artwork.Extractor
-	scanner  *music.Scanner
+	cfg       *config.Config
+	version   string
+	db        *sqlx.DB
+	hub       *events.Hub
+	authSvc   *auth.Service
+	qrSvc     *auth.QRService
+	roomSvc   *rooms.Service
+	emailSvc  *email.Service
+	artExt    *artwork.Extractor
+	scanner   *music.Scanner
+	startTime time.Time
 }
 
 // NewServer creates the API server with all wired dependencies.
@@ -58,16 +60,17 @@ func NewServer(cfg *config.Config, database *sqlx.DB, version string) *Server {
 	scanner := music.NewScanner(database, cfg.MusicDir)
 
 	return &Server{
-		cfg:      cfg,
-		version:  version,
-		db:       database,
-		hub:      hub,
-		authSvc:  authSvc,
-		qrSvc:    qrSvc,
-		roomSvc:  roomSvc,
-		emailSvc: emailSvc,
-		artExt:   artExt,
-		scanner:  scanner,
+		cfg:       cfg,
+		version:   version,
+		db:        database,
+		hub:       hub,
+		authSvc:   authSvc,
+		qrSvc:     qrSvc,
+		roomSvc:   roomSvc,
+		emailSvc:  emailSvc,
+		artExt:    artExt,
+		scanner:   scanner,
+		startTime: time.Now(),
 	}
 }
 
@@ -214,6 +217,9 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/admin/playlists/{id}/tracks", s.handleGetPlaylistTracks)
 		r.Put("/api/admin/playlists/{id}/intro-track", s.handleSetPlaylistIntroTrack)
 		r.Post("/api/admin/party-playlist/upload", s.handleUploadPartyPlaylistTracks)
+
+		// System monitoring
+		r.Get("/api/admin/system-metrics", s.handleSystemMetrics)
 	})
 
 	return r
@@ -1821,6 +1827,45 @@ func (s *Server) handleUploadPartyPlaylistTracks(w http.ResponseWriter, r *http.
 		"status":      "uploaded",
 		"playlist_id": playlistID,
 		"uploaded":    uploaded,
+	})
+}
+
+// handleSystemMetrics returns current system resource usage.
+func (s *Server) handleSystemMetrics(w http.ResponseWriter, r *http.Request) {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+
+	// Convert bytes to MB for readability
+	allocMB := float64(m.Alloc) / 1024 / 1024
+	sysMB := float64(m.Sys) / 1024 / 1024
+
+	// Get database stats
+	var trackCount, albumCount, artistCount, userCount, roomCount int
+	_ = s.db.Get(&trackCount, `SELECT COUNT(*) FROM tracks`)
+	_ = s.db.Get(&albumCount, `SELECT COUNT(*) FROM albums`)
+	_ = s.db.Get(&artistCount, `SELECT COUNT(*) FROM artists`)
+	_ = s.db.Get(&userCount, `SELECT COUNT(*) FROM users`)
+	_ = s.db.Get(&roomCount, `SELECT COUNT(*) FROM rooms`)
+
+	jsonOK(w, map[string]any{
+		"memory": map[string]any{
+			"alloc_mb":  fmt.Sprintf("%.2f", allocMB),
+			"sys_mb":    fmt.Sprintf("%.2f", sysMB),
+			"gc_cycles": m.NumGC,
+		},
+		"runtime": map[string]any{
+			"goroutines": runtime.NumGoroutine(),
+			"go_version": runtime.Version(),
+			"num_cpu":    runtime.NumCPU(),
+		},
+		"database": map[string]any{
+			"tracks":  trackCount,
+			"albums":  albumCount,
+			"artists": artistCount,
+			"users":   userCount,
+			"rooms":   roomCount,
+		},
+		"uptime_seconds": time.Since(s.startTime).Seconds(),
 	})
 }
 

@@ -171,6 +171,27 @@ export interface JukeboxStatus {
   queue_length: number
 }
 
+export interface SystemMetrics {
+  memory: {
+    alloc_mb: string
+    sys_mb: string
+    gc_cycles: number
+  }
+  runtime: {
+    goroutines: number
+    go_version: string
+    num_cpu: number
+  }
+  database: {
+    tracks: number
+    albums: number
+    artists: number
+    users: number
+    rooms: number
+  }
+  uptime_seconds: number
+}
+
 // ─── Room ID helper ───────────────────────────────────────────────
 
 export function getCurrentRoomId(): string {
@@ -408,6 +429,9 @@ export const adminApi = {
 
   // Jukebox monitoring (admin)
   jukeboxes: () => getList<JukeboxStatus>('/api/admin/jukeboxes'),
+
+  // System metrics
+  systemMetrics: () => get<SystemMetrics>('/api/admin/system-metrics'),
 }
 
 // ─── Rooms ────────────────────────────────────────────────────────
