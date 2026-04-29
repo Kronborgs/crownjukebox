@@ -360,11 +360,12 @@ func (m *Manager) TrackEnded(ctx context.Context, trackID, userID string) error 
 			return nil
 		}
 
-		// Nothing was playing — just end party cleanly
+		// Nothing was playing — continue with queue or autoplay after party
 		if m.partyEng != nil {
 			m.partyEng.EndParty(ctx)
 		}
-		return nil
+		log.Printf("[party] room=%s party ended, starting next track", m.roomID)
+		return m.Play(ctx, "", userID)
 	}
 
 	log.Printf("[playback] track ended: %s", trackID)
