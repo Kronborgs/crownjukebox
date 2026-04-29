@@ -24,9 +24,20 @@ export function CoverArt({ artId, size = 'medium', alt = 'Album cover', classNam
   const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>(src ? 'loading' : 'error')
   const imgRef = useRef<HTMLImageElement>(null)
 
-  // Reset status when artId changes (e.g. after artwork rescan)
+  // Reset status when artId changes, and handle already-cached images.
+  // When a browser has the image cached, it sets img.complete = true synchronously
+  // BEFORE React attaches the onLoad handler — so onLoad never fires.
+  // We check for this case after each render via useEffect.
   useEffect(() => {
-    setStatus(src ? 'loading' : 'error')
+    if (!src) {
+      setStatus('error')
+      return
+    }
+    setStatus('loading')
+    // Immediately check if the browser already has the image (cache hit)
+    if (imgRef.current?.complete && imgRef.current.naturalWidth > 0) {
+      setStatus('loaded')
+    }
   }, [src])
 
   const boxStyle: React.CSSProperties = {
