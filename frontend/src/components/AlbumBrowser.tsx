@@ -57,6 +57,7 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
   const [letterFilter, setLetterFilter] = useState('Alle')
   const [page, setPage] = useState(1)
   const [confirmTrack, setConfirmTrack] = useState<Track | null>(null)
+  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
 
   const { data: settings = {} } = useQuery({ queryKey: ['settings'], queryFn: adminApi.settings })
   const confirmAdd = (settings as Record<string, string>)['queue_confirm_add'] === '1'
@@ -94,10 +95,22 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
   const safePage = Math.min(page, totalPages)
   const visibleAlbums = filteredAlbums.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
+  function showToast(msg: string, ok = true) {
+    setToast({ msg, ok })
+    setTimeout(() => setToast(null), 2500)
+  }
+
   async function addToQueue(track: Track) {
-    await queueApi.add(track.id)
+    try {
+      await queueApi.add(track.id)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Ukendt fejl'
+      showToast(msg === 'track is already in the queue' ? 'Nummeret er allerede i køen' : `Fejl: ${msg}`, false)
+      return
+    }
     setAddedTrackId(track.id)
-    setTimeout(() => setAddedTrackId(null), 1200)
+    setTimeout(() => setAddedTrackId(null), 1500)
+    showToast(`✓ ${track.title} tilføjet`)
     qc.invalidateQueries({ queryKey: ['queue'] })
     // Auto-play if nothing is currently playing
     if (!playbackState?.is_playing) {
@@ -117,6 +130,28 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
   if (selectedAlbum) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, position: 'relative' }}>
+        {/* Toast notification */}
+        <AnimatePresence>
+          {toast && (
+            <motion.div
+              key="toast"
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              style={{
+                position: 'absolute', top: '8px', left: '50%', transform: 'translateX(-50%)',
+                zIndex: 100, pointerEvents: 'none',
+                background: toast.ok ? 'rgba(0,180,80,0.92)' : 'rgba(200,40,40,0.92)',
+                color: '#fff', borderRadius: '8px',
+                padding: '8px 18px', fontSize: '0.85rem', fontWeight: 700,
+                boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+                whiteSpace: 'nowrap', maxWidth: '90%', overflow: 'hidden', textOverflow: 'ellipsis',
+              }}
+            >
+              {toast.msg}
+            </motion.div>
+          )}
+        </AnimatePresence>
         {/* Bekræftelsesdialog */}
         <AnimatePresence>
           {confirmTrack && (
@@ -234,16 +269,19 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
                   <Clock size={12} />
                   {formatTime(track.duration_secs)}
                 </span>
-                <span
+                <button
+                  onClick={e => { e.stopPropagation(); handleTrackClick(track) }}
                   style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
-                    background: addedTrackId === track.id ? 'var(--neon-primary)' : 'rgba(191,0,255,0.25)',
+                    width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0,
+                    background: addedTrackId === track.id ? 'var(--neon-primary)' : 'rgba(191,0,255,0.35)',
                     color: 'white', transition: 'background 0.2s',
+                    border: 'none', cursor: 'pointer', padding: 0,
                   }}
+                  aria-label="Tilføj til kø"
                 >
                   {addedTrackId === track.id ? <Check size={14} /> : <Plus size={14} />}
-                </span>
+                </button>
               </motion.div>
             ))}
           </AnimatePresence>
