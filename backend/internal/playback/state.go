@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -178,6 +179,7 @@ func (m *Manager) Play(ctx context.Context, trackID, userID string) error {
 			// Queue empty — check if autoplay is enabled before selecting a random track
 			var autoplayEnabled string
 			_ = m.db.GetContext(ctx, &autoplayEnabled, `SELECT value FROM settings WHERE key = 'autoplay_enabled' LIMIT 1`)
+			autoplayEnabled = strings.ToLower(strings.TrimSpace(autoplayEnabled))
 			if autoplayEnabled != "true" && autoplayEnabled != "1" {
 				// Autoplay disabled: stop playback gracefully
 				m.isPlaying = false
@@ -411,10 +413,6 @@ func (m *Manager) ForceEndParty(ctx context.Context, userID string) error {
 	m.endCurrentHistoryLocked(ctx, false)
 	m.mu.Unlock()
 
-	m.hub.BroadcastToRoom(m.roomID, events.EventPartyEnded, map[string]any{
-		"resume_position_secs": savedPos,
-	})
-
 	if savedID != "" {
 		m.mu.Lock()
 		m.currentTrackID = savedID
@@ -425,13 +423,30 @@ func (m *Manager) ForceEndParty(ctx context.Context, userID string) error {
 		m.saveState()
 		m.mu.Unlock()
 		state, _ := m.GetState(ctx)
+		// Broadcast party_ended AFTER state is restored so frontend's refreshState()
+		// picks up the correct track, not a partial/empty state.
+		m.hub.BroadcastToRoom(m.roomID, events.EventPartyEnded, map[string]any{
+			"resume_position_secs": savedPos,
+		})
 		m.hub.BroadcastToRoom(m.roomID, events.EventNowPlayingChanged, state)
 		m.hub.BroadcastToRoom(m.roomID, events.EventPlaybackStateChanged, map[string]any{
 			"is_playing":    savedPlaying,
 			"position_secs": savedPos,
 		})
+		log.Printf("[party] room=%s restored track=%s pos=%.1f", m.roomID, savedID, savedPos)
 		return nil
 	}
+
+	// Nothing was playing before party — clear stale party track state so Play()
+	// enters the advance-from-queue / autoplay path cleanly.
+	m.mu.Lock()
+	m.currentTrackID = ""
+	m.isPlaying = false
+	m.mu.Unlock()
+
+	m.hub.BroadcastToRoom(m.roomID, events.EventPartyEnded, map[string]any{
+		"resume_position_secs": 0,
+	})
 	return m.Play(ctx, "", userID)
 }
 
