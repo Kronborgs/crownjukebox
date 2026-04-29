@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { libraryApi, Album, Track, queueApi, adminApi, playbackApi } from '@/api/client'
+import { libraryApi, Album, Track, queueApi, adminApi } from '@/api/client'
 import { CoverArt } from '@/components/CoverArt'
 import { Plus, ChevronLeft, ChevronRight, Clock, Loader2, AlertCircle, Check } from 'lucide-react'
 
@@ -62,13 +62,6 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
   const { data: settings = {} } = useQuery({ queryKey: ['settings'], queryFn: adminApi.settings })
   const confirmAdd = (settings as Record<string, string>)['queue_confirm_add'] === '1'
 
-  const { data: playbackState } = useQuery({
-    queryKey: ['playback-state'],
-    queryFn: playbackApi.state,
-    refetchInterval: 5000,
-    staleTime: 2000,
-  })
-
   const { data: albums = [], isLoading } = useQuery({
     queryKey: ['albums'],
     queryFn: () => libraryApi.albums(undefined, 1, 500),
@@ -112,11 +105,8 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
     setTimeout(() => setAddedTrackId(null), 1500)
     showToast(`✓ ${track.title} tilføjet`)
     qc.invalidateQueries({ queryKey: ['queue'] })
-    // Auto-play if nothing is currently playing
-    if (!playbackState?.is_playing) {
-      await playbackApi.play()
-      qc.invalidateQueries({ queryKey: ['playback-state'] })
-    }
+    // Backend auto-starts playback when adding to queue — no extra play() call needed here.
+    qc.invalidateQueries({ queryKey: ['playback-state'] })
   }
 
   function handleTrackClick(track: Track) {
