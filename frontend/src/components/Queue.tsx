@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { queueApi, QueueItem, libraryApi } from '@/api/client'
 import { CoverArt } from '@/components/CoverArt'
+import { useSSE } from '@/hooks/useSSE'
 import { X } from 'lucide-react'
 
 function formatTime(secs: number) {
@@ -16,6 +17,13 @@ export function Queue() {
     queryKey: ['queue'],
     queryFn:  queueApi.get,
     refetchInterval: false,
+  })
+
+  // Refresh queue whenever the backend says the queue changed
+  // (e.g. track consumed by Advance(), skip, add, remove, reorder)
+  useSSE({
+    queue_changed: () => qc.invalidateQueries({ queryKey: ['queue'] }),
+    now_playing_changed: () => qc.invalidateQueries({ queryKey: ['queue'] }),
   })
 
   async function remove(id: string) {
