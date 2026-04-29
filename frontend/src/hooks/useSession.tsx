@@ -35,7 +35,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
     authApi.me()
       .then(({ user, permissions }) => {
-        setState(s => ({ ...s, user, permissions, isLoading: false }))
+        // On page load with an existing token, restore the user's own room
+        // if no specific room was already chosen (e.g., via admin viewJukebox).
+        if (getCurrentRoomId() === 'default') {
+          setCurrentRoomId(user.id)
+        }
+        setState(s => ({ ...s, user, permissions, isLoading: false, currentRoomId: getCurrentRoomId() }))
       })
       .catch((err: ApiError) => {
         if (err.status === 401) {
@@ -62,9 +67,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (username: string, pin: string) => {
     const { token, user } = await authApi.login(username, pin)
     sessionStorage.setItem('cj_token', token)
+    // Always set room to the user's own room after a fresh login.
+    // This ensures SSE subscribes to the correct room and API calls go to the right place.
+    // (Admin can still override via viewJukebox which calls setCurrentRoomId directly.)
+    setCurrentRoomId(user.id)
     // Fetch full permissions
     const { permissions } = await authApi.me()
-    setState(s => ({ ...s, user, permissions, token, isLoading: false }))
+    setState(s => ({ ...s, user, permissions, token, isLoading: false, currentRoomId: user.id }))
   }, [])
 
   const logout = useCallback(async () => {
