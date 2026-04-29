@@ -572,18 +572,14 @@ func (s *Server) handleAddToQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Auto-start or queue management depending on current playback state:
-	// - Nothing playing → start immediately so the jukebox never sits idle.
-	// - Autoplay track playing → clear pending autoplay queue items so the user's
-	//   track plays next when the current autoplay song finishes naturally.
-	//   Do NOT skip the current track — this way the user sees their track in the queue.
+	// Auto-start or skip-to-user-track depending on current playback state:
+	// - Nothing playing → start immediately.
+	// - Autoplay track playing → skip it immediately and play the user's track.
 	// - Normal (user) track playing → track is queued normally, no disruption.
 	if curState, _ := rm.Playback.GetState(r.Context()); curState != nil {
-		if !curState.IsPlaying {
+		if !curState.IsPlaying || curState.IsAutoplayTrack {
 			_ = rm.Queue.ClearAutoplayItems(r.Context())
 			_ = rm.Playback.Play(r.Context(), "", userID)
-		} else if curState.IsAutoplayTrack {
-			_ = rm.Queue.ClearAutoplayItems(r.Context())
 		}
 	}
 
