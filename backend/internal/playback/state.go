@@ -83,9 +83,10 @@ func (m *Manager) loadState() {
 			m.isPlaying = false
 			m.positionSecs = 0
 		} else {
-			m.currentTrackID = state.CurrentTrackID
-			m.isPlaying = state.IsPlaying
-			m.positionSecs = state.PositionSecs
+			m.currentTrackID  = state.CurrentTrackID
+			m.isPlaying       = state.IsPlaying
+			m.isAutoplayTrack = state.IsAutoplayTrack
+			m.positionSecs    = state.PositionSecs
 		}
 		m.updatedAt = state.UpdatedAt
 	}
@@ -94,16 +95,17 @@ func (m *Manager) loadState() {
 func (m *Manager) saveState() {
 	_, _ = m.db.Exec(`
 		INSERT INTO room_playback_state
-			(room_id, current_track_id, is_playing, is_party_mode, party_track_id, position_seconds, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+			(room_id, current_track_id, is_playing, is_party_mode, is_autoplay_track, party_track_id, position_seconds, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(room_id) DO UPDATE SET
-			current_track_id = excluded.current_track_id,
-			is_playing       = excluded.is_playing,
-			is_party_mode    = excluded.is_party_mode,
-			party_track_id   = excluded.party_track_id,
-			position_seconds = excluded.position_seconds,
-			updated_at       = excluded.updated_at`,
-		m.roomID, m.currentTrackID, m.isPlaying, m.isPartyMode,
+			current_track_id  = excluded.current_track_id,
+			is_playing        = excluded.is_playing,
+			is_party_mode     = excluded.is_party_mode,
+			is_autoplay_track = excluded.is_autoplay_track,
+			party_track_id    = excluded.party_track_id,
+			position_seconds  = excluded.position_seconds,
+			updated_at        = excluded.updated_at`,
+		m.roomID, m.currentTrackID, m.isPlaying, m.isPartyMode, m.isAutoplayTrack,
 		m.partyTrackID, m.positionSecs, time.Now(),
 	)
 }

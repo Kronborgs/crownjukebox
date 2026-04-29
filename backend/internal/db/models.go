@@ -188,13 +188,14 @@ type PlaybackState struct {
 
 // RoomPlaybackState stores per-room playback state (one row per room).
 type RoomPlaybackState struct {
-	RoomID         string    `db:"room_id"`
-	CurrentTrackID string    `db:"current_track_id"`
-	IsPlaying      bool      `db:"is_playing"`
-	IsPartyMode    bool      `db:"is_party_mode"`
-	PartyTrackID   string    `db:"party_track_id"`
-	PositionSecs   float64   `db:"position_seconds"`
-	UpdatedAt      time.Time `db:"updated_at"`
+	RoomID          string    `db:"room_id"`
+	CurrentTrackID  string    `db:"current_track_id"`
+	IsPlaying       bool      `db:"is_playing"`
+	IsPartyMode     bool      `db:"is_party_mode"`
+	IsAutoplayTrack bool      `db:"is_autoplay_track"`
+	PartyTrackID    string    `db:"party_track_id"`
+	PositionSecs    float64   `db:"position_seconds"`
+	UpdatedAt       time.Time `db:"updated_at"`
 }
 
 // ─────────────────────────────────────────────────────────────
