@@ -775,14 +775,7 @@ function LibraryPanel() {
 
   async function deletePlaylist(id: string, name: string) {
     try {
-      // Check if playlist has tracks
-      const tracks = await adminApi.playlistTracks(id)
-      if (tracks.length > 0) {
-        alert(`Kan ikke slette "${name}" — playlisten indeholder ${tracks.length} nummer(e). Fjern numrene først.`)
-        return
-      }
-      
-      if (!confirm(`Slet den tomme playliste "${name}"?`)) return
+      if (!confirm(`Slet playlisten "${name}"? Dette kan ikke fortrydes.`)) return
       
       console.log('[deletePlaylist] Sletter playlist:', id, name)
       await adminApi.deletePlaylist(id)
@@ -1513,6 +1506,16 @@ function SkaalPanel() {
                           <Plus size={14} />
                         </button>
                       )}
+                      <button className="btn btn-ghost btn-icon" style={{ padding: '3px', color: 'var(--neon-accent)', opacity: 0.7 }}
+                        title="Slet fil permanent"
+                        onClick={async () => {
+                          if (!confirm(`Slet "${t.title}" permanent?`)) return
+                          await adminApi.deletePartyUpload(t.id)
+                          qc.invalidateQueries({ queryKey: ['party-uploads'] })
+                          qc.invalidateQueries({ queryKey: ['playlist-tracks', selectedPlaylist?.ID] })
+                        }}>
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   ))}
                   {uploadedTracks.length === 0 && (

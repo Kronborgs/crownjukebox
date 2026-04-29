@@ -114,6 +114,20 @@ func (s *Scanner) IndexFileWithOriginalName(filePath, originalFilename string) e
 	return s.indexFile(filePath, originalFilename)
 }
 
+// IndexPartyFile indexes a SKÅL upload file and marks it as source_type='party_upload'
+// so it is excluded from the regular music library browser and search.
+func (s *Scanner) IndexPartyFile(filePath, originalFilename string) error {
+	if err := s.indexFile(filePath, originalFilename); err != nil {
+		return err
+	}
+	// Mark track and its album as party_upload so library queries filter them out
+	_, _ = s.db.Exec(`UPDATE tracks SET source_type = 'party_upload' WHERE file_path = ?`, filePath)
+	_, _ = s.db.Exec(`
+		UPDATE albums SET source_type = 'party_upload'
+		WHERE id = (SELECT album_id FROM tracks WHERE file_path = ? LIMIT 1)`, filePath)
+	return nil
+}
+
 // indexFile reads metadata from a single audio file and upserts it.
 func (s *Scanner) indexFile(filePath, originalFilename string) error {
 	f, err := os.Open(filePath)

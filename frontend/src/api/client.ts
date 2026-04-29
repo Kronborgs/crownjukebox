@@ -454,6 +454,7 @@ export const adminApi = {
     return requestForm<PartyUploadResult>('/api/admin/party-uploads', form)
   },
   listPartyUploads: () => getList<Track>('/api/admin/party-uploads'),
+  deletePartyUpload: (trackId: string) => del(`/api/admin/party-uploads/${trackId}`),
 
   // Password management
   changePassword: (userId: string, newPassword: string) =>

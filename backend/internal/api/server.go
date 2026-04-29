@@ -223,6 +223,7 @@ func (s *Server) Router() http.Handler {
 		// Party uploads library (uploaded files not yet in any playlist)
 		r.Post("/api/admin/party-uploads", s.handleUploadPartyFiles)
 		r.Get("/api/admin/party-uploads", s.handleListPartyUploads)
+		r.Delete("/api/admin/party-uploads/{id}", s.handleDeletePartyUpload)
 
 		// System monitoring
 		r.Get("/api/admin/system-metrics", s.handleSystemMetrics)
@@ -373,10 +374,11 @@ func (s *Server) handleListAlbums(w http.ResponseWriter, r *http.Request) {
 		       COALESCE(aa.small_path, '') as cover_small
 		FROM albums al
 		LEFT JOIN artists ar ON ar.id = al.artist_id
-		LEFT JOIN album_art aa ON aa.id = al.cover_art_id`
+		LEFT JOIN album_art aa ON aa.id = al.cover_art_id
+		WHERE al.source_type != 'party_upload'`
 
 	if artistID != "" {
-		s.db.Select(&albums, q+` WHERE al.artist_id = ? ORDER BY al.year DESC, al.title ASC LIMIT ? OFFSET ?`,
+		s.db.Select(&albums, q+` AND al.artist_id = ? ORDER BY al.year DESC, al.title ASC LIMIT ? OFFSET ?`,
 			artistID, limit, offset)
 	} else {
 		s.db.Select(&albums, q+` ORDER BY al.year DESC, al.title ASC LIMIT ? OFFSET ?`, limit, offset)
@@ -483,7 +485,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		FROM tracks t
 		LEFT JOIN artists ar ON ar.id = t.artist_id
 		LEFT JOIN albums al ON al.id = t.album_id
-		WHERE t.title LIKE ?
+		WHERE t.title LIKE ? AND t.source_type != 'party_upload'
 		LIMIT 30`, like)
 
 	jsonOK(w, map[string]any{
@@ -1833,7 +1835,7 @@ func (s *Server) handleUploadPartyPlaylistTracks(w http.ResponseWriter, r *http.
 			continue
 		}
 
-		if err := s.scanner.IndexFileWithOriginalName(destPath, fileHeader.Filename); err != nil {
+		if err := s.scanner.IndexPartyFile(destPath, fileHeader.Filename); err != nil {
 			_ = os.Remove(destPath)
 			continue
 		}
@@ -1922,7 +1924,7 @@ func (s *Server) handleUploadPartyFiles(w http.ResponseWriter, r *http.Request) 
 			continue
 		}
 
-		if err := s.scanner.IndexFileWithOriginalName(destPath, fileHeader.Filename); err != nil {
+		if err := s.scanner.IndexPartyFile(destPath, fileHeader.Filename); err != nil {
 			_ = os.Remove(destPath)
 			continue
 		}
@@ -1988,6 +1990,44 @@ func (s *Server) handleListPartyUploads(w http.ResponseWriter, r *http.Request) 
 		tracks = []playlistTrackRow{}
 	}
 	jsonOK(w, tracks)
+}
+
+// handleDeletePartyUpload deletes a SKÅL upload track: removes from all playlists,
+// deletes the track (and album if empty), and removes the file from disk.
+func (s *Server) handleDeletePartyUpload(w http.ResponseWriter, r *http.Request) {
+	trackID := chi.URLParam(r, "id")
+
+	var track db.Track
+	if err := s.db.Get(&track, `SELECT * FROM tracks WHERE id = ? AND source_type = 'party_upload' LIMIT 1`, trackID); err != nil {
+		jsonError(w, "track ikke fundet", http.StatusNotFound)
+		return
+	}
+
+	albumID := track.AlbumID
+
+	// Remove from all playlists
+	_, _ = s.db.Exec(`DELETE FROM playlist_tracks WHERE track_id = ?`, trackID)
+
+	// Delete track
+	if _, err := s.db.Exec(`DELETE FROM tracks WHERE id = ?`, trackID); err != nil {
+		jsonError(w, "kunne ikke slette track", http.StatusInternalServerError)
+		return
+	}
+
+	// Delete album if it has no remaining tracks
+	var remaining int
+	_ = s.db.Get(&remaining, `SELECT COUNT(*) FROM tracks WHERE album_id = ?`, albumID)
+	if remaining == 0 {
+		_, _ = s.db.Exec(`DELETE FROM album_art WHERE album_id = ?`, albumID)
+		_, _ = s.db.Exec(`DELETE FROM albums WHERE id = ?`, albumID)
+	}
+
+	// Delete file from disk
+	if track.FilePath != "" {
+		_ = os.Remove(track.FilePath)
+	}
+
+	jsonOK(w, map[string]string{"status": "deleted"})
 }
 
 // handleSetPlaylistTrackOrder reorders the intro tracks within a playlist by setting
