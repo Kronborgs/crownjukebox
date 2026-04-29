@@ -192,7 +192,10 @@ func seedAdmin(database *sqlx.DB, cfg *config.Config) error {
 		return err
 	}
 
+	// Admin already exists — keep or sync their password.
 	if count > 0 {
+		// Always mark setup as completed so the web UI won't show the setup wizard.
+		_, _ = database.Exec(`INSERT OR REPLACE INTO settings (key, value) VALUES ('setup_completed', '1')`)
 		if explicitPassword != "" {
 			// Env var is set — sync it to the DB.
 			hash, err := bcrypt.GenerateFromPassword([]byte(explicitPassword), bcrypt.DefaultCost)
@@ -206,7 +209,7 @@ func seedAdmin(database *sqlx.DB, cfg *config.Config) error {
 			log.Printf("[seed] admin password synced from ADMIN_PASSWORD env var")
 		} else {
 			// Env var is empty (e.g. Unraid reset it) — keep whatever is in the DB.
-			log.Printf("[seed] ADMIN_PASSWORD not set — keeping existing admin password (change it in Admin Panel → Skift kodeord)")
+			log.Printf("[seed] admin password loaded from database (ADMIN_PASSWORD env var not configured)")
 		}
 		return nil
 	}

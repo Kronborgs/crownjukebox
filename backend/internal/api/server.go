@@ -983,7 +983,7 @@ func (s *Server) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	_, _ = s.db.Exec(`UPDATE settings SET value = '1' WHERE key = 'setup_completed'`)
+	_, _ = s.db.Exec(`INSERT OR REPLACE INTO settings (key, value) VALUES ('setup_completed', '1')`)
 	jsonOK(w, map[string]string{"status": "setup complete"})
 }
 
