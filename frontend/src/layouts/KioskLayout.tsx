@@ -92,18 +92,42 @@ export function KioskLayout() {
           </section>
 
           <section className="kiosk-browser chrome-border">
-            <div className="kiosk-tabbar">
-              {tabs.map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`kiosk-pill ${activeTab === tab.id ? 'is-active' : ''}`}
-                >
-                  {tab.icon}
-                  <span>{tab.label}</span>
-                </button>
-              ))}
-            </div>
+            {/* Compact retro nav shown only for search / queue tabs */}
+            {activeTab !== 'browse' && (
+              <div style={{
+                display: 'flex', gap: '4px', padding: '5px 8px',
+                background: 'linear-gradient(180deg, #1a0e04 0%, #120a02 100%)',
+                borderBottom: '2px solid #4a3010', flexShrink: 0,
+              }}>
+                {tabs.map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    style={{
+                      flex: 1, padding: '7px 4px',
+                      fontSize: '0.72rem', fontWeight: 800,
+                      fontFamily: '"Courier New", monospace',
+                      letterSpacing: '1px',
+                      background: activeTab === tab.id
+                        ? 'linear-gradient(160deg, #ede0a8 0%, #c9a548 100%)'
+                        : 'linear-gradient(160deg, #3d2808 0%, #2a1a04 100%)',
+                      color: activeTab === tab.id ? '#1a0800' : 'rgba(255,210,100,0.7)',
+                      border: activeTab === tab.id ? '1px solid #8a6818' : '1px solid #4a3010',
+                      borderRadius: '3px',
+                      boxShadow: activeTab === tab.id
+                        ? '1px 2px 0 #6a4010, inset 0 1px 0 rgba(255,255,255,0.5)'
+                        : '1px 1px 0 rgba(0,0,0,0.3)',
+                      cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
+                      transform: activeTab === tab.id ? 'translateY(1px)' : 'none',
+                      transition: 'all 0.07s',
+                    }}
+                  >
+                    {tab.icon}{tab.label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             <div className="kiosk-browser-content">
               <AnimatePresence mode="wait">
@@ -115,7 +139,7 @@ export function KioskLayout() {
                   transition={{ duration: 0.18 }}
                   style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%' }}
                 >
-                  {activeTab === 'browse' && <AlbumBrowser />}
+                  {activeTab === 'browse' && <AlbumBrowser onSearchTab={() => setActiveTab('search')} onQueueTab={() => setActiveTab('queue')} />}
                   {activeTab === 'search' && <SearchScreen />}
                   {activeTab === 'queue'  && <Queue />}
                 </motion.div>
