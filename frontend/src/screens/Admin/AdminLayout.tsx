@@ -1209,7 +1209,8 @@ function SettingsPanel() {
     setBindingLocal({})
   }
 
-  function fmtKey(code: string): string {
+  function fmtKey(code: string | undefined | null): string {
+    if (!code) return '—'
     const m: Record<string, string> = { Space: 'Mellemrum', ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓', Enter: 'Enter', Escape: 'Esc', Home: 'Home', PageUp: 'Page↑', PageDown: 'Page↓' }
     if (m[code]) return m[code]
     if (code.startsWith('Key')) return code.slice(3)
