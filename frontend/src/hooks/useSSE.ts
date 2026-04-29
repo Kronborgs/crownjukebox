@@ -48,18 +48,27 @@ export function useSSE(
     const es = new EventSource(url)
     esRef.current = es
 
-    es.onmessage = (ev) => {
-      try {
-        const parsed = JSON.parse(ev.data) as { type: SSEEventType; data: unknown }
-        const handler = handlersRef.current[parsed.type]
-        handler?.(parsed.data)
-      } catch {}
+    // The backend sends typed SSE events (event: TYPE\ndata: ...).
+    // Named events are NOT delivered via onmessage — each type needs its own addEventListener.
+    const knownTypes: SSEEventType[] = [
+      'now_playing_changed', 'queue_changed', 'playback_state_changed',
+      'party_started', 'party_ended', 'user_access_revoked', 'user_access_expired',
+      'settings_changed', 'library_scan_progress', 'artwork_scan_progress',
+      'artwork_updated', 'missing_artwork_found',
+    ]
+    for (const type of knownTypes) {
+      es.addEventListener(type, (ev) => {
+        try {
+          const data = JSON.parse((ev as MessageEvent).data) as unknown
+          handlersRef.current[type]?.(data)
+        } catch {}
+      })
     }
 
     es.onerror = () => {
       es.close()
       esRef.current = null
-      // Exponential backoff capped at 10s
+      // Reconnect after 3s
       reconnectTimeoutRef.current = setTimeout(() => {
         options.onReconnect?.()
         connect()
