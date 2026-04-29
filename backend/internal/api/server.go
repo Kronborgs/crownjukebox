@@ -158,6 +158,9 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/party/end", s.handlePartyEnd)
 		r.Get("/api/party/state", s.handlePartyState)
 
+		// Public read-only settings (e.g. queue_confirm_add used by regular users)
+		r.Get("/api/settings", s.handleGetSettings)
+
 		// SSE (room_id via query param for EventSource)
 		r.Get("/api/events", s.handleSSE)
 	})
@@ -199,7 +202,6 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/admin/jukeboxes", s.handleAdminListJukeboxes)
 
 		// Settings & scanning
-		r.Get("/api/settings", s.handleGetSettings)
 		r.Put("/api/settings", s.handleUpdateSettings)
 		r.Post("/api/admin/rescan", s.handleRescan)
 		r.Post("/api/admin/rescan-artwork", s.handleRescanArtwork)
