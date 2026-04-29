@@ -376,15 +376,35 @@ export function NowPlaying({ state, refreshState }: Props) {
             <LEDScrollingText text={albumText} color="var(--text-dim)" size="0.85rem" />
           </div>
 
-          {/* Progress bar */}
+          {/* Progress bar — retro LED segments */}
           <div style={{ width: '100%' }}>
-            <div className="progress-bar">
-              <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', color: 'var(--text-dim)', fontSize: '0.8rem' }}>
-              <span>{formatTime(position)}</span>
-              <span>{formatTime(duration)}</span>
-            </div>
+            {(() => {
+              const SEGS = 30
+              const filled = duration > 0 ? Math.round((progress / 100) * SEGS) : 0
+              return (
+                <>
+                  <div style={{ display: 'flex', gap: '2px', height: '10px', background: 'rgba(0,0,0,0.5)', borderRadius: '4px', padding: '2px' }}>
+                    {Array.from({ length: SEGS }).map((_, i) => {
+                      const on = i < filled
+                      const hot = i / SEGS > 0.85
+                      return (
+                        <div key={i} style={{
+                          flex: 1, height: '100%', borderRadius: '1px',
+                          background: on
+                            ? hot ? 'linear-gradient(180deg,#ff9944,#cc3300)' : 'linear-gradient(180deg,#44ffcc,#00ccaa)'
+                            : 'rgba(255,255,255,0.07)',
+                          boxShadow: on ? `0 0 3px ${hot ? '#ff6600' : '#00ffcc'}` : 'none',
+                        }} />
+                      )
+                    })}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', color: 'var(--text-dim)', fontSize: '0.8rem', fontVariantNumeric: 'tabular-nums' }}>
+                    <span>{formatTime(position)}</span>
+                    <span>{duration > 0 ? `-${formatTime(Math.max(0, Math.round(duration - position)))}` : '0:00'}</span>
+                  </div>
+                </>
+              )
+            })()}
           </div>
 
           {/* Controls */}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { libraryApi, Album, Track, queueApi, adminApi } from '@/api/client'
@@ -9,6 +9,7 @@ const DIGITS     = ['0','1','2','3','4','5','6','7','8','9']
 const ALPHA_ROW1 = ['A','B','C','D','E','F','G','H','I','J','K']
 const ALPHA_ROW2 = ['L','M','N','O','P','Q','R','S','T','U','V']
 const ALPHA_ROW3 = ['W','X','Y','Z','Æ','Ø','Å']
+const ALL_FILTERS = ['Alle', ...DIGITS, ...ALPHA_ROW1, ...ALPHA_ROW2, ...ALPHA_ROW3]
 const PAGE_SIZE = 24
 
 function JukeKey({ label, active, wide, onClick }: { label: string; active: boolean; wide?: boolean; onClick: () => void }) {
@@ -58,6 +59,8 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
   const [page, setPage] = useState(1)
   const [confirmTrack, setConfirmTrack] = useState<Track | null>(null)
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
+  const [focusedAlbumIdx, setFocusedAlbumIdx] = useState(-1)
+  const [focusedTrackIdx, setFocusedTrackIdx] = useState(-1)
 
   const { data: settings = {} } = useQuery({ queryKey: ['settings'], queryFn: adminApi.settings })
   const confirmAdd = (settings as Record<string, string>)['queue_confirm_add'] === '1'
@@ -76,7 +79,12 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
 
   useEffect(() => {
     setPage(1)
+    setFocusedAlbumIdx(-1)
   }, [letterFilter])
+
+  useEffect(() => {
+    setFocusedTrackIdx(-1)
+  }, [selectedAlbum?.id])
 
   const filteredAlbums = (albums as Album[]).filter((album) => {
     if (letterFilter === 'Alle') return true
@@ -88,12 +96,28 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
   const safePage = Math.min(page, totalPages)
   const visibleAlbums = filteredAlbums.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE)
 
+  // Refs for stable keyboard event handler (avoids stale closures with empty dep array)
+  const selectedAlbumRef = useRef<Album | null>(null)
+  const tracksRef = useRef<Track[]>([])
+  const visibleAlbumsRef = useRef<Album[]>([])
+  const letterFilterRef = useRef('Alle')
+  const focusedAlbumIdxRef = useRef(-1)
+  const focusedTrackIdxRef = useRef(-1)
+  const handleTrackClickRef = useRef<((track: Track) => void) | null>(null)
+  selectedAlbumRef.current = selectedAlbum
+  tracksRef.current = tracks as Track[]
+  visibleAlbumsRef.current = visibleAlbums
+  letterFilterRef.current = letterFilter
+  focusedAlbumIdxRef.current = focusedAlbumIdx
+  focusedTrackIdxRef.current = focusedTrackIdx
+
   function showToast(msg: string, ok = true) {
     setToast({ msg, ok })
     setTimeout(() => setToast(null), 2500)
   }
 
   async function addToQueue(track: Track) {
+    if (addedTrackId === track.id) return // debounce: prevent double-click re-submit
     try {
       await queueApi.add(track.id)
     } catch (err: unknown) {
@@ -116,6 +140,42 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
       addToQueue(track)
     }
   }
+
+  handleTrackClickRef.current = handleTrackClick
+
+  // ── Keyboard navigation (pil-taster, Enter, Home, PageUp/Down) ─────────────
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tgt = e.target as HTMLElement
+      if (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.tagName === 'SELECT') return
+      const album = selectedAlbumRef.current
+      const tks   = tracksRef.current
+      const vas   = visibleAlbumsRef.current
+      const ftIdx = focusedTrackIdxRef.current
+      const faIdx = focusedAlbumIdxRef.current
+      if (album) {
+        // ── Track list navigation ──
+        if      (e.key === 'ArrowDown')              { e.preventDefault(); setFocusedTrackIdx(i => Math.min(tks.length - 1, i < 0 ? 0 : i + 1)) }
+        else if (e.key === 'ArrowUp')                { e.preventDefault(); setFocusedTrackIdx(i => Math.max(0, i <= 0 ? 0 : i - 1)) }
+        else if (e.key === 'Enter')                  { e.preventDefault(); if (ftIdx >= 0 && ftIdx < tks.length) handleTrackClickRef.current?.(tks[ftIdx]) }
+        else if (e.key === 'Escape' || e.key === 'Home') { e.preventDefault(); setSelectedAlbum(null) }
+      } else {
+        // ── Album grid navigation ──
+        const COLS = 4
+        if      (e.key === 'ArrowRight')  { e.preventDefault(); setFocusedAlbumIdx(i => Math.min(vas.length - 1, i < 0 ? 0 : i + 1)) }
+        else if (e.key === 'ArrowLeft')   { e.preventDefault(); setFocusedAlbumIdx(i => Math.max(0, i <= 0 ? 0 : i - 1)) }
+        else if (e.key === 'ArrowDown')   { e.preventDefault(); setFocusedAlbumIdx(i => Math.min(vas.length - 1, i < 0 ? 0 : i + COLS)) }
+        else if (e.key === 'ArrowUp')     { e.preventDefault(); setFocusedAlbumIdx(i => Math.max(0, i < COLS ? 0 : i - COLS)) }
+        else if (e.key === 'Enter')       { e.preventDefault(); if (faIdx >= 0 && faIdx < vas.length) setSelectedAlbum(vas[faIdx]) }
+        else if (e.key === 'Home')        { e.preventDefault(); setLetterFilter('Alle'); setFocusedAlbumIdx(-1) }
+        else if (e.key === 'PageDown')    { e.preventDefault(); const i = ALL_FILTERS.indexOf(letterFilterRef.current); setLetterFilter(ALL_FILTERS[Math.min(ALL_FILTERS.length - 1, i + 1)]) }
+        else if (e.key === 'PageUp')      { e.preventDefault(); const i = ALL_FILTERS.indexOf(letterFilterRef.current); setLetterFilter(ALL_FILTERS[Math.max(0, i - 1)]) }
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, []) // stable via refs — no dep array needed
 
   if (selectedAlbum) {
     return (
@@ -231,7 +291,7 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.03 }}
-                onClick={() => handleTrackClick(track)}
+                onClick={() => { setFocusedTrackIdx(index); handleTrackClick(track) }}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -239,6 +299,9 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
                   padding: '12px 16px',
                   borderBottom: '1px solid rgba(255,255,255,0.04)',
                   cursor: 'pointer',
+                  backgroundColor: focusedTrackIdx === index ? 'rgba(191,0,255,0.18)' : undefined,
+                  outline: focusedTrackIdx === index ? '1px solid rgba(191,0,255,0.4)' : 'none',
+                  outlineOffset: '-1px',
                 }}
                 whileHover={{ backgroundColor: 'rgba(191,0,255,0.1)' }}
                 whileTap={{ scale: 0.98 }}
@@ -309,7 +372,10 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
                     borderRadius: 'var(--radius-md)',
                     overflow: 'hidden',
                     aspectRatio: '1',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+                    boxShadow: focusedAlbumIdx === index
+                      ? '0 0 0 3px var(--neon-primary), 0 4px 20px rgba(191,0,255,0.4)'
+                      : '0 4px 20px rgba(0,0,0,0.5)',
+                    transition: 'box-shadow 0.15s',
                   }}>
                     <CoverArt artId={album.cover_art_id} size="medium" alt={album.title} />
                   </div>

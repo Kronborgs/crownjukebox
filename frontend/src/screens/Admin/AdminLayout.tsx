@@ -1,7 +1,7 @@
-import { useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { adminApi, User, Track, Playlist, setCurrentRoomId } from '@/api/client'
+import { adminApi, User, Track, Playlist, KeyboardBinding, setCurrentRoomId } from '@/api/client'
 import { Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio, LayoutDashboard, Mail, PartyPopper, Upload, Star, ChevronUp, ChevronDown } from 'lucide-react'
 
 type AdminTab = 'dashboard' | 'users' | 'jukeboxes' | 'settings' | 'library' | 'smtp' | 'skaal'
@@ -1178,10 +1178,43 @@ function SettingsPanel() {
   const [local, setLocal] = useState<Record<string, string>>({})
   const merged = { ...settings, ...local }
 
+  // ── Keyboard bindings ──
+  const { data: bindings = [] } = useQuery({ queryKey: ['keyboard-bindings'], queryFn: adminApi.keyboardBindings })
+  const [bindingLocal, setBindingLocal] = useState<Record<string, string>>({})
+  const [recording, setRecording] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!recording) return
+    const onKey = (e: KeyboardEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (e.key === 'Escape') { setRecording(null); return }
+      setBindingLocal(prev => ({ ...prev, [recording]: e.code }))
+      setRecording(null)
+    }
+    window.addEventListener('keydown', onKey, { capture: true })
+    return () => window.removeEventListener('keydown', onKey, { capture: true })
+  }, [recording])
+
   async function save() {
     await adminApi.updateSettings(local)
     qc.invalidateQueries({ queryKey: ['settings'] })
     setLocal({})
+  }
+
+  async function saveBindings() {
+    const updated = (bindings as KeyboardBinding[]).map(b => ({ ...b, key_code: bindingLocal[b.action] ?? b.key_code }))
+    await adminApi.updateKeyboardBindings(updated)
+    qc.invalidateQueries({ queryKey: ['keyboard-bindings'] })
+    setBindingLocal({})
+  }
+
+  function fmtKey(code: string): string {
+    const m: Record<string, string> = { Space: 'Mellemrum', ArrowLeft: '←', ArrowRight: '→', ArrowUp: '↑', ArrowDown: '↓', Enter: 'Enter', Escape: 'Esc', Home: 'Home', PageUp: 'Page↑', PageDown: 'Page↓' }
+    if (m[code]) return m[code]
+    if (code.startsWith('Key')) return code.slice(3)
+    if (code.startsWith('Digit')) return code.slice(5)
+    return code
   }
 
   const settingKeys = [
@@ -1238,6 +1271,38 @@ function SettingsPanel() {
         ))}
           </div>
         </div>
+        <div className="glass-card" style={{ padding: '22px' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--chrome-bright)', marginBottom: '8px' }}>Tastatur-genveje</h3>
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '16px' }}>Klik "Ændre" og tryk den ønskede tast. Tryk Escape for at annullere.</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {(bindings as KeyboardBinding[]).map(b => {
+              const code = bindingLocal[b.action] ?? b.key_code
+              const isRec = recording === b.action
+              return (
+                <div key={b.action} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                  <span style={{ flex: 1, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{b.label}</span>
+                  <kbd style={{
+                    display: 'inline-block', padding: '3px 10px', borderRadius: '4px',
+                    fontSize: '0.85rem', fontFamily: 'monospace', minWidth: '90px', textAlign: 'center',
+                    background: isRec ? 'var(--neon-primary)' : 'rgba(255,255,255,0.1)',
+                    color: isRec ? '#000' : 'var(--text-primary)',
+                    border: '1px solid rgba(255,255,255,0.15)',
+                  }}>
+                    {isRec ? '⌨ ...' : fmtKey(code)}
+                  </kbd>
+                  <button className="btn btn-ghost" style={{ fontSize: '0.78rem', padding: '4px 10px', flexShrink: 0 }}
+                    onClick={() => setRecording(isRec ? null : b.action)}>
+                    {isRec ? 'Annuller' : 'Ændre'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+          {Object.keys(bindingLocal).length > 0 && (
+            <button className="btn btn-primary" style={{ marginTop: '16px' }} onClick={saveBindings}>Gem genveje</button>
+          )}
+        </div>
+
         <button className="btn btn-primary" style={{ alignSelf: 'flex-start' }} onClick={save}>
           Gem indstillinger
         </button>
