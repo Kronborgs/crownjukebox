@@ -5,9 +5,10 @@ import { libraryApi, Album, Track, queueApi, adminApi, playbackApi } from '@/api
 import { CoverArt } from '@/components/CoverArt'
 import { Plus, ChevronLeft, ChevronRight, Clock, Loader2, AlertCircle, Check } from 'lucide-react'
 
-const DIGITS    = ['0','1','2','3','4','5','6','7','8','9']
-const ALPHA_ROW1 = ['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O']
-const ALPHA_ROW2 = ['P','Q','R','S','T','U','V','W','X','Y','Z','Æ','Ø','Å']
+const DIGITS     = ['0','1','2','3','4','5','6','7','8','9']
+const ALPHA_ROW1 = ['A','B','C','D','E','F','G','H','I','J','K']
+const ALPHA_ROW2 = ['L','M','N','O','P','Q','R','S','T','U','V']
+const ALPHA_ROW3 = ['W','X','Y','Z','Æ','Ø','Å']
 const PAGE_SIZE = 24
 
 function JukeKey({ label, active, wide, onClick }: { label: string; active: boolean; wide?: boolean; onClick: () => void }) {
@@ -254,140 +255,8 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
 
-      {/* ── Nav + Keyboard ── */}
-      <div style={{ padding: '8px 8px 0', flexShrink: 0 }}>
-
-        {/* Row: Musik | keyboard box | Kø */}
-        <div style={{ display: 'flex', gap: '4px', alignItems: 'stretch' }}>
-
-          {/* LEFT: Musik (active — always browse here) */}
-          {onSearchTab && (
-            <div style={{
-              width: '28px',
-              writingMode: 'vertical-rl',
-              transform: 'rotate(180deg)',
-              padding: '10px 0',
-              fontSize: '0.72rem', fontWeight: 800,
-              fontFamily: '"Courier New", "Lucida Console", monospace',
-              letterSpacing: '2px',
-              background: 'linear-gradient(160deg, #ede0a8 0%, #c9a548 100%)',
-              color: '#1a0800',
-              border: '1px solid #8a6818',
-              borderRadius: '4px 0 0 4px',
-              boxShadow: '2px 3px 0 #6a4010, inset 0 1px 0 rgba(255,255,255,0.55)',
-              flexShrink: 0,
-              userSelect: 'none' as const,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}>
-              ♫ MUSIK
-            </div>
-          )}
-
-          {/* CENTER: keyboard box */}
-          <div style={{
-            flex: 1,
-            background: 'linear-gradient(180deg, #2d1a06 0%, #1a0e04 100%)',
-            border: '2px solid #6a4820',
-            borderTop: '3px solid #9a7040',
-            borderRadius: onSearchTab ? '0' : '8px 8px 6px 6px',
-            padding: '8px 10px 10px',
-            boxShadow: 'inset 0 4px 12px rgba(0,0,0,0.55)',
-            display: 'flex', flexDirection: 'column', gap: '5px',
-          }}>
-            {/* Alle + 0-9 centered */}
-            <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
-              <JukeKey label="Alle" active={letterFilter === 'Alle'} wide onClick={() => setLetterFilter('Alle')} />
-              {DIGITS.map(d => (
-                <JukeKey key={d} label={d} active={letterFilter === d} onClick={() => setLetterFilter(d)} />
-              ))}
-            </div>
-            {/* Alpha row 1: A–O */}
-            <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
-              {ALPHA_ROW1.map(l => (
-                <JukeKey key={l} label={l} active={letterFilter === l} onClick={() => setLetterFilter(l)} />
-              ))}
-            </div>
-            {/* Alpha row 2: P–Å */}
-            <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
-              {ALPHA_ROW2.map(l => (
-                <JukeKey key={l} label={l} active={letterFilter === l} onClick={() => setLetterFilter(l)} />
-              ))}
-            </div>
-          </div>
-
-          {/* RIGHT: Kø */}
-          {onQueueTab && (
-            <button
-              onClick={onQueueTab}
-              style={{
-                width: '28px',
-                writingMode: 'vertical-rl',
-                padding: '10px 0',
-                fontSize: '0.72rem', fontWeight: 800,
-                fontFamily: '"Courier New", "Lucida Console", monospace',
-                letterSpacing: '2px',
-                background: 'linear-gradient(160deg, #3d2808 0%, #2a1a04 100%)',
-                color: 'rgba(255,210,100,0.85)',
-                border: '1px solid #4a3010',
-                borderRadius: '0 4px 4px 0',
-                boxShadow: '2px 3px 0 rgba(0,0,0,0.4)',
-                cursor: 'pointer',
-                flexShrink: 0,
-                userSelect: 'none',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-              }}
-            >
-              KØ ≡
-            </button>
-          )}
-        </div>
-
-        {/* Søg — full width below keyboard */}
-        {onSearchTab && (
-          <button
-            onClick={onSearchTab}
-            style={{
-              width: '100%',
-              marginTop: '4px',
-              padding: '6px 12px',
-              fontSize: '0.72rem', fontWeight: 800,
-              fontFamily: '"Courier New", "Lucida Console", monospace',
-              letterSpacing: '3px',
-              background: 'linear-gradient(160deg, #3d2808 0%, #2a1a04 100%)',
-              color: 'rgba(255,210,100,0.85)',
-              border: '1px solid #4a3010',
-              borderRadius: '0 0 6px 6px',
-              cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-              boxShadow: '0 3px 0 rgba(0,0,0,0.4)',
-              userSelect: 'none',
-            }}
-          >
-            🔍 SØG
-          </button>
-        )}
-
-        {/* Pagination */}
-        {!isLoading && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 2px 4px', color: 'var(--text-dim)', fontSize: '0.78rem' }}>
-            <span>{filteredAlbums.length} album{letterFilter !== 'Alle' ? ` · ${letterFilter}` : ''}</span>
-            {totalPages > 1 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <button className="btn btn-ghost btn-icon" style={{ padding: '5px' }} onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage === 1}>
-                  <ChevronLeft size={14} />
-                </button>
-                <span>{safePage}/{totalPages}</span>
-                <button className="btn btn-ghost btn-icon" style={{ padding: '5px' }} onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}>
-                  <ChevronRight size={14} />
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
       {/* ── Album grid (scrollable) ── */}
-      <div style={{ overflowY: 'auto', flex: 1, padding: '4px 8px 8px' }}>
+      <div style={{ overflowY: 'auto', flex: 1, padding: '4px 8px 4px' }}>
         {isLoading ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px' }}>
             {Array.from({ length: 12 }).map((_, index) => (
@@ -432,6 +301,144 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
             </AnimatePresence>
           </div>
         )}
+      </div>
+
+      {/* ── Pagination + Keyboard (fixed at bottom) ── */}
+      <div style={{ padding: '0 8px 8px', flexShrink: 0 }}>
+
+        {/* Pagination */}
+        {!isLoading && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 2px 4px', color: 'var(--text-dim)', fontSize: '0.78rem' }}>
+            <span>{filteredAlbums.length} album{letterFilter !== 'Alle' ? ` · ${letterFilter}` : ''}</span>
+            {totalPages > 1 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <button className="btn btn-ghost btn-icon" style={{ padding: '5px' }} onClick={() => setPage(p => Math.max(1, p - 1))} disabled={safePage === 1}>
+                  <ChevronLeft size={14} />
+                </button>
+                <span>{safePage}/{totalPages}</span>
+                <button className="btn btn-ghost btn-icon" style={{ padding: '5px' }} onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={safePage === totalPages}>
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Søg — full width above keyboard */}
+        {onSearchTab && (
+          <button
+            onClick={onSearchTab}
+            style={{
+              width: '100%',
+              marginBottom: '4px',
+              padding: '6px 12px',
+              fontSize: '0.72rem', fontWeight: 800,
+              fontFamily: '"Courier New", "Lucida Console", monospace',
+              letterSpacing: '3px',
+              background: 'linear-gradient(160deg, #3d2808 0%, #2a1a04 100%)',
+              color: 'rgba(255,210,100,0.85)',
+              border: '1px solid #4a3010',
+              borderRadius: '6px 6px 0 0',
+              cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+              boxShadow: '0 -2px 0 rgba(0,0,0,0.3)',
+              userSelect: 'none',
+            }}
+          >
+            🔍 SØG
+          </button>
+        )}
+
+        {/* Row: Musik | keyboard | Kø */}
+        <div style={{ display: 'flex', gap: '4px', alignItems: 'stretch' }}>
+
+          {/* LEFT: Musik */}
+          {onSearchTab && (
+            <div style={{
+              width: '28px',
+              writingMode: 'vertical-rl',
+              transform: 'rotate(180deg)',
+              padding: '10px 0',
+              fontSize: '0.72rem', fontWeight: 800,
+              fontFamily: '"Courier New", "Lucida Console", monospace',
+              letterSpacing: '2px',
+              background: 'linear-gradient(160deg, #ede0a8 0%, #c9a548 100%)',
+              color: '#1a0800',
+              border: '1px solid #8a6818',
+              borderRadius: '0 0 0 4px',
+              boxShadow: '2px 3px 0 #6a4010, inset 0 1px 0 rgba(255,255,255,0.55)',
+              flexShrink: 0,
+              userSelect: 'none' as const,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              ♫ MUSIK
+            </div>
+          )}
+
+          {/* CENTER: keyboard box */}
+          <div style={{
+            flex: 1,
+            background: 'linear-gradient(180deg, #2d1a06 0%, #1a0e04 100%)',
+            border: '2px solid #6a4820',
+            borderBottom: '3px solid #9a7040',
+            borderRadius: onSearchTab ? '0' : '6px 6px 8px 8px',
+            padding: '8px 10px 10px',
+            boxShadow: 'inset 0 -4px 12px rgba(0,0,0,0.55)',
+            display: 'flex', flexDirection: 'column', gap: '5px',
+          }}>
+            {/* Alle + 0-9 centered */}
+            <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
+              <JukeKey label="Alle" active={letterFilter === 'Alle'} wide onClick={() => setLetterFilter('Alle')} />
+              {DIGITS.map(d => (
+                <JukeKey key={d} label={d} active={letterFilter === d} onClick={() => setLetterFilter(d)} />
+              ))}
+            </div>
+            {/* A–K */}
+            <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
+              {ALPHA_ROW1.map(l => (
+                <JukeKey key={l} label={l} active={letterFilter === l} onClick={() => setLetterFilter(l)} />
+              ))}
+            </div>
+            {/* L–V */}
+            <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
+              {ALPHA_ROW2.map(l => (
+                <JukeKey key={l} label={l} active={letterFilter === l} onClick={() => setLetterFilter(l)} />
+              ))}
+            </div>
+            {/* W–Å */}
+            <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
+              {ALPHA_ROW3.map(l => (
+                <JukeKey key={l} label={l} active={letterFilter === l} onClick={() => setLetterFilter(l)} />
+              ))}
+            </div>
+          </div>
+
+          {/* RIGHT: Kø */}
+          {onQueueTab && (
+            <button
+              onClick={onQueueTab}
+              style={{
+                width: '28px',
+                writingMode: 'vertical-rl',
+                padding: '10px 0',
+                fontSize: '0.72rem', fontWeight: 800,
+                fontFamily: '"Courier New", "Lucida Console", monospace',
+                letterSpacing: '2px',
+                background: 'linear-gradient(160deg, #3d2808 0%, #2a1a04 100%)',
+                color: 'rgba(255,210,100,0.85)',
+                border: '1px solid #4a3010',
+                borderRadius: '0 0 4px 0',
+                boxShadow: '2px 3px 0 rgba(0,0,0,0.4)',
+                cursor: 'pointer',
+                flexShrink: 0,
+                userSelect: 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}
+            >
+              KØ ≡
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
