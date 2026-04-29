@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { libraryApi, SearchResults, queueApi } from '@/api/client'
 import { CoverArt } from '@/components/CoverArt'
-import { Search as SearchIcon, Plus, X } from 'lucide-react'
+import { Search as SearchIcon, Plus, X, Check } from 'lucide-react'
 
 // Simple on-screen keyboard layout for kiosk mode
 const KEYBOARD_ROWS = [
@@ -16,6 +16,7 @@ export function SearchScreen() {
   const qc = useQueryClient()
   const [query, setQuery] = useState('')
   const [showKeyboard, setShowKeyboard] = useState(false)
+  const [addedTrackId, setAddedTrackId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const { data: results } = useQuery<SearchResults>({
@@ -26,8 +27,17 @@ export function SearchScreen() {
   })
 
   async function addToQueue(trackId: string) {
-    await queueApi.add(trackId)
+    if (addedTrackId === trackId) return
+    try {
+      await queueApi.add(trackId)
+    } catch {
+      // Duplicate or other error — silently ignore (backend returns 200 for duplicates)
+      return
+    }
+    setAddedTrackId(trackId)
+    setTimeout(() => setAddedTrackId(null), 1500)
     qc.invalidateQueries({ queryKey: ['queue'] })
+    qc.invalidateQueries({ queryKey: ['playback-state'] })
   }
 
   function onKeyPress(k: string) {
@@ -103,8 +113,8 @@ export function SearchScreen() {
                   <p style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.title}</p>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{track.artist}</p>
                 </div>
-                <button className="btn btn-primary btn-icon" style={{ padding: '6px', flexShrink: 0 }} onClick={() => addToQueue(track.id)}>
-                  <Plus size={16} />
+                <button className="btn btn-primary btn-icon" style={{ padding: '6px', flexShrink: 0 }} onClick={() => addToQueue(track.id)} disabled={addedTrackId === track.id}>
+                  {addedTrackId === track.id ? <Check size={16} /> : <Plus size={16} />}
                 </button>
               </div>
             ))}

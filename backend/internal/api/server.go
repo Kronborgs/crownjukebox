@@ -568,6 +568,11 @@ func (s *Server) handleAddToQueue(w http.ResponseWriter, r *http.Request) {
 	rm := getRoomFromCtx(r.Context())
 	item, err := rm.Queue.AddTrack(r.Context(), req.TrackID, userID)
 	if err != nil {
+		if strings.Contains(err.Error(), "already in the queue") {
+			// Idempotent: double-click or race — treat as success
+			jsonOK(w, map[string]string{"status": "already in queue"})
+			return
+		}
 		jsonError(w, err.Error(), http.StatusBadRequest)
 		return
 	}
