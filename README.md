@@ -26,12 +26,6 @@ When the moment calls for it, whoever has permission can hit the **SKÅL!** butt
 
 ## Screenshots
 
-### Kiosk view — the main screen on your TV
-![Kiosk view](pics/screenshot-kiosk.png)
-
-### Mobile view — guests add tracks from their phone
-![Mobile view](pics/screenshot-mobile.png)
-
 ### SKÅL! — full-screen party animation
 ![Party animation](pics/screenshot-party.png)
 
