@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useEffect } from 'react'
 
 interface RetroDialProps {
 	label: string
@@ -22,8 +22,9 @@ function clamp(value: number, min: number, max: number) {
 	return Math.min(max, Math.max(min, value))
 }
 
-// Minimum pixel movement before we treat a pointerdown as a drag (not a tap/click)
-const DRAG_THRESHOLD = 6
+// On mobile a "tap" can drift 15–20px — use a generous threshold so
+// taps reliably trigger click-to-set rather than an accidental drag.
+const DRAG_THRESHOLD = 20
 
 export function RetroDial({
 	label,
@@ -37,76 +38,87 @@ export function RetroDial({
 	formatValue,
 }: RetroDialProps) {
 	const dialRef = useRef<HTMLDivElement | null>(null)
+	// Keep a ref for the latest onChange/value so the native listener closure stays fresh
+	const stateRef = useRef({ value, onChange, min, max, step })
+	stateRef.current = { value, onChange, min, max, step }
+
 	const accentColor = ACCENT_COLORS[accent]
 	const angle = useMemo(() => {
 		const ratio = (value - min) / (max - min || 1)
 		return -135 + ratio * 270
 	}, [value, min, max])
 
-	// Convert a click/tap position to a dial value based on angle from center.
-	// Dial arc: -135° (min) → +135° (max), measured clockwise from 12 o'clock.
-	function valueFromPoint(clientX: number, clientY: number): number {
+	useEffect(() => {
 		const el = dialRef.current
-		if (!el) return value
-		const rect = el.getBoundingClientRect()
-		const cx = rect.left + rect.width / 2
-		const cy = rect.top + rect.height / 2
-		const angleDeg = Math.atan2(clientX - cx, -(clientY - cy)) * (180 / Math.PI)
-		const clamped = clamp(angleDeg, -135, 135)
-		const ratio = (clamped + 135) / 270
-		const raw = min + ratio * (max - min)
-		const snapped = Math.round(raw / step) * step
-		return Number(clamp(snapped, min, max).toFixed(2))
-	}
+		if (!el) return
 
-	function startDrag(event: React.PointerEvent<HTMLDivElement>) {
-		event.preventDefault()
-		const el = event.currentTarget as HTMLElement
-		el.setPointerCapture(event.pointerId)
-		const capturedId = event.pointerId
-
-		let lastX = event.clientX
-		let lastY = event.clientY
-		let currentValue = value
-		let totalMovement = 0
-
-		const handleMove = (e: PointerEvent) => {
-			// Only handle the pointer that started this drag — prevents multi-touch interference
-			if (e.pointerId !== capturedId) return
-			const dx = e.clientX - lastX
-			const dy = lastY - e.clientY // up = positive
-			lastX = e.clientX
-			lastY = e.clientY
-			totalMovement += Math.abs(dx) + Math.abs(dy)
-			const sensitivity = (max - min) / 200
-			currentValue = clamp(currentValue + (dx + dy) * sensitivity, min, max)
-			const snapped = Math.round(currentValue / step) * step
-			onChange(Number(clamp(snapped, min, max).toFixed(2)))
+		function valueFromPoint(clientX: number, clientY: number): number {
+			const { min, max, step, value } = stateRef.current
+			const rect = el!.getBoundingClientRect()
+			const cx = rect.left + rect.width / 2
+			const cy = rect.top + rect.height / 2
+			// atan2(x, -y) → 0° at top, positive clockwise
+			const angleDeg = Math.atan2(clientX - cx, -(clientY - cy)) * (180 / Math.PI)
+			const clamped = clamp(angleDeg, -135, 135)
+			const ratio = (clamped + 135) / 270
+			const raw = min + ratio * (max - min)
+			const snapped = Math.round(raw / step) * step
+			return Number(clamp(snapped, min, max).toFixed(2))
 		}
 
-		const handleUp = (e: PointerEvent) => {
-			if (e.pointerId !== capturedId) return
-			// Attach on element (not window) so events are isolated per-knob
-			el.removeEventListener('pointermove', handleMove)
-			el.removeEventListener('pointerup', handleUp)
-			// If the pointer barely moved it's a tap/click → jump to that angle
-			if (totalMovement < DRAG_THRESHOLD) {
-				onChange(valueFromPoint(e.clientX, e.clientY))
+		function onPointerDown(event: PointerEvent) {
+			// Stop browser scroll/zoom — must be a non-passive listener to work on mobile
+			event.preventDefault()
+			el!.setPointerCapture(event.pointerId)
+			const capturedId = event.pointerId
+
+			let lastX = event.clientX
+			let lastY = event.clientY
+			let currentValue = stateRef.current.value
+			let totalMovement = 0
+
+			function onPointerMove(e: PointerEvent) {
+				if (e.pointerId !== capturedId) return
+				const { min, max, step, onChange } = stateRef.current
+				const dx = e.clientX - lastX
+				const dy = lastY - e.clientY // up = positive
+				lastX = e.clientX
+				lastY = e.clientY
+				totalMovement += Math.abs(dx) + Math.abs(dy)
+				const sensitivity = (max - min) / 200
+				currentValue = clamp(currentValue + (dx + dy) * sensitivity, min, max)
+				const snapped = Math.round(currentValue / step) * step
+				onChange(Number(clamp(snapped, min, max).toFixed(2)))
 			}
+
+			function onPointerUp(e: PointerEvent) {
+				if (e.pointerId !== capturedId) return
+				el!.removeEventListener('pointermove', onPointerMove)
+				el!.removeEventListener('pointerup', onPointerUp)
+				el!.removeEventListener('pointercancel', onPointerUp)
+				// Tap (barely moved) → jump directly to the tapped angle
+				if (totalMovement < DRAG_THRESHOLD) {
+					stateRef.current.onChange(valueFromPoint(e.clientX, e.clientY))
+				}
+			}
+
+			el!.addEventListener('pointermove', onPointerMove)
+			el!.addEventListener('pointerup', onPointerUp)
+			el!.addEventListener('pointercancel', onPointerUp)
 		}
 
-		// Attach to the element, not window — combined with setPointerCapture this
-		// ensures each knob only reacts to its own pointer, even during multi-touch
-		el.addEventListener('pointermove', handleMove)
-		el.addEventListener('pointerup', handleUp)
-	}
+		// { passive: false } is required so preventDefault() actually works on mobile
+		el.addEventListener('pointerdown', onPointerDown, { passive: false })
+		return () => {
+			el.removeEventListener('pointerdown', onPointerDown)
+		}
+	}, []) // attach once — fresh values are read from stateRef
 
 	return (
 		<div className="retro-dial-wrap">
 			<div
 				ref={dialRef}
 				className="retro-dial"
-				onPointerDown={startDrag}
 				role="slider"
 				aria-label={label}
 				aria-valuemin={min}
@@ -123,7 +135,12 @@ export function RetroDial({
 						onChange(clamp(value + step, min, max))
 					}
 				}}
-				style={{ ['--dial-accent' as string]: accentColor }}
+				style={{
+					['--dial-accent' as string]: accentColor,
+					// Prevent browser from claiming the touch for scroll/zoom
+					touchAction: 'none',
+					userSelect: 'none',
+				}}
 			>
 				<div className="retro-dial-scale" />
 				<div className="retro-dial-face">
