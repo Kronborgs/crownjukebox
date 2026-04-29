@@ -1202,9 +1202,22 @@ function SettingsPanel() {
     setLocal({})
   }
 
+  const BINDING_DEFAULTS: Record<string, string> = {
+    play_pause: 'Space', next_page: 'ArrowRight', prev_page: 'ArrowLeft',
+    nav_up: 'ArrowUp', nav_down: 'ArrowDown', select: 'Enter',
+    back: 'Escape', search: 'KeyS', party: 'KeyP',
+  }
+
   async function saveBindings() {
     const updated = (bindings as KeyboardBinding[]).map(b => ({ ...b, key_code: bindingLocal[b.action] ?? b.key_code }))
     await adminApi.updateKeyboardBindings(updated)
+    qc.invalidateQueries({ queryKey: ['keyboard-bindings'] })
+    setBindingLocal({})
+  }
+
+  async function resetBindings() {
+    const defaults = (bindings as KeyboardBinding[]).map(b => ({ ...b, key_code: BINDING_DEFAULTS[b.action] ?? b.key_code }))
+    await adminApi.updateKeyboardBindings(defaults)
     qc.invalidateQueries({ queryKey: ['keyboard-bindings'] })
     setBindingLocal({})
   }
@@ -1219,7 +1232,6 @@ function SettingsPanel() {
   }
 
   const settingKeys = [
-    { key: 'autoplay_enabled', label: 'Autoplay aktiveret (true/false)' },
     { key: 'party_volume_boost', label: 'SKÅLE volumen-boost (1-30%)' },
   ]
 
@@ -1259,6 +1271,30 @@ function SettingsPanel() {
 
         <div className="glass-card" style={{ padding: '22px' }}>
           <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--chrome-bright)', marginBottom: '16px' }}>Øvrige indstillinger</h3>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '20px', paddingBottom: '16px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+            <div>
+              <p style={{ fontWeight: 600, fontSize: '0.9rem' }}>Autoplay aktiveret</p>
+              <p style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginTop: '4px' }}>Spil automatisk fra biblioteket, når brugerkøen er tom.</p>
+            </div>
+            <button
+              role="switch"
+              aria-checked={merged['autoplay_enabled'] === 'true' || merged['autoplay_enabled'] === '1'}
+              onClick={() => setLocal(l => ({ ...l, autoplay_enabled: (merged['autoplay_enabled'] === 'true' || merged['autoplay_enabled'] === '1') ? 'false' : 'true' }))}
+              style={{
+                flexShrink: 0,
+                width: '48px', height: '26px', borderRadius: '13px', border: 'none',
+                background: (merged['autoplay_enabled'] === 'true' || merged['autoplay_enabled'] === '1') ? 'var(--neon-primary)' : 'rgba(255,255,255,0.15)',
+                cursor: 'pointer', position: 'relative', transition: 'background 0.2s',
+              }}
+            >
+              <span style={{
+                position: 'absolute', top: '3px',
+                left: (merged['autoplay_enabled'] === 'true' || merged['autoplay_enabled'] === '1') ? '25px' : '3px',
+                width: '20px', height: '20px', borderRadius: '50%',
+                background: 'white', transition: 'left 0.2s',
+              }} />
+            </button>
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         {settingKeys.map(({ key, label }) => (
           <div key={key}>
@@ -1278,16 +1314,21 @@ function SettingsPanel() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {(bindings as KeyboardBinding[]).map(b => {
               const code = bindingLocal[b.action] ?? b.key_code
+              const defaultCode = BINDING_DEFAULTS[b.action]
+              const isChanged = b.key_code !== defaultCode
               const isRec = recording === b.action
               return (
                 <div key={b.action} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                  <span style={{ flex: 1, fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{b.label}</span>
+                  <div style={{ flex: 1 }}>
+                    <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{b.label || b.action}</span>
+                    {defaultCode && <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginLeft: '8px' }}>standard: {fmtKey(defaultCode)}</span>}
+                  </div>
                   <kbd style={{
                     display: 'inline-block', padding: '3px 10px', borderRadius: '4px',
                     fontSize: '0.85rem', fontFamily: 'monospace', minWidth: '90px', textAlign: 'center',
-                    background: isRec ? 'var(--neon-primary)' : 'rgba(255,255,255,0.1)',
+                    background: isRec ? 'var(--neon-primary)' : isChanged ? 'rgba(191,0,255,0.18)' : 'rgba(255,255,255,0.1)',
                     color: isRec ? '#000' : 'var(--text-primary)',
-                    border: '1px solid rgba(255,255,255,0.15)',
+                    border: isChanged ? '1px solid rgba(191,0,255,0.5)' : '1px solid rgba(255,255,255,0.15)',
                   }}>
                     {isRec ? '⌨ ...' : fmtKey(code)}
                   </kbd>
@@ -1299,9 +1340,12 @@ function SettingsPanel() {
               )
             })}
           </div>
-          {Object.keys(bindingLocal).length > 0 && (
-            <button className="btn btn-primary" style={{ marginTop: '16px' }} onClick={saveBindings}>Gem genveje</button>
-          )}
+          <div style={{ display: 'flex', gap: '10px', marginTop: '16px', flexWrap: 'wrap' }}>
+            {Object.keys(bindingLocal).length > 0 && (
+              <button className="btn btn-primary" onClick={saveBindings}>Gem genveje</button>
+            )}
+            <button className="btn btn-ghost" style={{ fontSize: '0.82rem' }} onClick={resetBindings}>Nulstil til standard</button>
+          </div>
         </div>
 
         <button className="btn btn-primary" style={{ alignSelf: 'flex-start' }} onClick={save}>

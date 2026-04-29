@@ -221,9 +221,9 @@ type Setting struct {
 }
 
 type KeyboardBinding struct {
-	Action  string `db:"action"`
-	KeyCode string `db:"key_code"`
-	Label   string `db:"label"`
+	Action  string `db:"action"  json:"action"`
+	KeyCode string `db:"key_code" json:"key_code"`
+	Label   string `db:"label"   json:"label"`
 }
 
 type SubsonicConfig struct {
