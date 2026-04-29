@@ -90,6 +90,7 @@ export function NowPlaying({ state, refreshState }: Props) {
   const partyVolumeRef = useRef<number | null>(null)
   const resumePositionRef = useRef<number | null>(null)
   const [audioSrc, setAudioSrc] = useState<string | null>(null)
+  const [audioKey, setAudioKey] = useState(0) // bumped on track-ended so same-track-ID still re-triggers audio
   const [needsInteraction, setNeedsInteraction] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [audioSettings, setAudioSettings] = useState({
@@ -221,7 +222,8 @@ export function NowPlaying({ state, refreshState }: Props) {
     }
   }, [audioSettings])
 
-  // When track changes, load new audio and reset interaction flag
+  // When track changes (or audioKey is bumped after track-ended), reload audio.
+  // audioKey ensures this re-runs even when the same track ID is picked again.
   useEffect(() => {
     setNeedsInteraction(false)
     if (!track?.id) {
@@ -230,7 +232,7 @@ export function NowPlaying({ state, refreshState }: Props) {
     }
     const token = sessionStorage.getItem('cj_token') ?? ''
     setAudioSrc(`/api/playback/stream/${track.id}?token=${encodeURIComponent(token)}`)
-  }, [track?.id])
+  }, [track?.id, audioKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync play/pause from server state
   useEffect(() => {
@@ -284,8 +286,13 @@ export function NowPlaying({ state, refreshState }: Props) {
     const audio = audioRef.current
     if (!audio) return
     const onEnded = () => {
+      // Bump audioKey BEFORE the API call so that even if the backend selects
+      // the same track ID again, the audioSrc useEffect re-runs and restarts audio.
+      setAudioKey(k => k + 1)
       if (track?.id) {
         playbackApi.trackEnded(track.id)
+          .catch(() => {})
+          .finally(() => { refreshState?.().catch(() => {}) })
       }
     }
     const onCanPlay = () => {
