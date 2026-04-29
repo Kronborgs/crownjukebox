@@ -174,7 +174,6 @@ func (m *Manager) Play(ctx context.Context, trackID, userID string) error {
 			m.mu.Unlock()
 			return err
 		}
-		queueAdvanced := item != nil
 		if item == nil {
 			// Queue empty — check if autoplay is enabled before selecting a random track
 			var autoplayEnabled string
@@ -212,14 +211,6 @@ func (m *Manager) Play(ctx context.Context, trackID, userID string) error {
 		} else {
 			trackID = item.TrackID
 			nextIsAutoplay = item.IsAutoplay
-		}
-		if queueAdvanced {
-			// Defer queue-changed broadcast until after the mutex is released (see below)
-			defer func() {
-				if queueItems, err2 := m.queueMgr.GetQueue(ctx); err2 == nil {
-					m.hub.BroadcastToRoom(m.roomID, events.EventQueueChanged, map[string]any{"items": queueItems})
-				}
-			}()
 		}
 	}
 

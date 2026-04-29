@@ -667,6 +667,7 @@ func (s *Server) handleSkip(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	s.broadcastQueueChange(r.Context())
 	jsonOK(w, map[string]string{"status": "skipped"})
 }
 
@@ -723,6 +724,7 @@ func (s *Server) handleTrackEnded(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	rm := getRoomFromCtx(r.Context())
 	_ = rm.Playback.TrackEnded(r.Context(), req.TrackID, userID)
+	s.broadcastQueueChange(r.Context())
 	w.WriteHeader(http.StatusNoContent)
 }
 
