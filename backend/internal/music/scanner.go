@@ -171,15 +171,16 @@ func (s *Scanner) indexFile(filePath, originalFilename string) error {
 
 // Metadata holds the extracted tag information for a file.
 type Metadata struct {
-	Title       string
-	Artist      string
-	AlbumArtist string
-	Album       string
-	TrackNumber int
-	DiscNumber  int
-	Year        int
-	Genre       string
-	Duration    int
+	Title                  string
+	Artist                 string
+	AlbumArtist            string
+	HasExplicitAlbumArtist bool
+	Album                  string
+	TrackNumber            int
+	DiscNumber             int
+	Year                   int
+	Genre                  string
+	Duration               int
 }
 
 func extractMetadata(filePath, originalFilename string, m tag.Metadata) Metadata {
@@ -209,6 +210,7 @@ func extractMetadata(filePath, originalFilename string, m tag.Metadata) Metadata
 	}
 	if v := m.AlbumArtist(); v != "" {
 		meta.AlbumArtist = v
+		meta.HasExplicitAlbumArtist = true
 	}
 	if v := m.Album(); v != "" {
 		meta.Album = v
@@ -263,6 +265,16 @@ func (s *Scanner) upsertAlbum(artistID string, meta Metadata) (string, error) {
 	)
 	if err == nil {
 		return existing.ID, nil
+	}
+
+	// No explicit album artist tag → this could be a compilation where each track
+	// has a different track-artist. Reuse an existing album with the same title
+	// rather than creating a duplicate album per track.
+	if !meta.HasExplicitAlbumArtist {
+		err = s.db.Get(&existing, `SELECT * FROM albums WHERE title = ? LIMIT 1`, meta.Album)
+		if err == nil {
+			return existing.ID, nil
+		}
 	}
 
 	id := uuid.NewString()

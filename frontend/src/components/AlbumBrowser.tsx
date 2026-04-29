@@ -1,12 +1,46 @@
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { libraryApi, Album, Track, queueApi, adminApi } from '@/api/client'
+import { libraryApi, Album, Track, queueApi, adminApi, playbackApi } from '@/api/client'
 import { CoverArt } from '@/components/CoverArt'
 import { Plus, ChevronLeft, ChevronRight, Clock, Loader2, AlertCircle, Check } from 'lucide-react'
 
-const LETTERS = ['Alle', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'Æ', 'Ø', 'Å']
+const DIGITS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9']
+const ALPHA = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'Æ', 'Ø', 'Å']
 const PAGE_SIZE = 24
+
+function JukeKey({ label, active, wide, onClick }: { label: string; active: boolean; wide?: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        minWidth: wide ? '52px' : '34px',
+        height: '36px',
+        padding: '0 6px',
+        fontSize: '0.78rem',
+        fontWeight: 800,
+        fontFamily: '"Courier New", "Lucida Console", monospace',
+        background: active
+          ? 'linear-gradient(160deg, #ff6a22 0%, #cc2200 100%)'
+          : 'linear-gradient(160deg, #ede0a8 0%, #c9a548 100%)',
+        color: active ? '#fff' : '#1a0800',
+        border: active ? '1px solid #990000' : '1px solid #8a6818',
+        borderRadius: '3px',
+        boxShadow: active
+          ? '1px 1px 0 rgba(0,0,0,0.6), inset 0 -1px 0 rgba(0,0,0,0.3)'
+          : '2px 3px 0 #6a4010, inset 0 1px 0 rgba(255,255,255,0.55)',
+        cursor: 'pointer',
+        letterSpacing: '0.5px',
+        transform: active ? 'translateY(2px)' : 'none',
+        transition: 'all 0.07s',
+        flexShrink: 0,
+        userSelect: 'none',
+      }}
+    >
+      {label}
+    </button>
+  )
+}
 
 function formatTime(secs: number) {
   const m = Math.floor(secs / 60)
@@ -24,6 +58,13 @@ export function AlbumBrowser() {
 
   const { data: settings = {} } = useQuery({ queryKey: ['settings'], queryFn: adminApi.settings })
   const confirmAdd = (settings as Record<string, string>)['queue_confirm_add'] === '1'
+
+  const { data: playbackState } = useQuery({
+    queryKey: ['playback-state'],
+    queryFn: playbackApi.state,
+    refetchInterval: 5000,
+    staleTime: 2000,
+  })
 
   const { data: albums = [], isLoading } = useQuery({
     queryKey: ['albums'],
@@ -43,7 +84,7 @@ export function AlbumBrowser() {
 
   const filteredAlbums = (albums as Album[]).filter((album) => {
     if (letterFilter === 'Alle') return true
-    const label = (album.artist_name || album.title || '').trim().toUpperCase()
+    const label = (album.title || '').trim().toUpperCase()
     return label.startsWith(letterFilter)
   })
 
@@ -56,6 +97,11 @@ export function AlbumBrowser() {
     setAddedTrackId(track.id)
     setTimeout(() => setAddedTrackId(null), 1200)
     qc.invalidateQueries({ queryKey: ['queue'] })
+    // Auto-play if nothing is currently playing
+    if (!playbackState?.is_playing) {
+      await playbackApi.play()
+      qc.invalidateQueries({ queryKey: ['playback-state'] })
+    }
   }
 
   function handleTrackClick(track: Track) {
@@ -204,17 +250,31 @@ export function AlbumBrowser() {
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-            {LETTERS.map((letter) => (
-              <button
-                key={letter}
-                className={letterFilter === letter ? 'btn btn-primary' : 'btn btn-ghost'}
-                style={{ minWidth: letter === 'Alle' ? '64px' : '38px', padding: '8px 10px', fontSize: '0.8rem' }}
-                onClick={() => setLetterFilter(letter)}
-              >
-                {letter}
-              </button>
-            ))}
+          {/* ── Retro jukebox selector ── */}
+          <div style={{
+            background: 'linear-gradient(180deg, #2d1a06 0%, #1a0e04 100%)',
+            border: '2px solid #6a4820',
+            borderTop: '3px solid #9a7040',
+            borderRadius: '8px 8px 6px 6px',
+            padding: '10px 14px 12px',
+            boxShadow: 'inset 0 4px 12px rgba(0,0,0,0.55), 0 6px 20px rgba(0,0,0,0.4)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '6px',
+          }}>
+            {/* Number row: Alle + 0-9 */}
+            <div style={{ display: 'flex', gap: '5px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <JukeKey label="Alle" active={letterFilter === 'Alle'} wide onClick={() => setLetterFilter('Alle')} />
+              {DIGITS.map(d => (
+                <JukeKey key={d} label={d} active={letterFilter === d} onClick={() => setLetterFilter(d)} />
+              ))}
+            </div>
+            {/* Letter row: A-Z + Æ Ø Å */}
+            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+              {ALPHA.map(l => (
+                <JukeKey key={l} label={l} active={letterFilter === l} onClick={() => setLetterFilter(l)} />
+              ))}
+            </div>
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', color: 'var(--text-secondary)', fontSize: '0.85rem', flexWrap: 'wrap' }}>
