@@ -286,13 +286,13 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
       {/* ── Album grid (scrollable) ── */}
       <div style={{ overflowY: 'auto', flex: 1, padding: '4px 8px 4px' }}>
         {isLoading ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(140px, 12vw, 200px), 1fr))', gap: '12px' }}>
             {Array.from({ length: 12 }).map((_, index) => (
               <div key={index} className="skeleton" style={{ aspectRatio: '1', borderRadius: 'var(--radius-md)' }} />
             ))}
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(140px, 12vw, 200px), 1fr))', gap: '12px' }}>
             <AnimatePresence>
               {visibleAlbums.map((album, index) => (
                 <motion.div
@@ -314,7 +314,7 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
                     <CoverArt artId={album.cover_art_id} size="medium" alt={album.title} />
                   </div>
                   <div style={{ padding: '6px 2px' }}>
-                    <p style={{ fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <p style={{ fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {album.title}
                     </p>
                     <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -359,8 +359,8 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
             style={{
               width: '100%',
               marginBottom: '4px',
-              padding: '6px 12px',
-              fontSize: '0.72rem', fontWeight: 800,
+              padding: '8px 12px',
+              fontSize: '0.78rem', fontWeight: 800,
               fontFamily: '"Courier New", "Lucida Console", monospace',
               letterSpacing: '3px',
               background: 'linear-gradient(160deg, #3d2808 0%, #2a1a04 100%)',
@@ -383,11 +383,11 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
           {/* LEFT: Musik */}
           {onSearchTab && (
             <div style={{
-              width: '28px',
+              width: '38px',
               writingMode: 'vertical-rl',
               transform: 'rotate(180deg)',
-              padding: '10px 0',
-              fontSize: '0.72rem', fontWeight: 800,
+              padding: '12px 0',
+              fontSize: '0.8rem', fontWeight: 800,
               fontFamily: '"Courier New", "Lucida Console", monospace',
               letterSpacing: '2px',
               background: 'linear-gradient(160deg, #ede0a8 0%, #c9a548 100%)',
@@ -446,14 +446,14 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
             <button
               onClick={onQueueTab}
               style={{
-                width: '28px',
+                width: '38px',
                 writingMode: 'vertical-rl',
-                padding: '10px 0',
-                fontSize: '0.72rem', fontWeight: 800,
+                padding: '12px 0',
+                fontSize: '0.8rem', fontWeight: 800,
                 fontFamily: '"Courier New", "Lucida Console", monospace',
                 letterSpacing: '2px',
                 background: 'linear-gradient(160deg, #3d2808 0%, #2a1a04 100%)',
-                color: 'rgba(255,210,100,0.85)',
+                color: 'rgba(255,210,100,0.9)',
                 border: '1px solid #4a3010',
                 borderRadius: '0 0 4px 0',
                 boxShadow: '2px 3px 0 rgba(0,0,0,0.4)',

@@ -141,7 +141,8 @@
 .kiosk-main-grid {
   min-height: 0;
   display: grid;
-  grid-template-columns: 380px minmax(0, 1fr);
+  /* Now-Playing panel scales with viewport: min 260px, ideal 26vw, max 440px */
+  grid-template-columns: clamp(260px, 26vw, 440px) minmax(0, 1fr);
   gap: 14px;
 }
 
@@ -230,7 +231,7 @@
 
 @media (max-width: 1200px) {
   .kiosk-main-grid {
-    grid-template-columns: 320px minmax(0, 1fr);
+    grid-template-columns: clamp(240px, 24vw, 360px) minmax(0, 1fr);
   }
 }
 
