@@ -96,6 +96,16 @@ func (s *Scanner) Scan(progress chan<- ScanProgress) error {
 		log.Printf("[scanner] update track counts: %v", err)
 	}
 
+	// Remove albums that ended up with no tracks (dedup artifacts).
+	if res, err := s.db.Exec(`
+		DELETE FROM albums
+		WHERE source_type != 'party_upload'
+		  AND (SELECT COUNT(*) FROM tracks WHERE tracks.album_id = albums.id) = 0`); err != nil {
+		log.Printf("[scanner] cleanup empty albums: %v", err)
+	} else if n, _ := res.RowsAffected(); n > 0 {
+		log.Printf("[scanner] removed %d empty album(s)", n)
+	}
+
 	if progress != nil {
 		progress <- ScanProgress{Total: total, Scanned: total, Done: true}
 	}
@@ -267,14 +277,18 @@ func (s *Scanner) upsertAlbum(artistID string, meta Metadata) (string, error) {
 		return existing.ID, nil
 	}
 
-	// No explicit album artist tag → this could be a compilation where each track
-	// has a different track-artist. Reuse an existing album with the same title
-	// rather than creating a duplicate album per track.
-	if !meta.HasExplicitAlbumArtist {
+	// Fallback: find an existing album with the same title (and year if known).
+	// This handles compilations where each track has a different AlbumArtist tag
+	// (e.g. rippers that copy the track artist into AlbumArtist). Using year as
+	// a secondary key reduces false merges between same-titled albums by different
+	// artists released in different years (e.g. "Greatest Hits" 1982 vs 1996).
+	if meta.Year > 0 {
+		err = s.db.Get(&existing, `SELECT * FROM albums WHERE title = ? AND year = ? LIMIT 1`, meta.Album, meta.Year)
+	} else {
 		err = s.db.Get(&existing, `SELECT * FROM albums WHERE title = ? LIMIT 1`, meta.Album)
-		if err == nil {
-			return existing.ID, nil
-		}
+	}
+	if err == nil {
+		return existing.ID, nil
 	}
 
 	id := uuid.NewString()
