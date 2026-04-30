@@ -522,7 +522,6 @@ export function NowPlaying({ state, refreshState }: Props) {
                 />
               </div>
             </div>
-            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', justifyItems: 'center' }}>
               <RetroDial label="Volumen" value={audioSettings.volume}  min={0}   max={100} step={1} unit="%"   accent="purple" onChange={v => updateAudioSetting('volume', v)} />
               <RetroDial label="Bas"     value={audioSettings.bass}    min={-12} max={12}  step={1} unit=" dB" accent="green"  onChange={v => updateAudioSetting('bass', v)} />
