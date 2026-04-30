@@ -72,6 +72,14 @@ function DashboardPanel() {
     refetchInterval: 3000,
   })
 
+  const { data: settings = {} } = useQuery({
+    queryKey: ['settings'],
+    queryFn: adminApi.settings,
+    staleTime: 30_000,
+  })
+
+  const directStreamUrl = ((settings as Record<string, string>)['direct_stream_url'] ?? '').trim()
+
   const formatUptime = (seconds: number) => {
     const days = Math.floor(seconds / 86400)
     const hours = Math.floor((seconds % 86400) / 3600)
@@ -109,6 +117,32 @@ function DashboardPanel() {
 
       {/* System Metrics Grid */}
       <div style={{ display: 'grid', gap: '16px', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', marginBottom: '24px' }}>
+        {/* Stream Route indicator */}
+        <div className="glass-card" style={{ padding: '20px', gridColumn: '1 / -1' }}>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '10px' }}>
+            Stream rute
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '5px 14px', borderRadius: '999px', fontSize: '0.9rem', fontWeight: 700,
+              background: directStreamUrl ? 'rgba(0,255,180,0.12)' : 'rgba(255,255,255,0.07)',
+              border: directStreamUrl ? '1px solid rgba(0,255,180,0.4)' : '1px solid rgba(255,255,255,0.12)',
+              color: directStreamUrl ? 'var(--neon-teal)' : 'var(--text-dim)',
+            }}>
+              {directStreamUrl ? '⚡ Direkte' : '☁ Via Cloudflare'}
+            </span>
+            {directStreamUrl ? (
+              <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                {directStreamUrl}
+              </span>
+            ) : (
+              <span style={{ fontSize: '0.82rem', color: 'var(--text-dim)' }}>
+                Ingen direkte URL konfigureret — al streamingtrafik går via Cloudflare
+              </span>
+            )}
+          </div>
+        </div>
         {/* Uptime */}
         <div className="glass-card" style={{ padding: '20px' }}>
           <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>

@@ -477,11 +477,25 @@ export function NowPlaying({ state, refreshState }: Props) {
           <div style={{ width: '100%' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <span style={{ color: 'var(--text-dim)', fontSize: '0.72rem', letterSpacing: '2px', textTransform: 'uppercase' }}>Lydkontrol</span>
-              <RetroPushButton
-                label="Loudness"
-                active={audioSettings.loudness}
-                onToggle={() => updateAudioSetting('loudness', !audioSettings.loudness)}
-              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span
+                  title={directStreamUrl ? `Direkte stream: ${directStreamUrl}` : 'Stream via Cloudflare (ingen direkte URL konfigureret)'}
+                  style={{
+                    fontSize: '0.7rem', padding: '2px 8px', borderRadius: '999px', cursor: 'default',
+                    background: directStreamUrl ? 'rgba(0,255,180,0.1)' : 'rgba(255,255,255,0.07)',
+                    border: directStreamUrl ? '1px solid rgba(0,255,180,0.3)' : '1px solid rgba(255,255,255,0.1)',
+                    color: directStreamUrl ? 'var(--neon-teal)' : 'var(--text-dim)',
+                  }}
+                >
+                  {directStreamUrl ? '⚡ Direkte' : '☁ Cloudflare'}
+                </span>
+                <RetroPushButton
+                  label="Loudness"
+                  active={audioSettings.loudness}
+                  onToggle={() => updateAudioSetting('loudness', !audioSettings.loudness)}
+                />
+              </div>
+            </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', justifyItems: 'center' }}>
               <RetroDial label="Volumen" value={audioSettings.volume}  min={0}   max={100} step={1} unit="%"   accent="purple" onChange={v => updateAudioSetting('volume', v)} />
