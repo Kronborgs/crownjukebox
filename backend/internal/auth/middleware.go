@@ -20,7 +20,7 @@ func RequireAuth(svc *Service) func(http.Handler) http.Handler {
 
 			sd, err := svc.ValidateToken(r.Context(), token)
 			if err != nil {
-				http.Error(w, `{"error":"unauthorized: `+err.Error()+`"}`, http.StatusUnauthorized)
+				http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
 				return
 			}
 

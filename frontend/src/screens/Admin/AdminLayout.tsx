@@ -1348,6 +1348,29 @@ function SettingsPanel() {
           </div>
         </div>
 
+        <div className="glass-card" style={{ padding: '22px' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--chrome-bright)', marginBottom: '8px' }}>Direkte streaming</h3>
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '16px' }}>
+            Valgfri alternativ base-URL til musikstreaming der bypasser Cloudflare og rammer serveren direkte.
+            Nyttigt hvis du bruger Cloudflare som reverse proxy og vil undgå databegrænsninger.
+            Al anden trafik (login, API, metadata) fortsætter via normal rute.
+            Lad feltet stå tomt for at bruge normal rute.
+          </p>
+          <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '6px' }}>
+            Direkte stream-URL
+          </label>
+          <input
+            className="input"
+            type="url"
+            placeholder="http://192.168.1.x:3000  eller  https://stream.ditdomaene.dk"
+            value={String(merged['direct_stream_url'] ?? '')}
+            onChange={e => setLocal(l => ({ ...l, direct_stream_url: e.target.value }))}
+          />
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.78rem', marginTop: '6px' }}>
+            Skal pege direkte på denne server (uden Cloudflare imellem). Kan være WAN-IP:port eller et subdomain via din lokale proxy manager.
+          </p>
+        </div>
+
         <button className="btn btn-primary" style={{ alignSelf: 'flex-start' }} onClick={save}>
           Gem indstillinger
         </button>

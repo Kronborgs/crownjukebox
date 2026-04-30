@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -47,6 +48,7 @@ type Server struct {
 	artExt    *artwork.Extractor
 	scanner   *music.Scanner
 	startTime time.Time
+	loginRL   *auth.LoginRateLimiter
 }
 
 // NewServer creates the API server with all wired dependencies.
@@ -71,6 +73,7 @@ func NewServer(cfg *config.Config, database *sqlx.DB, version string) *Server {
 		artExt:    artExt,
 		scanner:   scanner,
 		startTime: time.Now(),
+		loginRL:   auth.NewLoginRateLimiter(),
 	}
 }
 
@@ -244,9 +247,24 @@ func (s *Server) Router() http.Handler {
 // ─────────────────────────────────────────────────────────────
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	// Rate-limit per client IP (10 attempts / 10 min, then 15 min lockout).
+	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+	if ip == "" {
+		ip = r.RemoteAddr
+	}
+	if allowed, retryAfter := s.loginRL.Check(ip); !allowed {
+		w.Header().Set("Retry-After", fmt.Sprintf("%d", int(retryAfter.Seconds())))
+		jsonError(w, "too many login attempts, please try again later", http.StatusTooManyRequests)
+		return
+	}
+
+	// Limit body size to prevent resource exhaustion.
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+
 	var req struct {
-		Username string `json:"username"`
-		Pin      string `json:"pin"`
+		Username   string `json:"username"`
+		Pin        string `json:"pin"`
+		DeviceName string `json:"device_name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -265,21 +283,23 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		       is_active, is_permanent, access_starts_at, access_expires_at,
 		       created_by_admin_id, created_at, updated_at, last_seen_at
 		FROM users WHERE username = ? COLLATE NOCASE AND is_active = 1`, req.Username); err != nil {
-		log.Printf("[login] user lookup failed for %q: %v", req.Username, err)
-		// Constant-time delay to prevent timing attacks
-		bcrypt.GenerateFromPassword([]byte("dummy"), bcrypt.MinCost)
+		// Constant-time delay even on lookup failure to prevent user-enumeration via timing.
+		bcrypt.GenerateFromPassword([]byte("dummy"), bcrypt.DefaultCost)
 		jsonError(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
 	if !auth.CheckPassword(user.PinHash, req.Pin) {
-		log.Printf("[login] password check failed for user %q (hash len=%d)", user.Username, len(user.PinHash))
 		jsonError(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
+	deviceName := strings.TrimSpace(req.DeviceName)
+	if deviceName == "" {
+		deviceName = "Browser"
+	}
 	token, err := s.authSvc.CreateSession(r.Context(), user.ID,
-		r.Header.Get("User-Agent"), r.Header.Get("User-Agent"), r.RemoteAddr)
+		deviceName, r.Header.Get("User-Agent"), r.RemoteAddr)
 	if err != nil {
 		jsonError(w, "session creation failed", http.StatusInternalServerError)
 		return
@@ -302,7 +322,7 @@ func (s *Server) handleQRLogin(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := s.qrSvc.UseAccessLink(r.Context(), req.Token)
 	if err != nil {
-		jsonError(w, "invalid or expired QR token: "+err.Error(), http.StatusUnauthorized)
+		jsonError(w, "invalid or expired QR token", http.StatusUnauthorized)
 		return
 	}
 
@@ -934,15 +954,18 @@ func (s *Server) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 
 	// Remove any stale admin rows (shouldn't exist, but be safe).
 	if _, err := tx.Exec(`DELETE FROM user_permissions WHERE user_id IN (SELECT id FROM users WHERE role='admin')`); err != nil {
-		jsonError(w, "clean admin permissions: "+err.Error(), http.StatusInternalServerError)
+		log.Printf("[setup] clean admin permissions: %v", err)
+		jsonError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	if _, err := tx.Exec(`DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE role='admin')`); err != nil {
-		jsonError(w, "clean admin sessions: "+err.Error(), http.StatusInternalServerError)
+		log.Printf("[setup] clean admin sessions: %v", err)
+		jsonError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	if _, err := tx.Exec(`DELETE FROM users WHERE role='admin'`); err != nil {
-		jsonError(w, "clean admin user: "+err.Error(), http.StatusInternalServerError)
+		log.Printf("[setup] clean admin user: %v", err)
+		jsonError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -951,7 +974,8 @@ func (s *Server) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 		INSERT INTO users (id, username, display_name, pin_hash, role, is_permanent, is_active, created_at, updated_at)
 		VALUES (?, ?, ?, ?, 'admin', 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
 		adminID, req.AdminUsername, req.AdminUsername, string(hash)); err != nil {
-		jsonError(w, "create admin: "+err.Error(), http.StatusInternalServerError)
+		log.Printf("[setup] create admin user: %v", err)
+		jsonError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 	log.Printf("[setup] admin user created: %q id=%s", req.AdminUsername, adminID)
@@ -959,12 +983,14 @@ func (s *Server) handleSetupComplete(w http.ResponseWriter, r *http.Request) {
 	if _, err := tx.Exec(`
 		INSERT INTO user_permissions (user_id, can_add_to_queue, can_search, can_use_party_button, can_view_queue)
 		VALUES (?, 1, 1, 1, 1)`, adminID); err != nil {
-		jsonError(w, "admin permissions: "+err.Error(), http.StatusInternalServerError)
+		log.Printf("[setup] admin permissions: %v", err)
+		jsonError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	if err := tx.Commit(); err != nil {
-		jsonError(w, "commit: "+err.Error(), http.StatusInternalServerError)
+		log.Printf("[setup] commit: %v", err)
+		jsonError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 

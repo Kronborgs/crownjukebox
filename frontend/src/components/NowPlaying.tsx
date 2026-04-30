@@ -91,6 +91,9 @@ export function NowPlaying({ state, refreshState }: Props) {
   const resumePositionRef = useRef<number | null>(null)
   const [audioSrc, setAudioSrc] = useState<string | null>(null)
   const [audioKey, setAudioKey] = useState(0) // bumped on track-ended so same-track-ID still re-triggers audio
+  const [directStreamUrl, setDirectStreamUrl] = useState<string>('')
+  // Ref keeps the latest directStreamUrl without re-triggering the audioSrc effect on load
+  const directStreamUrlRef = useRef<string>('')
   const [needsInteraction, setNeedsInteraction] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [audioSettings, setAudioSettings] = useState({
@@ -103,22 +106,28 @@ export function NowPlaying({ state, refreshState }: Props) {
 
   const track = state?.current_track
 
-  // Load audio settings: localStorage first, then API (admin only) as fallback for defaults
+  // Load settings from API — always needed for direct_stream_url.
+  // Audio settings fall back to localStorage if present.
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem('cj_audio_settings')
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        // Migrate balance from old -100..100 range to new -10..10
-        if (typeof parsed.balance === 'number' && (parsed.balance > 10 || parsed.balance < -10)) {
-          parsed.balance = Math.round(parsed.balance / 10)
-        }
-        setAudioSettings(prev => ({ ...prev, ...parsed }))
-        return
-      }
-    } catch {}
     adminApi.settings()
       .then((settings) => {
+        const url = (settings.direct_stream_url ?? '').trim()
+        directStreamUrlRef.current = url
+        setDirectStreamUrl(url)
+
+        // Audio settings: localStorage overrides API defaults
+        try {
+          const stored = localStorage.getItem('cj_audio_settings')
+          if (stored) {
+            const parsed = JSON.parse(stored)
+            // Migrate balance from old -100..100 range to new -10..10
+            if (typeof parsed.balance === 'number' && (parsed.balance > 10 || parsed.balance < -10)) {
+              parsed.balance = Math.round(parsed.balance / 10)
+            }
+            setAudioSettings(prev => ({ ...prev, ...parsed }))
+            return
+          }
+        } catch {}
         setAudioSettings({
           volume: Number(settings.audio_volume ?? settings.volume ?? '85'),
           bass: Number(settings.audio_bass ?? '0'),
@@ -148,6 +157,11 @@ export function NowPlaying({ state, refreshState }: Props) {
         balance: Number(next.audio_balance ?? current.balance),
         loudness: (next.audio_loudness ?? (current.loudness ? '1' : '0')) === '1',
       }))
+      if ('direct_stream_url' in next) {
+        const url = (next.direct_stream_url ?? '').trim()
+        directStreamUrlRef.current = url
+        setDirectStreamUrl(url)
+      }
     },
     party_started: (data) => {
       const d = data as { volume_boost?: number }
@@ -231,7 +245,9 @@ export function NowPlaying({ state, refreshState }: Props) {
       return
     }
     const token = sessionStorage.getItem('cj_token') ?? ''
-    setAudioSrc(`/api/playback/stream/${track.id}?token=${encodeURIComponent(token)}`)
+    const streamPath = `/api/playback/stream/${track.id}?token=${encodeURIComponent(token)}`
+    const base = directStreamUrlRef.current.replace(/\/+$/, '')
+    setAudioSrc(base ? `${base}${streamPath}` : streamPath)
   }, [track?.id, audioKey]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync play/pause from server state
