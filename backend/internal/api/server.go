@@ -1182,6 +1182,7 @@ func (s *Server) handleAdminListJukeboxes(w http.ResponseWriter, r *http.Request
 func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		DisplayName    string `json:"display_name"`
+		Email          string `json:"email"`
 		Username       string `json:"username"`
 		Role           string `json:"role"`
 		Pin            string `json:"pin"`
@@ -1191,6 +1192,7 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 		CanSearch      bool   `json:"can_search"`
 		CanUseParty    bool   `json:"can_use_party_button"`
 		CanViewQueue   bool   `json:"can_view_queue"`
+		SendInvite     bool   `json:"send_invite"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -1225,6 +1227,7 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	user := db.User{
 		ID:               uuid.NewString(),
 		DisplayName:      req.DisplayName,
+		Email:            req.Email,
 		Username:         req.Username,
 		Role:             req.Role,
 		PinHash:          pinHash,
@@ -1244,10 +1247,10 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	if _, err := tx.ExecContext(r.Context(), `
-		INSERT INTO users (id, display_name, username, role, pin_hash, is_active, is_permanent,
+		INSERT INTO users (id, display_name, email, username, role, pin_hash, is_active, is_permanent,
 		                   access_expires_at, created_by_admin_id, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		user.ID, user.DisplayName, user.Username, user.Role, user.PinHash,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		user.ID, user.DisplayName, user.Email, user.Username, user.Role, user.PinHash,
 		user.IsActive, user.IsPermanent, user.AccessExpiresAt, user.CreatedByAdminID,
 		user.CreatedAt, user.UpdatedAt,
 	); err != nil {
@@ -1269,8 +1272,40 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Send invitation email if email provided and send_invite is true
+	inviteSent := false
+	inviteErr := ""
+	if req.SendInvite && req.Email != "" {
+		expMins := 14 * 24 * 60 // default 14 days
+		if req.AccessDuration != nil && *req.AccessDuration > 0 {
+			expMins = *req.AccessDuration
+		}
+		expDur := time.Duration(expMins) * time.Minute
+		var expiry *time.Time
+		t := time.Now().Add(expDur)
+		expiry = &t
+
+		_, token, err := s.qrSvc.CreateAccessLink(r.Context(), user.ID, expDur)
+		if err == nil {
+			accessURL := getBaseURL(s.cfg) + "/qr/" + token
+			if err := s.emailSvc.SendInvitation(r.Context(), req.Email, user.DisplayName, accessURL, expiry); err != nil {
+				inviteErr = err.Error()
+				log.Printf("[invite] failed to send invitation to %s: %v", req.Email, err)
+			} else {
+				inviteSent = true
+			}
+		} else {
+			inviteErr = err.Error()
+		}
+	}
+
+	type createUserResponse struct {
+		User       interface{} `json:"user"`
+		InviteSent bool        `json:"invite_sent"`
+		InviteErr  string      `json:"invite_error,omitempty"`
+	}
 	w.WriteHeader(http.StatusCreated)
-	jsonOK(w, userResponse(user))
+	jsonOK(w, createUserResponse{User: userResponse(user), InviteSent: inviteSent, InviteErr: inviteErr})
 }
 
 func (s *Server) handleAdminGetUser(w http.ResponseWriter, r *http.Request) {
@@ -2305,6 +2340,7 @@ func userResponse(u db.User) map[string]any {
 	return map[string]any{
 		"id":                u.ID,
 		"display_name":      u.DisplayName,
+		"email":             u.Email,
 		"username":          u.Username,
 		"role":              u.Role,
 		"is_active":         u.IsActive,

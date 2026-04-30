@@ -198,36 +198,118 @@ func buildInviteEmail(toName, accessURL, expiry, senderName string) string {
 	}
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html lang="da">
-<head><meta charset="UTF-8"><title>CrownJukebox Invitation</title></head>
-<body style="background:#0d0520;color:#e0d4ff;font-family:sans-serif;padding:32px;">
-  <div style="max-width:480px;margin:0 auto;background:#1a0a30;border-radius:12px;padding:32px;border:1px solid rgba(191,0,255,0.3)">
-    <div style="text-align:center;font-size:2.5rem;margin-bottom:8px;">♛</div>
-    <h1 style="text-align:center;font-size:1.4rem;letter-spacing:3px;text-transform:uppercase;color:#f0e6ff;margin-bottom:4px;">CrownJukebox</h1>
-    <p style="text-align:center;color:#8b6faa;font-size:0.9rem;margin-bottom:28px;">Party Jukebox</p>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Du er inviteret til CrownJukebox!</title>
+</head>
+<body style="margin:0;padding:0;background:#0a0118;font-family:'Segoe UI',Arial,sans-serif;">
 
-    <p style="margin-bottom:16px;">Hej %s 👋</p>
-    <p style="margin-bottom:24px;">Du er blevet inviteret til at deltage i en CrownJukebox-fest!
-       Klik på knappen nedenfor for at åbne jukeboxen og begynde at tilføje musik til køen.</p>
+<!-- Outer wrapper -->
+<table width="100%%" cellpadding="0" cellspacing="0" style="background:#0a0118;padding:32px 16px;">
+<tr><td align="center">
 
-    <div style="text-align:center;margin:28px 0;">
-      <a href="%s"
-         style="display:inline-block;background:linear-gradient(135deg,#bf00ff,#7b00cc);
-                color:#fff;text-decoration:none;padding:14px 32px;border-radius:8px;
-                font-weight:700;font-size:1rem;letter-spacing:1px;">
-        🎶 Åbn Jukeboxen
-      </a>
+<!-- Card -->
+<table width="100%%" cellpadding="0" cellspacing="0" style="max-width:560px;background:linear-gradient(160deg,#130828 0%%,#0d0520 60%%,#0a011a 100%%);border-radius:16px;border:1px solid rgba(191,0,255,0.35);overflow:hidden;">
+
+  <!-- Top glow bar -->
+  <tr><td style="height:4px;background:linear-gradient(90deg,#bf00ff,#7b2ff7,#22d3a0,#bf00ff);"></td></tr>
+
+  <!-- Header -->
+  <tr><td align="center" style="padding:36px 32px 20px;">
+    <!-- Crown logo -->
+    <div style="font-size:3rem;line-height:1;margin-bottom:6px;">♛</div>
+    <div style="letter-spacing:5px;text-transform:uppercase;font-size:0.75rem;font-weight:700;color:#bf00ff;margin-bottom:2px;">CROWN</div>
+    <div style="letter-spacing:8px;text-transform:uppercase;font-size:1.4rem;font-weight:900;color:#f0e6ff;">JUKEBOX</div>
+    <div style="margin-top:10px;height:1px;background:linear-gradient(90deg,transparent,rgba(191,0,255,0.5),transparent);"></div>
+  </td></tr>
+
+  <!-- Party badge -->
+  <tr><td align="center" style="padding:0 32px 28px;">
+    <div style="display:inline-block;background:linear-gradient(135deg,rgba(191,0,255,0.2),rgba(34,211,160,0.15));border:1px solid rgba(191,0,255,0.4);border-radius:50px;padding:8px 22px;">
+      <span style="font-size:1.1rem;">🎉</span>
+      <span style="color:#e0d4ff;font-weight:700;font-size:0.95rem;letter-spacing:2px;text-transform:uppercase;margin:0 8px;">Du er inviteret!</span>
+      <span style="font-size:1.1rem;">🎉</span>
     </div>
+  </td></tr>
 
-    <p style="font-size:0.8rem;color:#8b6faa;text-align:center;">
-      Linket %s.<br>
-      Del det ikke med andre.
+  <!-- Body text -->
+  <tr><td style="padding:0 36px 28px;">
+    <p style="color:#f0e6ff;font-size:1.05rem;margin:0 0 16px;">Hej <strong style="color:#bf00ff;">%s</strong> 👋</p>
+    <p style="color:#c4b0d8;line-height:1.7;margin:0 0 20px;">
+      Du er inviteret til at deltage i festen via <strong style="color:#f0e6ff;">CrownJukebox</strong> — den retro party jukebox!
+      Vælg dine favoritnum&shy;re, tilføj dem til køen og hold festen kørende hele aftenen.
     </p>
+    <p style="color:#c4b0d8;line-height:1.7;margin:0;">
+      Tryk på knappen nedenfor for at åbne din personlige jukebox:
+    </p>
+  </td></tr>
 
-    <hr style="border:none;border-top:1px solid rgba(191,0,255,0.2);margin:24px 0;">
-    <p style="font-size:0.75rem;color:#6b5f7a;text-align:center;">
-      Sendt af %s via CrownJukebox
+  <!-- CTA button -->
+  <tr><td align="center" style="padding:4px 36px 32px;">
+    <a href="%s"
+       style="display:inline-block;background:linear-gradient(135deg,#bf00ff 0%%,#7b2ff7 50%%,#5500cc 100%%);
+              color:#fff;text-decoration:none;padding:16px 40px;border-radius:10px;
+              font-weight:800;font-size:1rem;letter-spacing:2px;text-transform:uppercase;
+              box-shadow:0 0 24px rgba(191,0,255,0.5);">
+      🎶 &nbsp;Åbn Jukeboxen
+    </a>
+  </td></tr>
+
+  <!-- SKÅL section -->
+  <tr><td style="padding:0 36px 28px;">
+    <table width="100%%" cellpadding="0" cellspacing="0" style="background:rgba(34,211,160,0.07);border:1px solid rgba(34,211,160,0.25);border-radius:10px;padding:16px;">
+    <tr>
+      <td style="text-align:center;padding:12px;">
+        <div style="font-size:2rem;margin-bottom:6px;">🥂</div>
+        <div style="color:#22d3a0;font-weight:700;letter-spacing:3px;font-size:0.9rem;text-transform:uppercase;">SKÅL!</div>
+        <div style="color:#8bd8c8;font-size:0.8rem;margin-top:6px;">Brug SKÅL-knappen i jukeboxen<br>til at sætte stemningen!</div>
+      </td>
+      <td style="text-align:center;padding:12px;">
+        <div style="font-size:2rem;margin-bottom:6px;">🎵</div>
+        <div style="color:#bf00ff;font-weight:700;letter-spacing:3px;font-size:0.9rem;text-transform:uppercase;">Kø</div>
+        <div style="color:#b09dc8;font-size:0.8rem;margin-top:6px;">Søg og tilføj musik<br>direkte til køen</div>
+      </td>
+      <td style="text-align:center;padding:12px;">
+        <div style="font-size:2rem;margin-bottom:6px;">👑</div>
+        <div style="color:#f0c060;font-weight:700;letter-spacing:3px;font-size:0.9rem;text-transform:uppercase;">Fest</div>
+        <div style="color:#c4aa70;font-size:0.8rem;margin-top:6px;">Retro stil &amp; gode<br>vibes hele aftenen</div>
+      </td>
+    </tr>
+    </table>
+  </td></tr>
+
+  <!-- Access info -->
+  <tr><td style="padding:0 36px 28px;">
+    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:14px 18px;">
+      <p style="color:#8b6faa;font-size:0.8rem;margin:0 0 6px;">
+        🔗 <strong style="color:#c4b0d8;">Dit adgangslink:</strong>
+      </p>
+      <p style="color:#6b50a0;font-size:0.75rem;word-break:break-all;margin:0 0 8px;">%s</p>
+      <p style="color:#8b6faa;font-size:0.78rem;margin:0;">
+        ⏱ Linket %s. Hold det privat.
+      </p>
+    </div>
+  </td></tr>
+
+  <!-- Footer -->
+  <tr><td style="padding:0 36px 28px;">
+    <div style="height:1px;background:linear-gradient(90deg,transparent,rgba(191,0,255,0.3),transparent);margin-bottom:20px;"></div>
+    <p style="color:#5a4870;font-size:0.75rem;text-align:center;margin:0;">
+      Sendt af <strong style="color:#7b5fa0;">%s</strong> via CrownJukebox &nbsp;♛
     </p>
-  </div>
+  </td></tr>
+
+  <!-- Bottom glow bar -->
+  <tr><td style="height:3px;background:linear-gradient(90deg,#22d3a0,#7b2ff7,#bf00ff,#22d3a0);"></td></tr>
+
+</table>
+<!-- /Card -->
+
+</td></tr>
+</table>
+<!-- /Outer wrapper -->
+
 </body>
-</html>`, name, accessURL, expiry, senderName)
+</html>`, name, accessURL, accessURL, expiry, senderName)
 }

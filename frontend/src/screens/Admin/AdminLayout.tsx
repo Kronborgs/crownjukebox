@@ -557,6 +557,7 @@ interface CreateUserModalProps {
 
 function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
   const [displayName, setDisplayName] = useState('')
+  const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
   const [pin, setPin] = useState('')
   const [role, setRole] = useState<'user' | 'admin'>('user')
@@ -566,7 +567,9 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
   const [canSearch, setCanSearch] = useState(true)
   const [canParty, setCanParty] = useState(true)
   const [canViewQueue, setCanViewQueue] = useState(true)
+  const [sendInvite, setSendInvite] = useState(true)
   const [error, setError] = useState('')
+  const [inviteInfo, setInviteInfo] = useState('')
   const [saving, setSaving] = useState(false)
 
   async function submit(e: React.FormEvent) {
@@ -574,9 +577,11 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
     if (!displayName.trim()) { setError('Navn er påkrævet'); return }
     setSaving(true)
     setError('')
+    setInviteInfo('')
     try {
-      await adminApi.createUser({
+      const result = await adminApi.createUser({
         display_name: displayName.trim(),
+        email: email.trim() || undefined,
         username: username.trim() || undefined,
         pin: pin || undefined,
         role,
@@ -586,8 +591,17 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
         can_search: canSearch,
         can_use_party_button: canParty,
         can_view_queue: canViewQueue,
+        send_invite: !!(email.trim() && sendInvite),
       })
-      onCreated()
+      if (result?.invite_error) {
+        setInviteInfo(`⚠️ Bruger oprettet, men invitation fejlede: ${result.invite_error}`)
+        setTimeout(onCreated, 2000)
+      } else if (result?.invite_sent) {
+        setInviteInfo(`✅ Invitation sendt til ${email}!`)
+        setTimeout(onCreated, 1200)
+      } else {
+        onCreated()
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Fejl ved oprettelse')
     } finally {
@@ -627,6 +641,16 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
             <label style={labelStyle}>Navn *</label>
             <input className="input" value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Gæst 1" autoFocus />
           </div>
+          <div style={rowStyle}>
+            <label style={labelStyle}>E-mail (til invitation)</label>
+            <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="gaest@example.com" />
+          </div>
+          {email.trim() && (
+            <label style={checkRow}>
+              <input type="checkbox" checked={sendInvite} onChange={e => setSendInvite(e.target.checked)} />
+              <span style={labelStyle}>📧 Send festlig invitation via e-mail</span>
+            </label>
+          )}
           <div style={rowStyle}>
             <label style={labelStyle}>Brugernavn (valgfrit)</label>
             <input className="input" value={username} onChange={e => setUsername(e.target.value)} placeholder="gaest1" />
@@ -669,9 +693,10 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
             </div>
           </div>
           {error && <p style={{ color: 'var(--neon-accent)', fontSize: '0.85rem' }}>{error}</p>}
+          {inviteInfo && <p style={{ color: inviteInfo.startsWith('✅') ? 'var(--neon-teal, #22d3a0)' : 'orange', fontSize: '0.85rem' }}>{inviteInfo}</p>}
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', marginTop: '4px' }}>
             <button type="button" className="btn btn-ghost" onClick={onClose}>Annuller</button>
-            <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Opretter…' : 'Opret bruger'}</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Opretter…' : (email.trim() && sendInvite ? 'Opret & send invitation' : 'Opret bruger')}</button>
           </div>
         </form>
       </div>

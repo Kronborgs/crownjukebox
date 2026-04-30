@@ -6,6 +6,7 @@ const BASE = import.meta.env.VITE_API_BASE ?? ''
 export interface User {
   id: string
   display_name: string
+  email?: string
   username: string
   role: 'admin' | 'user'
   is_active: boolean
@@ -392,8 +393,8 @@ export const partyApi = {
 export const adminApi = {
   // Users
   users:      () => getList<User>('/api/admin/users'),
-  createUser: (data: Partial<User> & { pin?: string; can_add_to_queue?: boolean; can_search?: boolean; can_use_party_button?: boolean; can_view_queue?: boolean; access_duration_minutes?: number }) =>
-    post<User>('/api/admin/users', data),
+  createUser: (data: Partial<User> & { pin?: string; can_add_to_queue?: boolean; can_search?: boolean; can_use_party_button?: boolean; can_view_queue?: boolean; access_duration_minutes?: number; send_invite?: boolean }) =>
+    post<{ user: User; invite_sent: boolean; invite_error?: string }>('/api/admin/users', data),
   getUser:    (id: string) => get<User>(`/api/admin/users/${id}`),
   updateUser: (id: string, data: Partial<User>) => patch<void>(`/api/admin/users/${id}`, data),
   disableUser: (id: string) => post<void>(`/api/admin/users/${id}/disable`),

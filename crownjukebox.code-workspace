@@ -14,7 +14,8 @@
 			"go": true,
 			"git commit": true,
 			"git push": true,
-			"git add": true
+			"git add": true,
+			"npm run build": true
 		}
 	}
 }
