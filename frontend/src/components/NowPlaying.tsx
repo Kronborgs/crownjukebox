@@ -112,7 +112,11 @@ export function NowPlaying({ state, refreshState }: Props) {
   useEffect(() => {
     adminApi.settings()
       .then((settings) => {
-        const url = (settings.direct_stream_url ?? '').trim()
+        let url = (settings.direct_stream_url ?? '').trim()
+        // Ensure URL is absolute — if no protocol, prepend https://
+        if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+          url = 'https://' + url
+        }
         directStreamUrlRef.current = url
         setDirectStreamUrl(url)
 
@@ -159,7 +163,10 @@ export function NowPlaying({ state, refreshState }: Props) {
         loudness: (next.audio_loudness ?? (current.loudness ? '1' : '0')) === '1',
       }))
       if ('direct_stream_url' in next) {
-        const url = (next.direct_stream_url ?? '').trim()
+        let url = (next.direct_stream_url ?? '').trim()
+        if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+          url = 'https://' + url
+        }
         directStreamUrlRef.current = url
         setDirectStreamUrl(url)
       }
