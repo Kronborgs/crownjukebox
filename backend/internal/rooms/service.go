@@ -192,6 +192,12 @@ func (s *Service) buildRoom(info db.Room) *Room {
 	partyEng := party.NewEngine(s.db, s.hub, info.ID)
 	qMgr := queue.NewManager(s.db, info.ID)
 	pbMgr := playback.NewManager(s.db, s.hub, qMgr, partyEng, info.ID)
+	go func() {
+		// Give the room a moment to fully initialise before attempting autoplay.
+		// The library scan runs in the background so tracks should be available.
+		time.Sleep(3 * time.Second)
+		pbMgr.StartIfIdle(context.Background())
+	}()
 	return &Room{
 		Info:     info,
 		Queue:    qMgr,

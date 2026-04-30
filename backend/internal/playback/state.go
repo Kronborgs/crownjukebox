@@ -83,10 +83,10 @@ func (m *Manager) loadState() {
 			m.isPlaying = false
 			m.positionSecs = 0
 		} else {
-			m.currentTrackID  = state.CurrentTrackID
-			m.isPlaying       = state.IsPlaying
+			m.currentTrackID = state.CurrentTrackID
+			m.isPlaying = state.IsPlaying
 			m.isAutoplayTrack = state.IsAutoplayTrack
-			m.positionSecs    = state.PositionSecs
+			m.positionSecs = state.PositionSecs
 		}
 		m.updatedAt = state.UpdatedAt
 	}
@@ -494,4 +494,28 @@ func (m *Manager) StartParty(ctx context.Context, tracks []db.Track, userID stri
 
 	log.Printf("[party] room=%s starting party: %d tracks, first=%s", m.roomID, len(tracks), tracks[0].ID)
 	return m.Play(ctx, tracks[0].ID, userID)
+}
+
+// StartIfIdle starts autoplay if nothing is currently playing and autoplay is
+// enabled in settings. Designed to be called once in a goroutine after room
+// initialization so the jukebox starts playing automatically on boot.
+func (m *Manager) StartIfIdle(ctx context.Context) {
+	m.mu.RLock()
+	alreadyActive := m.isPlaying || m.currentTrackID != ""
+	m.mu.RUnlock()
+	if alreadyActive {
+		return
+	}
+
+	var autoplayEnabled string
+	_ = m.db.GetContext(ctx, &autoplayEnabled, `SELECT value FROM settings WHERE key = 'autoplay_enabled' LIMIT 1`)
+	autoplayEnabled = strings.ToLower(strings.TrimSpace(autoplayEnabled))
+	if autoplayEnabled != "true" && autoplayEnabled != "1" {
+		return
+	}
+
+	log.Printf("[playback] room=%s starting autoplay (idle on boot)", m.roomID)
+	if err := m.Play(ctx, "", ""); err != nil {
+		log.Printf("[playback] room=%s autoplay boot start failed: %v", m.roomID, err)
+	}
 }
