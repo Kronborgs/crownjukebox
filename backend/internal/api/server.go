@@ -1390,7 +1390,20 @@ func (s *Server) handleAdminExtendUser(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	_ = s.authSvc.RevokeAllUserSessions(r.Context(), id)
-	s.db.Exec(`DELETE FROM users WHERE id = ?`, id)
+
+	// NULL out FK references that lack ON DELETE CASCADE before deleting the user.
+	// rooms.owner_user_id, queue_items.added_by_user_id, playback_history.played_by_user_id
+	// and users.created_by_admin_id all reference users(id) without CASCADE.
+	s.db.ExecContext(r.Context(), `UPDATE queue_items SET added_by_user_id = NULL WHERE added_by_user_id = ?`, id)
+	s.db.ExecContext(r.Context(), `UPDATE playback_history SET played_by_user_id = NULL WHERE played_by_user_id = ?`, id)
+	s.db.ExecContext(r.Context(), `UPDATE users SET created_by_admin_id = NULL WHERE created_by_admin_id = ?`, id)
+	// Delete the user's personal room (room_playback_state cascades from rooms ON DELETE CASCADE)
+	s.db.ExecContext(r.Context(), `DELETE FROM rooms WHERE owner_user_id = ?`, id)
+
+	if _, err := s.db.ExecContext(r.Context(), `DELETE FROM users WHERE id = ?`, id); err != nil {
+		jsonError(w, "delete failed: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	jsonOK(w, map[string]string{"status": "deleted"})
 }
 
