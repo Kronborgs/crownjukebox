@@ -246,6 +246,7 @@ export function NowPlaying({ state, refreshState }: Props) {
 
   // When track changes (or audioKey is bumped after track-ended), reload audio.
   // audioKey ensures this re-runs even when the same track ID is picked again.
+  // directStreamUrl is included so audioSrc updates when settings load (async race fix).
   useEffect(() => {
     setNeedsInteraction(false)
     if (!track?.id) {
@@ -254,9 +255,19 @@ export function NowPlaying({ state, refreshState }: Props) {
     }
     const token = sessionStorage.getItem('cj_token') ?? ''
     const streamPath = `/api/playback/stream/${track.id}?token=${encodeURIComponent(token)}`
-    const base = directStreamUrlRef.current.replace(/\/+$/, '')
-    setAudioSrc(base ? `${base}${streamPath}` : streamPath)
-  }, [track?.id, audioKey]) // eslint-disable-line react-hooks/exhaustive-deps
+    const rawBase = directStreamUrlRef.current.trim().replace(/\/+$/, '')
+    // Validate that rawBase is an absolute URL before using it
+    let resolvedSrc = streamPath
+    if (rawBase) {
+      try {
+        const base = new URL(rawBase)
+        resolvedSrc = base.origin + streamPath
+      } catch {
+        // Not a valid URL — fall back to relative path (same origin)
+      }
+    }
+    setAudioSrc(resolvedSrc)
+  }, [track?.id, audioKey, directStreamUrl]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync play/pause from server state
   useEffect(() => {
