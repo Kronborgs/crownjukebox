@@ -96,6 +96,7 @@ export function NowPlaying({ state, refreshState }: Props) {
   const directStreamUrlRef = useRef<string>('')
   const [needsInteraction, setNeedsInteraction] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
+  const [audioDuration, setAudioDuration] = useState(0)
   const [audioSettings, setAudioSettings] = useState({
     volume: 85,
     bass: 0,
@@ -284,6 +285,24 @@ export function NowPlaying({ state, refreshState }: Props) {
     return () => clearInterval(id)
   }, [audioSrc])
 
+  // Track audio duration from the element itself (DB duration_secs is unreliable)
+  useEffect(() => {
+    const audio = audioRef.current
+    if (!audio) return
+    setAudioDuration(0)
+    setCurrentTime(0)
+    const onLoaded = () => {
+      if (isFinite(audio.duration) && audio.duration > 0) {
+        setAudioDuration(audio.duration)
+      }
+    }
+    audio.addEventListener('loadedmetadata', onLoaded)
+    if (audio.readyState >= 1 && isFinite(audio.duration) && audio.duration > 0) {
+      setAudioDuration(audio.duration)
+    }
+    return () => audio.removeEventListener('loadedmetadata', onLoaded)
+  }, [audioSrc])
+
   // Track currentTime for smooth progress bar updates
   useEffect(() => {
     const audio = audioRef.current
@@ -325,8 +344,8 @@ export function NowPlaying({ state, refreshState }: Props) {
     }
   }, [audioSrc, track?.id])
 
-  const duration  = track?.duration_secs ?? 0
-  const position  = currentTime // Use local currentTime for smooth updates
+  const duration  = audioDuration > 0 ? audioDuration : (track?.duration_secs ?? 0)
+  const position  = currentTime
   const progress  = duration > 0 ? Math.min((position / duration) * 100, 100) : 0
 
   const titleText  = track?.title   ?? 'Ingen sang afspilles'
