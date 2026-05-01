@@ -72,7 +72,7 @@ func (s *Service) LoadConfig(ctx context.Context) (*Config, error) {
 }
 
 // SendInvitation sends a party invitation email with an access link.
-func (s *Service) SendInvitation(ctx context.Context, toEmail, toName, accessURL string, expiresAt *time.Time) error {
+func (s *Service) SendInvitation(ctx context.Context, toEmail, toName, username, pin, accessURL string, expiresAt *time.Time) error {
 	cfg, err := s.LoadConfig(ctx)
 	if err != nil {
 		return fmt.Errorf("load smtp config: %w", err)
@@ -87,7 +87,7 @@ func (s *Service) SendInvitation(ctx context.Context, toEmail, toName, accessURL
 	}
 
 	subject := "Du er inviteret til CrownJukebox 🎶"
-	body := buildInviteEmail(toName, accessURL, expiry, cfg.FromName)
+	body := buildInviteEmail(toName, username, pin, accessURL, expiry, cfg.FromName)
 
 	return s.send(cfg, toEmail, subject, body)
 }
@@ -191,10 +191,14 @@ func buildMIME(from, fromName, to, subject, htmlBody string) string {
 	return sb.String()
 }
 
-func buildInviteEmail(toName, accessURL, expiry, senderName string) string {
+func buildInviteEmail(toName, username, pin, accessURL, expiry, senderName string) string {
 	name := toName
 	if name == "" {
 		name = "Gæst"
+	}
+	pinDisplay := pin
+	if pinDisplay == "" {
+		pinDisplay = "(ingen kode sat)"
 	}
 	return fmt.Sprintf(`<!DOCTYPE html>
 <html lang="da">
@@ -243,6 +247,18 @@ func buildInviteEmail(toName, accessURL, expiry, senderName string) string {
     <p style="color:#c4b0d8;line-height:1.7;margin:0;">
       Tryk på knappen nedenfor for at åbne din personlige jukebox:
     </p>
+  </td></tr>
+
+  <!-- Login info -->
+  <tr><td style="padding:0 36px 28px;">
+    <div style="background:rgba(34,211,160,0.06);border:1px solid rgba(34,211,160,0.3);border-radius:10px;padding:18px 22px;">
+      <p style="color:#22d3a0;font-weight:700;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;margin:0 0 14px;">🔐 Dine login-oplysninger</p>
+      <p style="color:#8b6faa;font-size:0.82rem;margin:0 0 4px;">👤 Brugernavn (din e-mail adresse):</p>
+      <p style="color:#f0e6ff;font-weight:700;font-size:0.95rem;margin:0 0 14px;">%s</p>
+      <p style="color:#8b6faa;font-size:0.82rem;margin:0 0 4px;">🔑 Engangskode (skift den ved første login):</p>
+      <p style="color:#bf00ff;font-weight:800;font-size:1.2rem;letter-spacing:6px;margin:0 0 12px;">%s</p>
+      <p style="color:#6b50a0;font-size:0.78rem;margin:0;">⚠️ Husk at skifte din kode første gang du logger ind!</p>
+    </div>
   </td></tr>
 
   <!-- CTA button -->
@@ -311,5 +327,5 @@ func buildInviteEmail(toName, accessURL, expiry, senderName string) string {
 <!-- /Outer wrapper -->
 
 </body>
-</html>`, name, accessURL, accessURL, expiry, senderName)
+</html>`, name, username, pinDisplay, accessURL, accessURL, expiry, senderName)
 }

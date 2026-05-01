@@ -1210,11 +1210,11 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		DisplayName    string `json:"display_name"`
 		Email          string `json:"email"`
-		Username       string `json:"username"`
-		Role           string `json:"role"`
-		Pin            string `json:"pin"`
-		IsPermanent    bool   `json:"is_permanent"`
-		AccessDuration *int   `json:"access_duration_minutes"`
+		Username        string `json:"username"`
+		Role            string `json:"role"`
+		Pin             string `json:"pin"`
+		IsPermanent     bool   `json:"is_permanent"`
+		AccessExpiresAt string `json:"access_expires_at"`
 		CanAddToQueue  bool   `json:"can_add_to_queue"`
 		CanSearch      bool   `json:"can_search"`
 		CanUseParty    bool   `json:"can_use_party_button"`
@@ -1233,6 +1233,9 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Role == "" {
 		req.Role = "user"
+	}
+	if req.Username == "" {
+		req.Username = req.Email
 	}
 
 	pinHash := ""
@@ -1266,9 +1269,14 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 		UpdatedAt:        time.Now(),
 	}
 
-	if !req.IsPermanent && req.AccessDuration != nil {
-		exp := time.Now().Add(time.Duration(*req.AccessDuration) * time.Minute)
-		user.AccessExpiresAt = &exp
+	if !req.IsPermanent && req.AccessExpiresAt != "" {
+		t, err := time.Parse(time.RFC3339Nano, req.AccessExpiresAt)
+		if err != nil {
+			t, err = time.Parse(time.RFC3339, req.AccessExpiresAt)
+		}
+		if err == nil {
+			user.AccessExpiresAt = &t
+		}
 	}
 
 	tx, _ := s.db.BeginTxx(r.Context(), nil)
@@ -1305,19 +1313,21 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	inviteErr := ""
 	if req.SendInvite && req.Email != "" {
 		baseURL := s.resolveBaseURL(r.Context(), req.BaseURL)
-		expMins := 14 * 24 * 60 // default 14 days
-		if req.AccessDuration != nil && *req.AccessDuration > 0 {
-			expMins = *req.AccessDuration
-		}
-		expDur := time.Duration(expMins) * time.Minute
 		var expiry *time.Time
-		t := time.Now().Add(expDur)
-		expiry = &t
+		var expDur time.Duration
+		if user.AccessExpiresAt != nil {
+			expDur = time.Until(*user.AccessExpiresAt)
+			expiry = user.AccessExpiresAt
+		} else {
+			expDur = 14 * 24 * time.Hour
+			t := time.Now().Add(expDur)
+			expiry = &t
+		}
 
 		_, token, err := s.qrSvc.CreateAccessLink(r.Context(), user.ID, expDur)
 		if err == nil {
 			accessURL := baseURL + "/qr/" + token
-			if err := s.emailSvc.SendInvitation(r.Context(), req.Email, user.DisplayName, accessURL, expiry); err != nil {
+			if err := s.emailSvc.SendInvitation(r.Context(), req.Email, user.DisplayName, user.Username, req.Pin, accessURL, expiry); err != nil {
 				inviteErr = err.Error()
 				log.Printf("[invite] failed to send invitation to %s: %v", req.Email, err)
 			} else {
@@ -1499,7 +1509,7 @@ func (s *Server) handleAdminInviteUser(w http.ResponseWriter, r *http.Request) {
 
 	accessURL := s.resolveBaseURL(r.Context(), req.BaseURL) + "/qr/" + token
 
-	if err := s.emailSvc.SendInvitation(r.Context(), req.Email, user.DisplayName, accessURL, expiry); err != nil {
+	if err := s.emailSvc.SendInvitation(r.Context(), req.Email, user.DisplayName, user.Username, "", accessURL, expiry); err != nil {
 		jsonError(w, "failed to send email: "+err.Error(), http.StatusInternalServerError)
 		return
 	}

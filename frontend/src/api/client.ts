@@ -393,7 +393,7 @@ export const partyApi = {
 export const adminApi = {
   // Users
   users:      () => getList<User>('/api/admin/users'),
-  createUser: (data: Partial<User> & { pin?: string; can_add_to_queue?: boolean; can_search?: boolean; can_use_party_button?: boolean; can_view_queue?: boolean; access_duration_minutes?: number; send_invite?: boolean }) =>
+  createUser: (data: Partial<User> & { pin?: string; can_add_to_queue?: boolean; can_search?: boolean; can_use_party_button?: boolean; can_view_queue?: boolean; access_expires_at?: string; send_invite?: boolean }) =>
     post<{ user: User; invite_sent: boolean; invite_error?: string }>('/api/admin/users', { ...data, base_url: window.location.origin }),
   getUser:    (id: string) => get<User>(`/api/admin/users/${id}`),
   updateUser: (id: string, data: Partial<User>) => patch<void>(`/api/admin/users/${id}`, data),

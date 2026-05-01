@@ -560,11 +560,15 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
 
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
-  const [username, setUsername] = useState('')
   const [pin, setPin] = useState('')
   const [role, setRole] = useState<'user' | 'admin'>('user')
   const [isPermanent, setIsPermanent] = useState(false)
-  const [durationMinutes, setDurationMinutes] = useState(480)
+  const [expiresAt, setExpiresAt] = useState(() => {
+    const d = new Date()
+    d.setHours(d.getHours() + 8)
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+  })
   const [canQueue, setCanQueue] = useState(true)
   const [canSearch, setCanSearch] = useState(true)
   const [canParty, setCanParty] = useState(true)
@@ -584,11 +588,10 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
       const result = await adminApi.createUser({
         display_name: displayName.trim(),
         email: email.trim() || undefined,
-        username: username.trim() || undefined,
         pin: pin || undefined,
         role,
         is_permanent: isPermanent,
-        access_duration_minutes: isPermanent ? undefined : durationMinutes,
+        access_expires_at: (!isPermanent && expiresAt) ? new Date(expiresAt).toISOString() : undefined,
         can_add_to_queue: canQueue,
         can_search: canSearch,
         can_use_party_button: canParty,
@@ -654,10 +657,6 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
             </label>
           )}
           <div style={rowStyle}>
-            <label style={labelStyle}>Brugernavn (valgfrit)</label>
-            <input className="input" value={username} onChange={e => setUsername(e.target.value)} placeholder="gaest1" />
-          </div>
-          <div style={rowStyle}>
             <label style={labelStyle}>PIN (valgfrit)</label>
             <input className="input" type="password" value={pin} onChange={e => setPin(e.target.value)} placeholder="••••" inputMode="numeric" />
           </div>
@@ -674,8 +673,14 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
           </label>
           {!isPermanent && (
             <div style={rowStyle}>
-              <label style={labelStyle}>Adgangsvarighed (minutter)</label>
-              <input className="input" type="number" min={1} value={durationMinutes} onChange={e => setDurationMinutes(Number(e.target.value))} />
+              <label style={labelStyle}>Adgang udløber</label>
+              <input
+                className="input"
+                type="datetime-local"
+                value={expiresAt}
+                onChange={e => setExpiresAt(e.target.value)}
+                min={(() => { const d = new Date(); const pad = (n: number) => String(n).padStart(2,'0'); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}` })()}
+              />
             </div>
           )}
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px' }}>
