@@ -266,6 +266,42 @@ All live updates use Server-Sent Events. The backend broadcasts named events to 
 
 ---
 
+## Changelog
+
+### v0.1.1 — 2026-05-01
+
+#### New Features
+- **Festive invitation email** — sending a user an invite now generates a beautifully styled neon HTML email with their login credentials (username + initial PIN), a one-click access link, and a prompt to change their PIN on first login
+- **Email = username** — the email address is the username. No separate username field when creating users
+- **Force PIN change on first login** — admin sets an initial PIN; the user is immediately prompted to choose their own personal PIN after logging in for the first time with the admin-assigned code
+- **Auto-detect jukebox URL** — invitation links now automatically use `window.location.origin` (the URL the admin's browser is open on), so links work without any manual URL configuration
+- **Jukebox URL setting** — optional override in Admin → Indstillinger if the public URL differs from the admin's browser URL
+- **Datetime picker for access expiry** — choose an exact date and time for when a guest's access expires, instead of entering a number of minutes
+- **Auto-start autoplay on boot** — if the jukebox is idle when the server starts, autoplay kicks in automatically without requiring a first manual play
+- **Stream route indicator** — the dashboard and Now Playing display show whether audio is streaming direct or via the local backend, with a clickable link to the stream URL
+- **Direct stream URL bypass** — configure an external URL (e.g. an Icecast stream) that the kiosk browser uses instead of the local backend stream
+- **Logout button in admin panel** — logout button added to the admin panel header
+
+#### Bug Fixes
+- **Progress bar always showed 0%** — fixed by reading duration from the browser's audio element instead of the database
+- **Direct stream URL treated as relative path** — fixed using the URL constructor to properly resolve absolute URLs
+- **Delete user silently failed** — SQLite foreign key constraints caused DELETE to be blocked; fixed by nulling FK references before deleting the user
+- **Audio didn't restart when same track was selected** — fixed so the audio element always reloads even if the track ID hasn't changed
+- **Search screen double-fires** — added debounce to search input to prevent excessive API calls
+- **Duplicate queue add returned 400** — changed to return 200 with the existing item instead of an error
+- **Frontend build broken** — fixed an extra `</div>` tag that broke the Vite build
+- **Stream URL missing scheme** — auto-prepend `https://` if the configured direct stream URL has no scheme
+- **Settings/audio race condition** — fixed a race between the settings load and audio source update that could cause the wrong stream URL to be used on startup
+- **Login security hardening** — added rate limiting and constant-time responses to prevent credential stuffing and user enumeration
+
+---
+
+### v0.1.0 — initial release
+
+First public release. See the [v0.1.0 release notes](https://github.com/Kronborgs/crownjukebox/releases/tag/v0.1.0).
+
+---
+
 ## License
 
 MIT — use it, host it, fork it, share it.
