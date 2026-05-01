@@ -394,7 +394,7 @@ export const adminApi = {
   // Users
   users:      () => getList<User>('/api/admin/users'),
   createUser: (data: Partial<User> & { pin?: string; can_add_to_queue?: boolean; can_search?: boolean; can_use_party_button?: boolean; can_view_queue?: boolean; access_duration_minutes?: number; send_invite?: boolean }) =>
-    post<{ user: User; invite_sent: boolean; invite_error?: string }>('/api/admin/users', data),
+    post<{ user: User; invite_sent: boolean; invite_error?: string }>('/api/admin/users', { ...data, base_url: window.location.origin }),
   getUser:    (id: string) => get<User>(`/api/admin/users/${id}`),
   updateUser: (id: string, data: Partial<User>) => patch<void>(`/api/admin/users/${id}`, data),
   disableUser: (id: string) => post<void>(`/api/admin/users/${id}/disable`),
@@ -463,7 +463,7 @@ export const adminApi = {
 
   // Invite user
   inviteUser: (userId: string, email: string, expiresInMinutes = 0) =>
-    post<{ status: string }>(`/api/admin/users/${userId}/invite`, { email, expires_in_minutes: expiresInMinutes }),
+    post<{ status: string }>(`/api/admin/users/${userId}/invite`, { email, expires_in_minutes: expiresInMinutes, base_url: window.location.origin }),
 
   // Room management (admin)
   createRoom: (name: string) => post<Room>('/api/admin/rooms', { name }),
