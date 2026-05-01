@@ -266,6 +266,37 @@ All live updates use Server-Sent Events. The backend broadcasts named events to 
 
 ---
 
+## Library Size & Capacity
+
+CrownJukebox is not meaningfully limited by software — the real limit is your disk space.
+
+### How much music can it hold?
+
+A typical MP3 (256 kbps, ~4 minutes) is around **8 MB**. Here's what that means in practice:
+
+| Disk space | Approx. tracks |
+|---|---|
+| 100 GB | ~12,500 |
+| 500 GB | ~62,500 |
+| 1 TB | ~125,000 |
+| 4 TB | ~500,000 |
+| 8 TB | ~1,000,000 |
+
+Add ~1–2 GB for the artwork cache (3 thumbnail sizes per album) — negligible compared to the music itself.
+
+### Why the software won't be your bottleneck
+
+- **SQLite** supports up to 281 TB and billions of rows. 100,000 tracks of metadata is roughly 150 MB in the database — nothing.
+- **The backend loads metadata on demand** — it doesn't load your whole library into RAM. With 2,000 tracks in the library, the Go process uses ~8–9 MB of RAM.
+- **Search stays fast** — SQLite full-text search handles hundreds of thousands of tracks in under 100 ms.
+- **Album browsing is paginated** — it doesn't matter if you have 100 or 100,000 albums.
+
+The only thing that takes longer with a large library is the **initial scan** — but that runs once in the background and doesn't block playback.
+
+**Short version: if your disk is big enough, CrownJukebox can handle it.**
+
+---
+
 ## Changelog
 
 ### v0.1.1 — 2026-05-01
