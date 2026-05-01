@@ -1237,19 +1237,19 @@ func (s *Server) handleAdminListJukeboxes(w http.ResponseWriter, r *http.Request
 
 func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		DisplayName    string `json:"display_name"`
-		Email          string `json:"email"`
+		DisplayName     string `json:"display_name"`
+		Email           string `json:"email"`
 		Username        string `json:"username"`
 		Role            string `json:"role"`
 		Pin             string `json:"pin"`
 		IsPermanent     bool   `json:"is_permanent"`
 		AccessExpiresAt string `json:"access_expires_at"`
-		CanAddToQueue  bool   `json:"can_add_to_queue"`
-		CanSearch      bool   `json:"can_search"`
-		CanUseParty    bool   `json:"can_use_party_button"`
-		CanViewQueue   bool   `json:"can_view_queue"`
-		SendInvite     bool   `json:"send_invite"`
-		BaseURL        string `json:"base_url"` // window.location.origin from browser
+		CanAddToQueue   bool   `json:"can_add_to_queue"`
+		CanSearch       bool   `json:"can_search"`
+		CanUseParty     bool   `json:"can_use_party_button"`
+		CanViewQueue    bool   `json:"can_view_queue"`
+		SendInvite      bool   `json:"send_invite"`
+		BaseURL         string `json:"base_url"` // window.location.origin from browser
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)

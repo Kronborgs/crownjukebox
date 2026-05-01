@@ -2,21 +2,31 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi, User, Track, Playlist, KeyboardBinding, setCurrentRoomId } from '@/api/client'
-import { Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio, LayoutDashboard, Mail, PartyPopper, Upload, Star, ChevronUp, ChevronDown } from 'lucide-react'
+import { useSession } from '@/hooks/useSession'
+import { Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio, LayoutDashboard, Mail, PartyPopper, Upload, Star, ChevronUp, ChevronDown, LogOut } from 'lucide-react'
 
 type AdminTab = 'dashboard' | 'users' | 'jukeboxes' | 'settings' | 'library' | 'smtp' | 'skaal'
 
 export function AdminLayout() {
   const [tab, setTab] = useState<AdminTab>('dashboard')
+  const { logout } = useSession()
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-base)' }}>
       {/* Header */}
       <div style={{ padding: '16px 24px', borderBottom: '1px solid rgba(191,0,255,0.2)', display: 'flex', alignItems: 'center', gap: '16px', background: 'var(--bg-panel)' }}>
         <span className="neon-text-primary" style={{ fontSize: '1.4rem' }}>♛</span>
-        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', letterSpacing: '2px', textTransform: 'uppercase', color: 'var(--chrome-bright)' }}>
+        <h1 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', letterSpacing: '2px', textTransform: 'uppercase', color: 'var(--chrome-bright)', flex: 1 }}>
           Admin Panel
         </h1>
+        <button
+          className="btn btn-ghost"
+          onClick={logout}
+          title="Log ud"
+          style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--text-dim)' }}
+        >
+          <LogOut size={15} /> Log ud
+        </button>
       </div>
 
       {/* Tab bar */}
