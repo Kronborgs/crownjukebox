@@ -14,6 +14,7 @@ export interface User {
   access_expires_at: string | null
   created_at: string
   last_seen_at: string | null
+  force_pin_change?: boolean
 }
 
 export interface Permissions {
@@ -322,6 +323,7 @@ export const authApi = {
     post<{ token: string; user: User }>('/api/auth/qr-login', { token }),
   logout:  () => post('/api/auth/logout'),
   me:      () => get<{ user: User; permissions: Permissions }>('/api/auth/me'),
+  setPin:  (newPin: string) => post<{ status: string }>('/api/auth/set-pin', { new_pin: newPin }),
 }
 
 // ─── Library ──────────────────────────────────────────────────────

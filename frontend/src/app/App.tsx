@@ -8,7 +8,7 @@ import { LoginScreen } from '@/screens/LoginScreen'
 import { AdminLayout } from '@/screens/Admin/AdminLayout'
 import { SetupScreen } from '@/screens/SetupScreen'
 import { RoomSelector } from '@/screens/RoomSelector'
-import { setupApi } from '@/api/client'
+import { setupApi, authApi } from '@/api/client'
 
 /** Returns true when the viewport is narrower than 768px. */
 function useIsMobile() {
@@ -32,10 +32,14 @@ const queryClient = new QueryClient({
 })
 
 function AppRoutes() {
-  const { user, isLoading, currentRoomId, setRoom } = useSession()
+  const { user, isLoading, currentRoomId, setRoom, forcePinChange, clearForcePinChange } = useSession()
   const isMobile = useIsMobile()
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null)
   const [roomSelected, setRoomSelected] = useState(!!currentRoomId && currentRoomId !== 'default')
+  const [newPin, setNewPin] = useState('')
+  const [newPinConfirm, setNewPinConfirm] = useState('')
+  const [pinError, setPinError] = useState('')
+  const [pinSaving, setPinSaving] = useState(false)
 
   // Check setup status on mount
   useEffect(() => {
@@ -96,6 +100,49 @@ function AppRoutes() {
       <Routes>
         <Route path="*" element={<LoginScreen />} />
       </Routes>
+    )
+  }
+
+  if (forcePinChange) {
+    async function handleSetPin(e: React.FormEvent) {
+      e.preventDefault()
+      if (newPin.length < 4) { setPinError('PIN skal være mindst 4 tegn'); return }
+      if (newPin !== newPinConfirm) { setPinError('Koderne matcher ikke'); return }
+      setPinSaving(true)
+      setPinError('')
+      try {
+        await authApi.setPin(newPin)
+        clearForcePinChange()
+      } catch (err: unknown) {
+        setPinError(err instanceof Error ? err.message : 'Fejl')
+      } finally {
+        setPinSaving(false)
+      }
+    }
+    return (
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'radial-gradient(ellipse at center, #1a0a30 0%, #0d0520 70%)' }}>
+        <div className="glass-card" style={{ padding: '2.5rem', width: '100%', maxWidth: '380px' }}>
+          <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+            <div style={{ fontSize: '2.5rem' }}>🔑</div>
+            <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.2rem', letterSpacing: '2px', color: 'var(--chrome-bright)', textTransform: 'uppercase', margin: '8px 0 4px' }}>Vælg din kode</h2>
+            <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>Din engangskode virker kun første gang.<br />Vælg din egen personlige kode.</p>
+          </div>
+          <form onSubmit={handleSetPin} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div>
+              <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '6px' }}>Ny PIN-kode</label>
+              <input className="input" type="password" value={newPin} onChange={e => setNewPin(e.target.value)} placeholder="Min. 4 tegn" autoFocus />
+            </div>
+            <div>
+              <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '6px' }}>Gentag PIN-kode</label>
+              <input className="input" type="password" value={newPinConfirm} onChange={e => setNewPinConfirm(e.target.value)} placeholder="Skriv koden igen" />
+            </div>
+            {pinError && <p style={{ color: 'var(--neon-accent)', fontSize: '0.85rem', textAlign: 'center' }}>{pinError}</p>}
+            <button type="submit" className="btn btn-primary" disabled={pinSaving} style={{ width: '100%', padding: '14px', marginTop: '4px' }}>
+              {pinSaving ? 'Gemmer…' : '✅ Gem min kode & gå til jukebox'}
+            </button>
+          </form>
+        </div>
+      </div>
     )
   }
 

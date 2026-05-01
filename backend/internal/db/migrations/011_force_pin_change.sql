@@ -1,0 +1,1 @@
+ALTER TABLE users ADD COLUMN force_pin_change BOOLEAN NOT NULL DEFAULT 0;

@@ -154,6 +154,7 @@ func (s *Server) Router() http.Handler {
 
 		r.Post("/api/auth/logout", s.handleLogout)
 		r.Get("/api/auth/me", s.handleMe)
+		r.Post("/api/auth/set-pin", s.handleSetPin)
 
 		// Library
 		r.Get("/api/library/artists", s.handleListArtists)
@@ -308,7 +309,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if err := s.db.Get(&user, `
 		SELECT id, display_name, username, email, role, pin_hash, login_token_hash,
 		       is_active, is_permanent, access_starts_at, access_expires_at,
-		       created_by_admin_id, created_at, updated_at, last_seen_at
+		       created_by_admin_id, created_at, updated_at, last_seen_at, force_pin_change
 		FROM users WHERE username = ? COLLATE NOCASE AND is_active = 1`, req.Username); err != nil {
 		// Constant-time delay even on lookup failure to prevent user-enumeration via timing.
 		bcrypt.GenerateFromPassword([]byte("dummy"), bcrypt.DefaultCost)
@@ -370,6 +371,34 @@ func (s *Server) handleQRLogin(w http.ResponseWriter, r *http.Request) {
 		"token": token,
 		"user":  userResponse(user),
 	})
+}
+
+func (s *Server) handleSetPin(w http.ResponseWriter, r *http.Request) {
+	sd, _ := auth.GetSessionFromContext(r.Context())
+	if sd == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var req struct {
+		NewPin string `json:"new_pin"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.NewPin) < 4 {
+		jsonError(w, "new_pin must be at least 4 characters", http.StatusBadRequest)
+		return
+	}
+	hash, err := auth.HashPassword(req.NewPin)
+	if err != nil {
+		jsonError(w, "hash error", http.StatusInternalServerError)
+		return
+	}
+	if _, err := s.db.ExecContext(r.Context(),
+		`UPDATE users SET pin_hash = ?, force_pin_change = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		hash, sd.User.ID,
+	); err != nil {
+		jsonError(w, "failed to update PIN", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w, map[string]string{"status": "ok"})
 }
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -1284,10 +1313,11 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 
 	if _, err := tx.ExecContext(r.Context(), `
 		INSERT INTO users (id, display_name, email, username, role, pin_hash, is_active, is_permanent,
-		                   access_expires_at, created_by_admin_id, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		                   access_expires_at, created_by_admin_id, force_pin_change, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		user.ID, user.DisplayName, user.Email, user.Username, user.Role, user.PinHash,
 		user.IsActive, user.IsPermanent, user.AccessExpiresAt, user.CreatedByAdminID,
+		req.Pin != "", // force_pin_change when a PIN was set by admin
 		user.CreatedAt, user.UpdatedAt,
 	); err != nil {
 		jsonError(w, "create user failed: "+err.Error(), http.StatusInternalServerError)
@@ -2401,6 +2431,7 @@ func userResponse(u db.User) map[string]any {
 		"access_expires_at": u.AccessExpiresAt,
 		"created_at":        u.CreatedAt,
 		"last_seen_at":      u.LastSeenAt,
+		"force_pin_change":  u.ForcePinChange,
 	}
 }
 
