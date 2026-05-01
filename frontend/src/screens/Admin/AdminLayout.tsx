@@ -556,6 +556,10 @@ interface CreateUserModalProps {
 }
 
 function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
+  const qc = useQueryClient()
+  const settings = (qc.getQueryData<Record<string, string>>(['settings']) ?? {}) as Record<string, string>
+  const jukeboxUrlSet = !!(settings['jukebox_url'] ?? '').trim()
+
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const [username, setUsername] = useState('')
@@ -650,6 +654,11 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
               <input type="checkbox" checked={sendInvite} onChange={e => setSendInvite(e.target.checked)} />
               <span style={labelStyle}>📧 Send festlig invitation via e-mail</span>
             </label>
+          )}
+          {email.trim() && sendInvite && !jukeboxUrlSet && (
+            <div style={{ background: 'rgba(255,160,0,0.1)', border: '1px solid rgba(255,160,0,0.4)', borderRadius: '8px', padding: '10px 14px', fontSize: '0.82rem', color: '#ffb830' }}>
+              ⚠️ <strong>Jukebox URL er ikke konfigureret.</strong> Gå til <em>Indstillinger</em> og sæt URL'en (fx <code>https://jukeboxen.kronborgs.dk</code>) før invitationen kan sendes.
+            </div>
           )}
           <div style={rowStyle}>
             <label style={labelStyle}>Brugernavn (valgfrit)</label>
@@ -1298,6 +1307,33 @@ function SettingsPanel() {
     <div style={{ maxWidth: '860px' }}>
       <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '20px' }}>Indstillinger</h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
+
+        {/* ── Jukebox URL ── */}
+        <div className="glass-card" style={{ padding: '22px', border: merged['jukebox_url'] ? undefined : '1px solid rgba(255,180,0,0.4)' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--chrome-bright)', marginBottom: '8px' }}>
+            🌐 Jukebox URL <span style={{ fontSize: '0.75rem', fontWeight: 400, color: 'var(--neon-primary)', marginLeft: '8px' }}>Påkrævet for invitationer</span>
+          </h3>
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.8rem', marginBottom: '14px' }}>
+            Den offentlige URL som jukeboxen er tilgængelig på — fx via Cloudflare tunnel eller reverse proxy.
+            Bruges i invitationslinks og QR-koder. Uden denne kan invitations-emails ikke sendes.
+          </p>
+          {!merged['jukebox_url'] && (
+            <div style={{ background: 'rgba(255,160,0,0.1)', border: '1px solid rgba(255,160,0,0.4)', borderRadius: '8px', padding: '10px 14px', marginBottom: '12px', fontSize: '0.82rem', color: '#ffb830' }}>
+              ⚠️ Jukebox URL er ikke sat. Invitations-emails kan ikke sendes.
+            </div>
+          )}
+          <input
+            className="input"
+            type="url"
+            placeholder="https://jukeboxen.kronborgs.dk"
+            value={String(merged['jukebox_url'] ?? '')}
+            onChange={e => setLocal(l => ({ ...l, jukebox_url: e.target.value }))}
+          />
+          <p style={{ color: 'var(--text-dim)', fontSize: '0.78rem', marginTop: '6px' }}>
+            Husk at inkludere <code style={{ color: 'var(--neon-teal, #22d3a0)' }}>https://</code> og ingen skråstreg til sidst.
+          </p>
+        </div>
+
         <div className="glass-card" style={{ padding: '22px' }}>
           <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--chrome-bright)', marginBottom: '16px' }}>Køindstillinger</h3>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>

@@ -84,6 +84,20 @@ func getBaseURL(cfg *config.Config) string {
 	return "http://localhost:" + cfg.Port
 }
 
+// getPublicBaseURL returns the configured jukebox_url from settings (DB).
+// Falls back to getBaseURL(cfg) if not set, and also returns whether it was
+// explicitly configured (so callers can warn the user).
+func (s *Server) getPublicBaseURL(ctx context.Context) (url string, configured bool) {
+	var val string
+	if err := s.db.GetContext(ctx, &val, `SELECT value FROM settings WHERE key = 'jukebox_url'`); err == nil {
+		val = strings.TrimRight(strings.TrimSpace(val), "/")
+		if val != "" {
+			return val, true
+		}
+	}
+	return getBaseURL(s.cfg), false
+}
+
 // Hub returns the SSE event hub (used by main for background broadcast goroutines).
 func (s *Server) Hub() *events.Hub {
 	return s.hub
@@ -1276,26 +1290,32 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	inviteSent := false
 	inviteErr := ""
 	if req.SendInvite && req.Email != "" {
-		expMins := 14 * 24 * 60 // default 14 days
-		if req.AccessDuration != nil && *req.AccessDuration > 0 {
-			expMins = *req.AccessDuration
-		}
-		expDur := time.Duration(expMins) * time.Minute
-		var expiry *time.Time
-		t := time.Now().Add(expDur)
-		expiry = &t
-
-		_, token, err := s.qrSvc.CreateAccessLink(r.Context(), user.ID, expDur)
-		if err == nil {
-			accessURL := getBaseURL(s.cfg) + "/qr/" + token
-			if err := s.emailSvc.SendInvitation(r.Context(), req.Email, user.DisplayName, accessURL, expiry); err != nil {
-				inviteErr = err.Error()
-				log.Printf("[invite] failed to send invitation to %s: %v", req.Email, err)
-			} else {
-				inviteSent = true
-			}
+		baseURL, configured := s.getPublicBaseURL(r.Context())
+		if !configured {
+			inviteErr = "jukebox_url er ikke konfigureret i Indstillinger — invitation ikke sendt"
+			log.Printf("[invite] jukebox_url not set, skipping invitation to %s", req.Email)
 		} else {
-			inviteErr = err.Error()
+			expMins := 14 * 24 * 60 // default 14 days
+			if req.AccessDuration != nil && *req.AccessDuration > 0 {
+				expMins = *req.AccessDuration
+			}
+			expDur := time.Duration(expMins) * time.Minute
+			var expiry *time.Time
+			t := time.Now().Add(expDur)
+			expiry = &t
+
+			_, token, err := s.qrSvc.CreateAccessLink(r.Context(), user.ID, expDur)
+			if err == nil {
+				accessURL := baseURL + "/qr/" + token
+				if err := s.emailSvc.SendInvitation(r.Context(), req.Email, user.DisplayName, accessURL, expiry); err != nil {
+					inviteErr = err.Error()
+					log.Printf("[invite] failed to send invitation to %s: %v", req.Email, err)
+				} else {
+					inviteSent = true
+				}
+			} else {
+				inviteErr = err.Error()
+			}
 		}
 	}
 
@@ -1467,7 +1487,12 @@ func (s *Server) handleAdminInviteUser(w http.ResponseWriter, r *http.Request) {
 	var user db.User
 	_ = s.db.GetContext(r.Context(), &user, `SELECT * FROM users WHERE id = ?`, id)
 
-	accessURL := getBaseURL(s.cfg) + "/qr/" + token
+	baseURL, configured := s.getPublicBaseURL(r.Context())
+	if !configured {
+		jsonError(w, "Jukebox URL er ikke konfigureret i Indstillinger. Gå til Indstillinger og sæt 'Jukebox URL' (fx https://jukeboxen.kronborgs.dk) før du sender invitationer.", http.StatusBadRequest)
+		return
+	}
+	accessURL := baseURL + "/qr/" + token
 
 	if err := s.emailSvc.SendInvitation(r.Context(), req.Email, user.DisplayName, accessURL, expiry); err != nil {
 		jsonError(w, "failed to send email: "+err.Error(), http.StatusInternalServerError)
