@@ -47,9 +47,9 @@ export function useCast({ streamUrl, title, artist, coverUrl }: UseCastOptions) 
   useEffect(() => {
     if (initializedRef.current) return
 
-    // Cast SDK calls this callback when it loads
-    w.__onGCastApiAvailable = (available: boolean) => {
+    const initializeCast = (available: boolean) => {
       if (!available || !w.cast || !w.chrome?.cast) return
+      if (initializedRef.current) return
       initializedRef.current = true
 
       const castContext = w.cast.framework.CastContext.getInstance()
@@ -76,6 +76,16 @@ export function useCast({ streamUrl, title, artist, coverUrl }: UseCastOptions) 
 
       setCastState('idle')
     }
+
+    // The Cast SDK may have already loaded and fired __onGCastApiAvailable before
+    // this React component mounted (async script race). Check if it's already ready.
+    if (w.cast?.framework?.CastContext) {
+      initializeCast(true)
+      return
+    }
+
+    // SDK not yet loaded — set callback for when it fires.
+    w.__onGCastApiAvailable = initializeCast
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // When stream URL changes and we are casting, load the new track
