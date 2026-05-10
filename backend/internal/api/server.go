@@ -800,6 +800,12 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 	contentType := audioContentType(track.FilePath)
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Accept-Ranges", "bytes")
+	// Required for Web Audio API (createMediaElementSource) to work when the
+	// audio element is loaded cross-origin via a direct stream URL. Without this
+	// the browser taints the audio data and the AudioContext outputs zeroes.
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Range")
+	w.Header().Set("Access-Control-Expose-Headers", "Content-Length, Content-Range")
 
 	http.ServeFile(w, r, track.FilePath)
 }

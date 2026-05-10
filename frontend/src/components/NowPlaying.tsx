@@ -406,7 +406,7 @@ export function NowPlaying({ state, refreshState }: Props) {
       )}
 
       {/* Hidden audio element — ALWAYS at this tree position, never moved */}
-      <audio ref={audioRef} src={audioSrc ?? undefined} preload="auto" style={{ display: 'none' }} />
+      <audio ref={audioRef} src={audioSrc ?? undefined} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }} />
 
       {/* All visual UI is hidden during party mode — only audio keeps playing */}
       {!isParty && (
