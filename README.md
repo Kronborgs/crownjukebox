@@ -79,6 +79,7 @@ The **audio streams directly from the backend** to the kiosk browser. The kiosk 
 - **Autoplay** — when the queue runs out, CrownJukebox automatically picks tracks from your library based on what hasn't been played recently. The moment a user adds a real track, autoplay steps aside and the user's track starts immediately
 - Play / Pause / Skip with full position tracking
 - Playback history per room
+- **YouTube QR-to-queue** — guests scan a QR code in the Search tab, search YouTube on their phone, and add any song directly to the jukebox queue. yt-dlp downloads the audio in the background while the track is queued immediately
 
 ### 🎉 SKÅL! Party Mode
 - One tap triggers a full-screen neon + confetti explosion on the kiosk
@@ -119,6 +120,7 @@ The **audio streams directly from the backend** to the kiosk browser. The kiosk 
 - Manage QR access links: create new ones, set expiry, revoke instantly
 - Assign a party playlist to each room
 - Configure keyboard bindings for kiosk installs (useful for a physical button panel)
+- **YouTube API key** — configure your Google YouTube Data API v3 key directly in Admin → YouTube. Never stored in environment variables or config files
 
 ### 🚀 Self-hosting & Deployment
 - **Multi-arch Docker image** — runs on both `amd64` (regular PC/server) and `arm64` (Raspberry Pi 4/5, Apple Silicon)
@@ -155,28 +157,17 @@ Open `http://localhost:3000` in your browser. The **setup wizard** will guide yo
 
 ```yaml
 services:
-  backend:
-    image: ghcr.io/kronborgs/crownjukebox-backend:latest
-    volumes:
-      - /your/music:/music:ro          # your music library (read-only)
-      - crownjukebox_data:/data        # database + artwork cache
-    environment:
-      ADMIN_USERNAME: admin
-      ADMIN_PASSWORD: your-secure-password
-      JWT_SECRET: change-this-to-a-long-random-string
-      MUSIC_DIR: /music
-    restart: unless-stopped
-
-  frontend:
-    image: ghcr.io/kronborgs/crownjukebox-frontend:latest
+  crownjukebox:
+    image: ghcr.io/kronborgs/crownjukebox:latest
     ports:
       - "3000:80"
-    depends_on:
-      - backend
+    volumes:
+      - /your/music:/music          # your music library (read/write — needed for YouTube downloads)
+      - /your/appdata:/data         # database + persistent app data
+      - /your/artwork_cache:/artwork_cache  # album art thumbnail cache
+    environment:
+      JWT_SECRET: change-this-to-a-long-random-string
     restart: unless-stopped
-
-volumes:
-  crownjukebox_data:
 ```
 
 ---
@@ -185,13 +176,12 @@ volumes:
 
 | Variable | Default | Description |
 |---|---|---|
-| `ADMIN_USERNAME` | `admin` | Admin username |
-| `ADMIN_PASSWORD` | *(required)* | Admin password / PIN |
 | `JWT_SECRET` | *(required)* | Secret key for session tokens — **always change this** |
 | `MUSIC_DIR` | `/music` | Path inside the container to your music directory |
 | `DB_PATH` | `/data/crownjukebox.db` | SQLite database file path |
-| `ARTWORK_CACHE_DIR` | `/data/artwork-cache` | Thumbnail cache directory |
-| `SESSION_TTL_HOURS` | `24` | How long a login session lasts (hours) |
+| `ARTWORK_CACHE_DIR` | `/artwork_cache` | Thumbnail cache directory |
+| `EXTERNAL_MUSIC_DIR` | `/music/youtubedownload` | Where YouTube-downloaded tracks are saved |
+| `SESSION_TTL_HOURS` | `168` | How long a login session lasts (hours) |
 | `ALLOWED_ORIGINS` | `*` | CORS allowed origins — set to your domain in production |
 | `ALLOW_GUEST_SEARCH` | `true` | Whether guests can search the library |
 | `ALLOW_GUEST_QUEUE_ADD` | `true` | Whether guests can add tracks to the queue |
@@ -298,6 +288,24 @@ The only thing that takes longer with a large library is the **initial scan** �
 ---
 
 ## Changelog
+
+### v0.1.2 — 2026-05-10
+
+#### New Features
+- **YouTube QR-to-queue** — guests scan a QR code shown in the Search tab, opens a mobile YouTube search page (`/connect`). They search for any song, tap `+`, and it's added to the jukebox queue immediately. yt-dlp downloads the audio in the background while the track is already queued and ready to play
+- **YouTube API key in admin panel** — configure your Google YouTube Data API v3 key directly in Admin → YouTube. Never stored in environment variables
+- **Background download with immediate queue** — track metadata is fetched first (~2s), track is queued right away, audio download happens in the background. Stream handler waits for the file if playback reaches the track before download completes
+- **Multi-arch yt-dlp** — architecture-specific yt-dlp binary installed at image build time (amd64 + arm64), so YouTube downloads work on Unraid and Raspberry Pi without any manual setup
+
+#### Bug Fixes
+- **Audio CORS (Web Audio API outputting silence)** — added explicit `Access-Control-Allow-Origin: *` headers on the stream endpoint + `crossOrigin="anonymous"` on the audio element. Required for `createMediaElementSource` to work cross-origin
+- **QR code showed localhost URL** — the connect URL now uses the browser's `Origin` header, so QR codes always contain the real public URL (e.g. `https://jukeboxen.kronborgs.dk`) instead of `localhost:8080`
+- **Blank page on QR modal (React error #130)** — fixed `import QRCode` default import which resolved to the module object in production Vite builds; changed to named import `{ QRCode }`
+- **CI/CD not building on master** — GitHub Actions workflow only triggered on `main`; added `master` branch trigger and `latest` tag on master push
+- **npm ci failing in Docker build** — local npm 11 generates lockfileVersion 3; switched Docker builder to `node:24` + `npm install` to match
+- **`exec format error` for yt-dlp on arm64** — switched from amd64-only binary download to architecture-specific binary selection at build time
+
+---
 
 ### v0.1.1 — 2026-05-01
 
