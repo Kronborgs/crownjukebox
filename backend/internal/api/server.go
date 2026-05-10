@@ -460,6 +460,13 @@ func (s *Server) handleCreateGuestLink(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "failed to create guest link", http.StatusInternalServerError)
 		return
 	}
+	// qrSvc builds the URL from its internal baseURL (the SubsonicURL config or
+	// localhost fallback). Replace it with the real public address so the QR code
+	// points to the correct host (e.g. https://jukeboxen.kronborgs.dk).
+	// Priority: 1) browser Origin header, 2) admin-configured jukebox_url, 3) localhost.
+	if idx := strings.Index(loginURL, "/login?token="); idx >= 0 {
+		loginURL = s.resolveBaseURL(r.Context(), r.Header.Get("Origin")) + loginURL[idx:]
+	}
 	jsonOK(w, map[string]string{"login_url": loginURL})
 }
 

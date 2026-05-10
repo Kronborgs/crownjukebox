@@ -595,14 +595,22 @@ export function NowPlaying({ state, refreshState }: Props) {
                   <SkipForward size={24} />
                 </button>
               )}
-              {/* Phase 4: Cast button — only in Chrome with Cast extension */}
-              {isCastAvailable && (
+              {/* Phase 4: Cast button — always visible for owners; dimmed when Chrome/Cast is not available */}
+              {!isGuest && (
                 <button
                   className="btn btn-ghost btn-icon"
-                  onClick={isCasting ? stopCasting : startCasting}
+                  onClick={isCastAvailable ? (isCasting ? stopCasting : startCasting) : undefined}
+                  disabled={!isCastAvailable}
                   aria-label={isCasting ? 'Stop casting' : 'Cast til enhed'}
-                  title={isCasting ? 'Stop casting' : 'Cast til Chromecast'}
-                  style={{ color: isCasting ? 'var(--neon-primary)' : 'var(--text-dim)' }}
+                  title={
+                    isCastAvailable
+                      ? (isCasting ? 'Stop casting' : 'Cast til Chromecast')
+                      : 'Chromecast kræver Chrome-browser'
+                  }
+                  style={{
+                    color: isCasting ? 'var(--neon-primary)' : 'var(--text-dim)',
+                    opacity: isCastAvailable ? 1 : 0.3,
+                  }}
                 >
                   <Cast size={24} />
                 </button>
