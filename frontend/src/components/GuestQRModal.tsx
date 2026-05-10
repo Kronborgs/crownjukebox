@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import QRCode from 'react-qr-code'
+import { QRCode } from 'react-qr-code'
 import { authApi } from '@/api/client'
 import { RefreshCw, X } from 'lucide-react'
 

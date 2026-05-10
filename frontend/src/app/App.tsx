@@ -34,12 +34,7 @@ const queryClient = new QueryClient({
 
 function AppRoutes() {
   const location = useLocation()
-
-  // Public /connect route — mobile YouTube search page (no jukebox auth required)
-  if (location.pathname === '/connect') {
-    return <ConnectScreen />
-  }
-
+  // ALL hooks must be called unconditionally (Rules of Hooks)
   const { user, isLoading, currentRoomId, setRoom, forcePinChange, clearForcePinChange } = useSession()
   const isMobile = useIsMobile()
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null)
@@ -48,6 +43,12 @@ function AppRoutes() {
   const [newPinConfirm, setNewPinConfirm] = useState('')
   const [pinError, setPinError] = useState('')
   const [pinSaving, setPinSaving] = useState(false)
+
+  // Public /connect route — always available, no auth required. Early return is fine here
+  // because all hooks above have already been called unconditionally.
+  if (location.pathname === '/connect') {
+    return <ConnectScreen />
+  }
 
   // Check setup status on mount
   useEffect(() => {
@@ -106,7 +107,8 @@ function AppRoutes() {
   if (!user) {
     return (
       <Routes>
-        <Route path="*" element={<LoginScreen />} />
+        <Route path="/login" element={<LoginScreen />} />
+        <Route path="*"      element={<LoginScreen />} />
       </Routes>
     )
   }

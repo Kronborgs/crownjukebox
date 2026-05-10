@@ -176,13 +176,8 @@ export function NowPlaying({ state, refreshState }: Props) {
   useSSE({
     settings_changed: (data) => {
       const next = data as Record<string, string>
-      setAudioSettings((current) => ({
-        volume: Number(next.audio_volume ?? next.volume ?? current.volume),
-        bass: Number(next.audio_bass ?? current.bass),
-        treble: Number(next.audio_treble ?? current.treble),
-        balance: Number(next.audio_balance ?? current.balance),
-        loudness: (next.audio_loudness ?? (current.loudness ? '1' : '0')) === '1',
-      }))
+      // Only react to direct_stream_url changes — audio settings are now
+      // stored per-room in the DB and managed exclusively via getAudioState() / updateAudioState().
       if ('direct_stream_url' in next) {
         let url = (next.direct_stream_url ?? '').trim()
         if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
