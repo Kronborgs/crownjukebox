@@ -365,9 +365,11 @@ export function NowPlaying({ state, refreshState }: Props) {
   // When track changes (or audioKey is bumped after track-ended), reload audio.
   // audioKey ensures this re-runs even when the same track ID is picked again.
   // directStreamUrl is included so audioSrc updates when settings load (async race fix).
+  // isActivePlayer gates audio: only the device that holds the player role streams audio.
+  // All other owner devices stay silent (audioSrc = null) so there is no double-playback.
   useEffect(() => {
     setNeedsInteraction(false)
-    if (!track?.id) {
+    if (!isActivePlayer || !track?.id) {
       setAudioSrc(null)
       return
     }
@@ -385,7 +387,7 @@ export function NowPlaying({ state, refreshState }: Props) {
       }
     }
     setAudioSrc(resolvedSrc)
-  }, [track?.id, audioKey, directStreamUrl]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [track?.id, audioKey, directStreamUrl, isActivePlayer]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync play/pause from server state
   useEffect(() => {
@@ -481,7 +483,9 @@ export function NowPlaying({ state, refreshState }: Props) {
   }, [audioSrc, track?.id])
 
   const duration  = audioDuration > 0 ? audioDuration : (track?.duration_secs ?? 0)
-  const position  = currentTime
+  // Active player: use local audio time (smooth, frame-accurate).
+  // Non-active player: fall back to server-reported position (updated every 5 s from active device).
+  const position  = (isActivePlayer && currentTime > 0) ? currentTime : (state?.position_secs ?? 0)
   const progress  = duration > 0 ? Math.min((position / duration) * 100, 100) : 0
 
   const titleText  = track?.title   ?? 'Ingen sang afspilles'
