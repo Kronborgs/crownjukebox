@@ -27,11 +27,10 @@ RUN npm run build
 # ─── Stage 3: Runtime ─────────────────────────────────────────
 FROM nginx:1.27-alpine
 
-# ca-certificates for HTTPS, tzdata for timestamps, python3+ffmpeg for yt-dlp
-RUN apk add --no-cache ca-certificates tzdata python3 ffmpeg curl && \
-    curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
-         -o /usr/local/bin/yt-dlp && \
-    chmod a+rx /usr/local/bin/yt-dlp
+# ca-certificates for HTTPS, tzdata for timestamps, python3+ffmpeg+pip for yt-dlp
+# Install yt-dlp via pip so it works on both amd64 and arm64
+RUN apk add --no-cache ca-certificates tzdata python3 py3-pip ffmpeg && \
+    pip3 install --break-system-packages yt-dlp
 
 # Go binary
 COPY --from=go-builder /app/crownjukebox /app/crownjukebox
@@ -54,7 +53,7 @@ ENV PORT=8080
 ENV DB_PATH=/data/crownjukebox.db
 ENV MUSIC_DIR=/music
 ENV ARTWORK_CACHE_DIR=/artwork_cache
-ENV EXTERNAL_MUSIC_DIR=/data/external
+ENV EXTERNAL_MUSIC_DIR=/music/youtubedownload
 ENV SESSION_TTL_HOURS=168
 ENV ADMIN_USERNAME=admin
 ENV ALLOWED_ORIGINS=*
