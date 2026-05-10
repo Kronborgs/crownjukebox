@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,8 +22,20 @@ import (
 	"github.com/crownjukebox/crownjukebox/internal/queue"
 )
 
-// activeDownloads tracks video IDs currently being downloaded to avoid duplicates.
+// activeDownloads tracks video IDs currently being downloading to avoid duplicates.
 var activeDownloads = make(map[string]bool)
+
+// illegalChars matches characters not allowed in filenames on Windows/Linux.
+var illegalChars = regexp.MustCompile(`[\\/:*?"<>|]`)
+
+func safeFilename(artistName, title string) string {
+	name := artistName + " - " + title
+	name = illegalChars.ReplaceAllString(name, "_")
+	if len(name) > 180 {
+		name = name[:180]
+	}
+	return name
+}
 
 type ytDLPInfo struct {
 	ID        string  `json:"id"`
@@ -91,7 +104,7 @@ func DownloadAndQueue(
 		return AddedSong{}, fmt.Errorf("upsert album: %w", err)
 	}
 
-	filePath := filepath.Join(externalDir, videoID+".m4a")
+	filePath := filepath.Join(externalDir, safeFilename(artistName, info.Title)+".m4a")
 	trackID := uuid.NewString()
 	now := time.Now()
 	_, err = database.ExecContext(ctx, `
@@ -122,7 +135,7 @@ func DownloadAndQueue(
 		activeDownloads[videoID] = true
 		go func() {
 			defer func() { delete(activeDownloads, videoID) }()
-			outTemplate := filepath.Join(externalDir, videoID+".%(ext)s")
+		outTemplate := filepath.Join(externalDir, safeFilename(artistName, info.Title)+".%(ext)s")
 			dlCtx, dlCancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer dlCancel()
 			dlOut, dlErr := exec.CommandContext(dlCtx, "yt-dlp",
