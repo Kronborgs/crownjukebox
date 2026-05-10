@@ -1516,30 +1516,42 @@ func (s *Server) handleAdminListJukeboxes(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	type SessionInfo struct {
+		ID             string    `json:"id"`
+		DeviceName     string    `json:"device_name"`
+		IsGuestSession bool      `json:"is_guest_session"`
+		CreatedAt      time.Time `json:"created_at"`
+		LastSeenAt     time.Time `json:"last_seen_at"`
+		IsActivePlayer bool      `json:"is_active_player"`
+	}
+
 	type JukeboxStatus struct {
-		UserID       string `json:"user_id"`
-		DisplayName  string `json:"display_name"`
-		RoomID       string `json:"room_id"`
-		IsPlaying    bool   `json:"is_playing"`
-		IsPartyMode  bool   `json:"is_party_mode"`
-		CurrentTrack *struct {
+		UserID                string        `json:"user_id"`
+		DisplayName           string        `json:"display_name"`
+		RoomID                string        `json:"room_id"`
+		IsPlaying             bool          `json:"is_playing"`
+		IsPartyMode           bool          `json:"is_party_mode"`
+		CurrentTrack          *struct {
 			ID     string `json:"id"`
 			Title  string `json:"title"`
 			Artist string `json:"artist"`
 		} `json:"current_track,omitempty"`
-		QueueLength int `json:"queue_length"`
+		QueueLength           int           `json:"queue_length"`
+		ActiveSessions        []SessionInfo `json:"active_sessions"`
+		ActivePlayerSessionID *string       `json:"active_player_session_id"`
 	}
 
 	result := make([]JukeboxStatus, 0, len(users))
 
 	for _, user := range users {
 		status := JukeboxStatus{
-			UserID:      user.ID,
-			DisplayName: user.DisplayName,
-			RoomID:      user.ID, // room_id = user_id
+			UserID:         user.ID,
+			DisplayName:    user.DisplayName,
+			RoomID:         user.ID, // room_id = user_id
+			ActiveSessions: []SessionInfo{},
 		}
 
-		// Get playback state for user's room
+		// Get playback state + active_player_session_id for user's room
 		room := s.roomSvc.Get(r.Context(), user.ID)
 		if room != nil {
 			state, _ := room.Playback.GetState(r.Context())
@@ -1547,7 +1559,6 @@ func (s *Server) handleAdminListJukeboxes(w http.ResponseWriter, r *http.Request
 				status.IsPlaying = state.IsPlaying
 				status.IsPartyMode = state.IsPartyMode
 
-				// Get current track info
 				if state.CurrentTrack != nil {
 					status.CurrentTrack = &struct {
 						ID     string `json:"id"`
@@ -1564,6 +1575,40 @@ func (s *Server) handleAdminListJukeboxes(w http.ResponseWriter, r *http.Request
 			// Get queue length
 			queue, _ := room.Queue.GetQueue(r.Context())
 			status.QueueLength = len(queue)
+
+			// Read current active_player_session_id from DB (always fresh)
+			var activeID *string
+			_ = s.db.GetContext(r.Context(), &activeID,
+				`SELECT active_player_session_id FROM rooms WHERE id = ?`, user.ID)
+			status.ActivePlayerSessionID = activeID
+		}
+
+		// Fetch active (non-revoked, non-expired) sessions for this user
+		var sessions []struct {
+			ID             string    `db:"id"`
+			DeviceName     string    `db:"device_name"`
+			IsGuestSession bool      `db:"is_guest_session"`
+			CreatedAt      time.Time `db:"created_at"`
+			LastSeenAt     time.Time `db:"last_seen_at"`
+		}
+		_ = s.db.SelectContext(r.Context(), &sessions, `
+			SELECT id, device_name, is_guest_session, created_at, last_seen_at
+			FROM sessions
+			WHERE user_id = ?
+			  AND revoked_at IS NULL
+			  AND expires_at > CURRENT_TIMESTAMP
+			ORDER BY last_seen_at DESC`, user.ID)
+
+		for _, sess := range sessions {
+			isActive := status.ActivePlayerSessionID != nil && *status.ActivePlayerSessionID == sess.ID
+			status.ActiveSessions = append(status.ActiveSessions, SessionInfo{
+				ID:             sess.ID,
+				DeviceName:     sess.DeviceName,
+				IsGuestSession: sess.IsGuestSession,
+				CreatedAt:      sess.CreatedAt,
+				LastSeenAt:     sess.LastSeenAt,
+				IsActivePlayer: isActive,
+			})
 		}
 
 		result = append(result, status)

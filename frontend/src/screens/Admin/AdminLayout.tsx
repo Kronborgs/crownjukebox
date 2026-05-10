@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { adminApi, User, Track, Playlist, KeyboardBinding, setCurrentRoomId } from '@/api/client'
+import { adminApi, User, Track, Playlist, KeyboardBinding, setCurrentRoomId, JukeboxSession } from '@/api/client'
 import { useSession } from '@/hooks/useSession'
-import { Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio, LayoutDashboard, Mail, PartyPopper, Upload, Star, ChevronUp, ChevronDown, LogOut } from 'lucide-react'
+import { Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio, LayoutDashboard, Mail, PartyPopper, Upload, Star, ChevronUp, ChevronDown, LogOut, Monitor, Smartphone, WifiOff, AlertTriangle } from 'lucide-react'
 
 type AdminTab = 'dashboard' | 'users' | 'jukeboxes' | 'settings' | 'library' | 'smtp' | 'youtube' | 'skaal'
 
@@ -303,12 +303,35 @@ function DashboardPanel() {
 
 // ─── Jukeboxes panel ─────────────────────────────────────────────
 
+function relativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const secs = Math.floor(diffMs / 1000)
+  if (secs < 60) return `${secs}s siden`
+  const mins = Math.floor(secs / 60)
+  if (mins < 60) return `${mins}m siden`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}t siden`
+  return `${Math.floor(hours / 24)}d siden`
+}
+
+function DeviceIcon({ session }: { session: JukeboxSession }) {
+  const name = session.device_name.toLowerCase()
+  const isMobile = /mobile|android|iphone|ipad/i.test(name)
+  return isMobile ? <Smartphone size={12} style={{ flexShrink: 0 }} /> : <Monitor size={12} style={{ flexShrink: 0 }} />
+}
+
 function JukeboxesPanel() {
   const navigate = useNavigate()
+  const qc = useQueryClient()
   const { data: jukeboxes = [], refetch } = useQuery({
     queryKey: ['admin-jukeboxes'],
     queryFn: adminApi.jukeboxes,
-    refetchInterval: 3000, // Auto-refresh every 3 seconds
+    refetchInterval: 5000,
+  })
+
+  const revoke = useMutation({
+    mutationFn: (sessionId: string) => adminApi.revokeSession(sessionId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-jukeboxes'] }),
   })
 
   const viewJukebox = (roomId: string) => {
@@ -325,82 +348,145 @@ function JukeboxesPanel() {
         </button>
       </div>
       <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem', marginBottom: '24px' }}>
-        Oversigt over alle brugeres jukeboxes. Hver bruger har sin egen afspilningskø og tilstand.
+        Oversigt over alle brugeres jukeboxes. Opdateres automatisk hvert 5. sekund.
       </p>
 
-      <div style={{ display: 'grid', gap: '16px', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
-        {jukeboxes.map((jb) => (
-          <div
-            key={jb.user_id}
-            className="glass-card"
-            style={{
-              padding: '18px',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '12px',
-              position: 'relative',
-            }}
-          >
-            {/* Status indicator */}
+      <div style={{ display: 'grid', gap: '16px', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))' }}>
+        {jukeboxes.map((jb) => {
+          const ownerSessions = jb.active_sessions.filter(s => !s.is_guest_session)
+          const guestSessions = jb.active_sessions.filter(s => s.is_guest_session)
+          const playingWithNoOwner = jb.is_playing && ownerSessions.length === 0
+
+          return (
             <div
-              style={{
-                position: 'absolute',
-                top: '12px',
-                right: '12px',
-                width: '12px',
-                height: '12px',
-                borderRadius: '50%',
-                background: jb.is_playing ? 'var(--neon-green)' : 'var(--text-dim)',
-                boxShadow: jb.is_playing ? '0 0 12px var(--neon-green)' : 'none',
-                animation: jb.is_playing ? 'pulse 2s infinite' : 'none',
-              }}
-            />
-
-            <div>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--chrome-bright)', marginBottom: '4px' }}>
-                {jb.display_name}
-              </h3>
-              <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
-                ID: {jb.user_id.slice(0, 8)}...
-              </p>
-            </div>
-
-            {jb.current_track && (
-              <div style={{ padding: '10px 12px', background: 'rgba(191, 0, 255, 0.08)', borderRadius: '6px', borderLeft: '3px solid var(--neon-primary)' }}>
-                <p style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '2px' }}>
-                  {jb.current_track.title}
-                </p>
-                <p style={{ fontSize: '0.75rem', color: 'var(--neon-teal)' }}>
-                  {jb.current_track.artist}
-                </p>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: '16px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-              <div>
-                <span style={{ color: 'var(--text-dim)' }}>Status:</span>{' '}
-                <span style={{ color: jb.is_playing ? 'var(--neon-green)' : 'var(--text-dim)' }}>
-                  {jb.is_playing ? 'Afspiller' : 'Pause'}
-                </span>
-              </div>
-              <div>
-                <span style={{ color: 'var(--text-dim)' }}>Kø:</span>{' '}
-                <span>{jb.queue_length} numre</span>
-              </div>
-              {jb.is_party_mode && (
-                <span style={{ color: 'var(--neon-amber)', fontWeight: 700 }}>🍻 SKÅL</span>
-              )}
-            </div>
-
-            <button
-              className="btn btn-primary"
-              style={{ marginTop: '8px', fontSize: '0.85rem' }}
-              onClick={() => viewJukebox(jb.room_id)}
+              key={jb.user_id}
+              className="glass-card"
+              style={{ padding: '18px', display: 'flex', flexDirection: 'column', gap: '14px', position: 'relative' }}
             >
-              Vis Jukebox →
-            </button>
-          </div>
-        ))}
+              {/* Status dot */}
+              <div style={{
+                position: 'absolute', top: '14px', right: '14px',
+                width: '11px', height: '11px', borderRadius: '50%',
+                background: jb.is_playing ? 'var(--neon-green)' : 'var(--text-dim)',
+                boxShadow: jb.is_playing ? '0 0 10px var(--neon-green)' : 'none',
+              }} />
+
+              {/* Header */}
+              <div>
+                <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--chrome-bright)', marginBottom: '2px' }}>
+                  {jb.display_name}
+                </h3>
+                <p style={{ fontSize: '0.7rem', color: 'var(--text-dim)', fontFamily: 'var(--font-mono)' }}>
+                  ID: {jb.user_id.slice(0, 8)}...
+                </p>
+              </div>
+
+              {/* Warning: playing but no owner logged in */}
+              {playingWithNoOwner && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  background: 'rgba(255,160,0,0.12)', border: '1px solid rgba(255,160,0,0.4)',
+                  borderRadius: '6px', padding: '8px 10px', fontSize: '0.78rem', color: '#ffb347',
+                }}>
+                  <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+                  Afspiller — men ingen ejer er logget ind!
+                </div>
+              )}
+
+              {/* Current track */}
+              {jb.current_track && (
+                <div style={{ padding: '8px 12px', background: 'rgba(191,0,255,0.08)', borderRadius: '6px', borderLeft: '3px solid var(--neon-primary)' }}>
+                  <p style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '2px' }}>
+                    {jb.current_track.title}
+                  </p>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--neon-teal)' }}>
+                    {jb.current_track.artist}
+                  </p>
+                </div>
+              )}
+
+              {/* Status row */}
+              <div style={{ display: 'flex', gap: '16px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                <div>
+                  <span style={{ color: 'var(--text-dim)' }}>Status:</span>{' '}
+                  <span style={{ color: jb.is_playing ? 'var(--neon-green)' : 'var(--text-dim)' }}>
+                    {jb.is_playing ? 'Afspiller' : 'Pause'}
+                  </span>
+                </div>
+                <div>
+                  <span style={{ color: 'var(--text-dim)' }}>Kø:</span>{' '}
+                  <span>{jb.queue_length} numre</span>
+                </div>
+                {jb.is_party_mode && <span style={{ color: 'var(--neon-amber)', fontWeight: 700 }}>🍻 SKÅL</span>}
+              </div>
+
+              {/* Active sessions */}
+              <div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '6px' }}>
+                  Aktive sessioner ({jb.active_sessions.length})
+                  {ownerSessions.length > 0 && ` · ${ownerSessions.length} ejer`}
+                  {guestSessions.length > 0 && ` · ${guestSessions.length} gæst`}
+                </div>
+
+                {jb.active_sessions.length === 0 ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', color: 'var(--text-dim)', padding: '6px 0' }}>
+                    <WifiOff size={12} /> Ingen indlogget
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {jb.active_sessions.map(sess => (
+                      <div key={sess.id} style={{
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                        background: sess.is_active_player
+                          ? 'rgba(0,255,204,0.08)'
+                          : sess.is_guest_session
+                          ? 'rgba(255,255,255,0.03)'
+                          : 'rgba(191,0,255,0.06)',
+                        border: sess.is_active_player ? '1px solid rgba(0,255,204,0.3)' : '1px solid rgba(255,255,255,0.06)',
+                        borderRadius: '6px', padding: '6px 8px', fontSize: '0.75rem',
+                      }}>
+                        <DeviceIcon session={sess} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ color: 'var(--text-primary)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '140px' }}>
+                              {sess.device_name || 'Ukendt enhed'}
+                            </span>
+                            {sess.is_guest_session && (
+                              <span style={{ fontSize: '0.65rem', background: 'rgba(255,255,255,0.1)', borderRadius: '3px', padding: '1px 5px', color: 'var(--text-dim)' }}>GÆST</span>
+                            )}
+                            {sess.is_active_player && (
+                              <span style={{ fontSize: '0.65rem', background: 'rgba(0,255,204,0.2)', borderRadius: '3px', padding: '1px 5px', color: 'var(--neon-teal)' }}>🔊 AFSPILLER</span>
+                            )}
+                          </div>
+                          <div style={{ color: 'var(--text-dim)', marginTop: '1px' }}>
+                            Logget ind {relativeTime(sess.created_at)} · sidst set {relativeTime(sess.last_seen_at)}
+                          </div>
+                        </div>
+                        <button
+                          title="Log ud denne session"
+                          style={{ background: 'none', border: 'none', padding: '2px 4px', cursor: 'pointer', color: 'var(--text-dim)', flexShrink: 0, borderRadius: '4px' }}
+                          onClick={() => revoke.mutate(sess.id)}
+                          onMouseEnter={e => (e.currentTarget.style.color = '#ff4444')}
+                          onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-dim)')}
+                        >
+                          <LogOut size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button
+                className="btn btn-primary"
+                style={{ marginTop: '4px', fontSize: '0.85rem' }}
+                onClick={() => viewJukebox(jb.room_id)}
+              >
+                Vis Jukebox →
+              </button>
+            </div>
+          )
+        })}
       </div>
 
       {jukeboxes.length === 0 && (

@@ -179,6 +179,15 @@ export interface Room {
   updated_at: string
 }
 
+export interface JukeboxSession {
+  id: string
+  device_name: string
+  is_guest_session: boolean
+  created_at: string
+  last_seen_at: string
+  is_active_player: boolean
+}
+
 export interface JukeboxStatus {
   user_id: string
   display_name: string
@@ -191,6 +200,8 @@ export interface JukeboxStatus {
     artist: string
   }
   queue_length: number
+  active_sessions: JukeboxSession[]
+  active_player_session_id?: string | null
 }
 
 export interface SystemMetrics {
