@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { libraryApi, SearchResults, queueApi } from '@/api/client'
 import { CoverArt } from '@/components/CoverArt'
 import { Search as SearchIcon, Plus, X, Check } from 'lucide-react'
+import { MissingSongCTA } from '@/components/MissingSongCTA'
 
 // Simple on-screen keyboard layout for kiosk mode
 const KEYBOARD_ROWS = [
@@ -63,8 +64,13 @@ export function SearchScreen() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Missing song CTA — always visible, above search input */}
+      <div style={{ padding: '10px 16px 4px', display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
+        <MissingSongCTA />
+      </div>
+
       {/* Search input */}
-      <div style={{ padding: '16px', position: 'relative' }}>
+      <div style={{ padding: '8px 16px 16px', position: 'relative' }}>
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '8px' }}>
           <SearchIcon size={18} style={{ position: 'absolute', left: '14px', color: 'var(--text-dim)', pointerEvents: 'none' }} />
           <input

@@ -5,7 +5,6 @@ import { Queue } from '@/components/Queue'
 import { AlbumBrowser } from '@/components/AlbumBrowser'
 import { SearchScreen } from '@/components/SearchScreen'
 import { PartyOverlay } from '@/components/PartyOverlay'
-import { MissingSongCTA } from '@/components/MissingSongCTA'
 import { usePlayback } from '@/hooks/usePlayback'
 import { useSession } from '@/hooks/useSession'
 import { useSSE } from '@/hooks/useSSE'
@@ -132,10 +131,6 @@ export function MobileLayout() {
         </div>
       )}
 
-      {/* ── Mangler din sang? ──────────────────────── */}
-      <div style={{ padding: '6px 16px 0', flexShrink: 0, display: 'flex', justifyContent: 'center' }}>
-        <MissingSongCTA />
-      </div>
 
       {/* ── Tab bar ─────────────────────────────────────── */}
       <nav style={{

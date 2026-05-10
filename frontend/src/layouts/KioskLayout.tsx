@@ -5,7 +5,6 @@ import { AlbumBrowser } from '@/components/AlbumBrowser'
 import { SearchScreen } from '@/components/SearchScreen'
 import { Queue } from '@/components/Queue'
 import { PartyOverlay } from '@/components/PartyOverlay'
-import { MissingSongCTA } from '@/components/MissingSongCTA'
 import { usePlayback } from '@/hooks/usePlayback'
 import { useSession } from '@/hooks/useSession'
 import { useSSE } from '@/hooks/useSSE'
@@ -149,8 +148,8 @@ export function KioskLayout() {
           </section>
         </main>
 
-        <footer className="kiosk-footer" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '20px', flexWrap: 'wrap' }}>
-          {(isAdmin || permissions?.can_use_party_button) && (
+        {(isAdmin || permissions?.can_use_party_button) && (
+          <footer className="kiosk-footer">
             <button
               className="btn btn-party"
               style={{ minWidth: '280px', opacity: partyBusy ? 0.5 : 1 }}
@@ -160,9 +159,8 @@ export function KioskLayout() {
             >
               🥂 SKÅL!
             </button>
-          )}
-          <MissingSongCTA />
-        </footer>
+          </footer>
+        )}
       </div>
 
       {/* Party overlay — full screen */}
