@@ -36,7 +36,9 @@ func (s *Server) handleCreateExternalSession(w http.ResponseWriter, r *http.Requ
 	}
 
 	sess := s.externalStore.Create(roomID, sd.User.ID)
-	publicURL, _ := s.getPublicBaseURL(r.Context())
+	// resolveBaseURL uses the browser's Origin header first, then jukebox_url from
+	// settings, then localhost fallback — so the QR code always uses the real public URL.
+	publicURL := s.resolveBaseURL(r.Context(), r.Header.Get("Origin"))
 	connectURL := publicURL + "/connect?s=" + sess.ID
 
 	w.Header().Set("Content-Type", "application/json")
