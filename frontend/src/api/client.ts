@@ -510,3 +510,31 @@ export const setupApi = {
 }
 
 export { ApiError }
+
+// ─── External / mobile YouTube flow ──────────────────────────────
+
+export interface ExternalSession {
+  session_id: string
+  connect_url: string
+}
+
+export interface ExternalStatus {
+  status: 'pending' | 'done'
+  added_song?: { title: string; artist: string }
+}
+
+export interface YouTubeSearchResult {
+  video_id: string
+  title: string
+  channel_name: string
+  thumbnail_url: string
+}
+
+export const externalApi = {
+  /** Create a session (needs jukebox auth — called by the kiosk). */
+  createSession: () => post<ExternalSession>('/api/external/session'),
+
+  /** Poll session status (public — works without jukebox auth). */
+  getStatus: (sessionId: string) =>
+    get<ExternalStatus>(`/api/external/status?s=${encodeURIComponent(sessionId)}`),
+}

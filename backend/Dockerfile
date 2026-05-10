@@ -16,8 +16,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o crownjukebox ./cmd/ser
 # ─── Stage 2: Runtime ─────────────────────────────────────────
 FROM alpine:3.20
 
-# ca-certificates for HTTPS calls (e.g. Subsonic)
-RUN apk add --no-cache ca-certificates tzdata
+# ca-certificates for HTTPS, tzdata for time zones.
+# python3 + ffmpeg are required by yt-dlp (audio extraction).
+RUN apk add --no-cache ca-certificates tzdata python3 ffmpeg curl && \
+    curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp \
+         -o /usr/local/bin/yt-dlp && \
+    chmod a+rx /usr/local/bin/yt-dlp
 
 WORKDIR /app
 

@@ -33,6 +33,10 @@ type Config struct {
 	SubsonicPassword string
 	SubsonicEnabled  bool
 
+	// YouTube integration (mobile QR flow)
+	YouTubeAPIKey    string
+	ExternalMusicDir string
+
 	// Feature flags
 	AllowGuestSearch      bool
 	AllowGuestQueueAdd    bool
@@ -58,6 +62,9 @@ func Load() *Config {
 		SubsonicUsername: getEnv("SUBSONIC_USERNAME", ""),
 		SubsonicPassword: getEnv("SUBSONIC_PASSWORD", ""),
 		SubsonicEnabled:  getEnvBool("SUBSONIC_ENABLED", false),
+
+		YouTubeAPIKey:    getEnv("YOUTUBE_API_KEY", ""),
+		ExternalMusicDir: getEnv("EXTERNAL_MUSIC_DIR", "/data/external"),
 
 		AllowGuestSearch:      getEnvBool("ALLOW_GUEST_SEARCH", true),
 		AllowGuestQueueAdd:    getEnvBool("ALLOW_GUEST_QUEUE_ADD", true),

@@ -27,6 +27,7 @@ import (
 	"github.com/crownjukebox/crownjukebox/internal/db"
 	"github.com/crownjukebox/crownjukebox/internal/email"
 	"github.com/crownjukebox/crownjukebox/internal/events"
+	"github.com/crownjukebox/crownjukebox/internal/external"
 	"github.com/crownjukebox/crownjukebox/internal/music"
 	"github.com/crownjukebox/crownjukebox/internal/rooms"
 )
@@ -49,6 +50,7 @@ type Server struct {
 	scanner   *music.Scanner
 	startTime time.Time
 	loginRL   *auth.LoginRateLimiter
+	externalStore *external.Store
 }
 
 // NewServer creates the API server with all wired dependencies.
@@ -62,18 +64,19 @@ func NewServer(cfg *config.Config, database *sqlx.DB, version string) *Server {
 	scanner := music.NewScanner(database, cfg.MusicDir)
 
 	return &Server{
-		cfg:       cfg,
-		version:   version,
-		db:        database,
-		hub:       hub,
-		authSvc:   authSvc,
-		qrSvc:     qrSvc,
-		roomSvc:   roomSvc,
-		emailSvc:  emailSvc,
-		artExt:    artExt,
-		scanner:   scanner,
-		startTime: time.Now(),
-		loginRL:   auth.NewLoginRateLimiter(),
+		cfg:           cfg,
+		version:       version,
+		db:            database,
+		hub:           hub,
+		authSvc:       authSvc,
+		qrSvc:         qrSvc,
+		roomSvc:       roomSvc,
+		emailSvc:      emailSvc,
+		artExt:        artExt,
+		scanner:       scanner,
+		startTime:     time.Now(),
+		loginRL:       auth.NewLoginRateLimiter(),
+		externalStore: external.NewStore(),
 	}
 }
 
@@ -147,6 +150,11 @@ func (s *Server) Router() http.Handler {
 	r.Post("/api/setup", s.handleSetupComplete)
 	r.Get("/api/library/cover/{id}", s.handleCoverArt) // cover art served publicly (no sensitive data)
 
+	// ─── External / mobile QR endpoints (session-scoped, no jukebox auth) ────
+	r.Get("/api/external/status", s.handleExternalStatus)
+	r.Get("/api/external/youtube/search", s.handleExternalYouTubeSearch)
+	r.Post("/api/external/queue-song", s.handleExternalQueueSong)
+
 	// ─── Authenticated endpoints ──────────────────────────────
 	r.Group(func(r chi.Router) {
 		r.Use(auth.RequireAuth(s.authSvc))
@@ -194,6 +202,9 @@ func (s *Server) Router() http.Handler {
 
 		// SSE (room_id via query param for EventSource)
 		r.Get("/api/events", s.handleSSE)
+
+		// External session creation (jukebox user initiates mobile QR flow)
+		r.Post("/api/external/session", s.handleCreateExternalSession)
 	})
 
 	// ─── Admin endpoints ──────────────────────────────────────

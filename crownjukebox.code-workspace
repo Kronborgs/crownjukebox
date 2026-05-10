@@ -15,7 +15,9 @@
 			"git commit": true,
 			"git push": true,
 			"git add": true,
-			"npm run build": true
+			"npm run build": true,
+			"git tag": true,
+			"gh": true
 		}
 	}
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { SessionProvider, useSession } from '@/hooks/useSession'
 import { KioskLayout } from '@/layouts/KioskLayout'
 import { MobileLayout } from '@/layouts/MobileLayout'
@@ -8,6 +8,7 @@ import { LoginScreen } from '@/screens/LoginScreen'
 import { AdminLayout } from '@/screens/Admin/AdminLayout'
 import { SetupScreen } from '@/screens/SetupScreen'
 import { RoomSelector } from '@/screens/RoomSelector'
+import { ConnectScreen } from '@/screens/ConnectScreen'
 import { setupApi, authApi } from '@/api/client'
 
 /** Returns true when the viewport is narrower than 768px. */
@@ -32,6 +33,13 @@ const queryClient = new QueryClient({
 })
 
 function AppRoutes() {
+  const location = useLocation()
+
+  // Public /connect route — mobile YouTube search page (no jukebox auth required)
+  if (location.pathname === '/connect') {
+    return <ConnectScreen />
+  }
+
   const { user, isLoading, currentRoomId, setRoom, forcePinChange, clearForcePinChange } = useSession()
   const isMobile = useIsMobile()
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null)
