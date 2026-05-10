@@ -8,12 +8,26 @@ import { externalApi, type ExternalStatus } from '@/api/client'
  *
  * When opened, creates a short-lived backend session and renders a real QR
  * code linking to the mobile YouTube search page (/connect?s=SESSION_ID).
+ * On mobile devices the QR is replaced by a direct "Åbn YouTube søgning"
+ * button — you can't scan a QR code with the same phone you're holding.
  * Polls session status every 2 seconds and shows a success banner when the
  * user has added a song from their phone.
  *
  * Visible to ALL users — no permission guard.
  */
+
+function useIsMobile() {
+  const [mobile, setMobile] = useState(() => window.innerWidth < 768)
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)')
+    const handler = (e: MediaQueryListEvent) => setMobile(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+  return mobile
+}
 export function MissingSongCTA() {
+  const isMobile = useIsMobile()
   const [open, setOpen] = useState(false)
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [connectUrl, setConnectUrl] = useState<string | null>(null)
@@ -205,11 +219,44 @@ export function MissingSongCTA() {
                     textAlign: 'center',
                     lineHeight: 1.6,
                   }}>
-                    Scan QR-koden med din mobil og søg efter sangen på YouTube.
-                    Den tilføjes automatisk til køen.
+                    {isMobile
+                      ? 'Tryk på knappen herunder og søg efter sangen på YouTube. Den tilføjes automatisk til køen.'
+                      : 'Scan QR-koden med din mobil og søg efter sangen på YouTube. Den tilføjes automatisk til køen.'}
                   </p>
 
-                  {/* QR code */}
+                  {/* Mobile: direct button / Desktop: QR code */}
+                  {isMobile ? (
+                    <a
+                      href={connectUrl ?? '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '10px',
+                        width: '100%',
+                        padding: '18px',
+                        borderRadius: 'var(--radius-sm)',
+                        background: connectUrl
+                          ? 'linear-gradient(135deg, var(--neon-teal), #00aacc)'
+                          : 'rgba(255,255,255,0.05)',
+                        color: connectUrl ? '#0d0520' : 'var(--text-dim)',
+                        fontFamily: 'var(--font-mono)',
+                        fontSize: '0.95rem',
+                        fontWeight: 700,
+                        letterSpacing: '1.5px',
+                        textTransform: 'uppercase',
+                        textDecoration: 'none',
+                        boxShadow: connectUrl ? '0 0 24px rgba(0,229,255,0.4)' : 'none',
+                        pointerEvents: connectUrl ? 'auto' : 'none',
+                        opacity: connectUrl ? 1 : 0.5,
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      {connectUrl ? '🎵 Søg på YouTube' : '⏳ Genererer link…'}
+                    </a>
+                  ) : (
                   <div style={{
                     padding: '16px',
                     background: '#ffffff',
@@ -253,6 +300,7 @@ export function MissingSongCTA() {
                       </div>
                     )}
                   </div>
+                  )}
 
                   {/* Sub-label */}
                   <p style={{
@@ -264,8 +312,9 @@ export function MissingSongCTA() {
                     lineHeight: 1.5,
                     opacity: 0.8,
                   }}>
-                    Du skal ikke logge ind på selve jukeboxen.<br />
-                    Login sker sikkert på din egen mobil.
+                    {isMobile
+                      ? <>Linket åbner i en ny fane.<br />Kom tilbage her for at se status.</>
+                      : <>Du skal ikke logge ind på selve jukeboxen.<br />Login sker sikkert på din egen mobil.</>}
                   </p>
 
                   {/* Waiting indicator */}
