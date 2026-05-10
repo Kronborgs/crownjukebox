@@ -81,7 +81,8 @@ function DashboardPanel() {
   const { data: jukeboxes = [], refetch: refetchJukeboxes } = useQuery({
     queryKey: ['admin-jukeboxes'],
     queryFn: adminApi.jukeboxes,
-    refetchInterval: 3000,
+    refetchInterval: (query) => query.state.error ? false : 3000,
+    retry: false,
   })
 
   const { data: settings = {} } = useQuery({
@@ -326,7 +327,8 @@ function JukeboxesPanel() {
   const { data: jukeboxes = [], refetch } = useQuery({
     queryKey: ['admin-jukeboxes'],
     queryFn: adminApi.jukeboxes,
-    refetchInterval: 5000,
+    refetchInterval: (query) => query.state.error ? false : 5000,
+    retry: false,
   })
 
   const revoke = useMutation({

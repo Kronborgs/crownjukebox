@@ -62,6 +62,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Listen for global 401 signals from the API client (e.g. session revoked server-side).
+  useEffect(() => {
+    const handleExpired = () => {
+      sessionStorage.removeItem('cj_token')
+      setCurrentRoomId('default')
+      setState({ user: null, permissions: null, token: null, sessionId: null, isLoading: false, currentRoomId: 'default', forcePinChange: false, isGuestSession: false })
+    }
+    window.addEventListener('cj:session-expired', handleExpired)
+    return () => window.removeEventListener('cj:session-expired', handleExpired)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Check access expiry periodically
   useEffect(() => {
     if (!state.user?.access_expires_at) return

@@ -1526,12 +1526,12 @@ func (s *Server) handleAdminListJukeboxes(w http.ResponseWriter, r *http.Request
 	}
 
 	type JukeboxStatus struct {
-		UserID                string        `json:"user_id"`
-		DisplayName           string        `json:"display_name"`
-		RoomID                string        `json:"room_id"`
-		IsPlaying             bool          `json:"is_playing"`
-		IsPartyMode           bool          `json:"is_party_mode"`
-		CurrentTrack          *struct {
+		UserID       string `json:"user_id"`
+		DisplayName  string `json:"display_name"`
+		RoomID       string `json:"room_id"`
+		IsPlaying    bool   `json:"is_playing"`
+		IsPartyMode  bool   `json:"is_party_mode"`
+		CurrentTrack *struct {
 			ID     string `json:"id"`
 			Title  string `json:"title"`
 			Artist string `json:"artist"`
@@ -2017,7 +2017,46 @@ func (s *Server) handleAdminListSessions(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) handleAdminRevokeSession(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
+
+	// Look up the session's owner before revoking so we can handle playback consequences.
+	var userID string
+	_ = s.db.GetContext(r.Context(), &userID,
+		`SELECT user_id FROM sessions WHERE id = ? AND revoked_at IS NULL`, id)
+
 	_ = s.authSvc.RevokeSession(r.Context(), id)
+
+	// Post-revoke: enforce playback consequences for the room owner.
+	if userID != "" {
+		rm := s.roomSvc.Get(r.Context(), userID)
+		if rm != nil {
+			// If the revoked session was the active player, clear that role immediately.
+			wasActivePlayer := rm.Info.ActivePlayerSessionID != nil && *rm.Info.ActivePlayerSessionID == id
+			if wasActivePlayer {
+				_, _ = s.db.ExecContext(r.Context(),
+					`UPDATE rooms SET active_player_session_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+					rm.Info.ID,
+				)
+				rm.Info.ActivePlayerSessionID = nil
+				s.hub.BroadcastToRoom(rm.Info.ID, "active_player_changed",
+					map[string]any{"active_player_session_id": nil})
+			}
+
+			// If there are no remaining non-guest, non-revoked, non-expired sessions
+			// for this user, pause playback — nobody is around to own it.
+			var remaining int
+			_ = s.db.GetContext(r.Context(), &remaining, `
+				SELECT COUNT(*) FROM sessions
+				WHERE user_id = ?
+				  AND is_guest_session = 0
+				  AND revoked_at IS NULL
+				  AND expires_at > CURRENT_TIMESTAMP`, userID)
+
+			if remaining == 0 {
+				_ = rm.Playback.Pause(r.Context())
+			}
+		}
+	}
+
 	jsonOK(w, map[string]string{"status": "revoked"})
 }
 

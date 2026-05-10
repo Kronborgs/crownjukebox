@@ -279,6 +279,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(BASE + path, { ...options, headers })
 
   if (!res.ok) {
+    if (res.status === 401) {
+      // Signal to the app that the session is no longer valid.
+      window.dispatchEvent(new CustomEvent('cj:session-expired'))
+    }
     let msg = res.statusText
     try {
       const body = await res.json()
