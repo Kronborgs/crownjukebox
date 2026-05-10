@@ -1009,6 +1009,7 @@ type audioStateRequest struct {
 	ToneMid    *int  `json:"tone_mid"`
 	ToneTreble *int  `json:"tone_treble"`
 	IsMuted    *bool `json:"is_muted"`
+	Loudness   *bool `json:"loudness"`
 }
 
 func (s *Server) handleGetAudioState(w http.ResponseWriter, r *http.Request) {
@@ -1028,6 +1029,7 @@ func (s *Server) handleGetAudioState(w http.ResponseWriter, r *http.Request) {
 		"tone_mid":    info.ToneMid,
 		"tone_treble": info.ToneTreble,
 		"is_muted":    info.IsMuted,
+		"loudness":    info.Loudness,
 	})
 }
 
@@ -1092,6 +1094,10 @@ func (s *Server) handleUpdateAudioState(w http.ResponseWriter, r *http.Request) 
 		sets = append(sets, "is_muted = ?")
 		args = append(args, *req.IsMuted)
 	}
+	if req.Loudness != nil {
+		sets = append(sets, "loudness = ?")
+		args = append(args, *req.Loudness)
+	}
 
 	if len(sets) == 1 {
 		// Nothing to update
@@ -1120,6 +1126,7 @@ func (s *Server) handleUpdateAudioState(w http.ResponseWriter, r *http.Request) 
 		"tone_mid":    updated.ToneMid,
 		"tone_treble": updated.ToneTreble,
 		"is_muted":    updated.IsMuted,
+		"loudness":    updated.Loudness,
 	})
 
 	jsonOK(w, map[string]any{
@@ -1129,6 +1136,7 @@ func (s *Server) handleUpdateAudioState(w http.ResponseWriter, r *http.Request) 
 		"tone_mid":    updated.ToneMid,
 		"tone_treble": updated.ToneTreble,
 		"is_muted":    updated.IsMuted,
+		"loudness":    updated.Loudness,
 	})
 }
 

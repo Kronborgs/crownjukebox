@@ -117,12 +117,58 @@ export function NowPlaying({ state, refreshState }: Props) {
   const isOwner = !isGuest
   const isActivePlayer = isOwner && (activePlayerSessionId === null || activePlayerSessionId === sessionId)
 
-  // Phase 4: Google Cast
+  // Phase 4: Google Cast (desktop Chrome + Cast extension)
   const { isCastAvailable, isCasting, startCasting, stopCasting } = useCast({
     streamUrl: audioSrc,
     title: track?.title,
     artist: track?.artist,
   })
+
+  // Phase 4b: Remote Playback API — works in Chrome for Android (Chromecast, SHIELD, etc.)
+  // This is the same API YouTube uses on mobile. Falls back silently on unsupported browsers.
+  const [remoteAvailable, setRemoteAvailable] = useState(false)
+  const [remoteConnected, setRemoteConnected] = useState(false)
+  useEffect(() => {
+    if (isGuest) return
+    // Defer slightly so the <audio> element has time to mount
+    const tid = setTimeout(() => {
+      const audio = audioRef.current
+      if (!audio) return
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const remote = (audio as any).remote as any
+      if (!remote?.watchAvailability) return
+
+      let watchId: number | undefined
+      remote.watchAvailability((available: boolean) => {
+        setRemoteAvailable(available)
+      }).then((id: number) => { watchId = id }).catch(() => {})
+
+      const onConnect    = () => setRemoteConnected(true)
+      const onDisconnect = () => setRemoteConnected(false)
+      remote.addEventListener('connect', onConnect)
+      remote.addEventListener('disconnect', onDisconnect)
+
+      return () => {
+        remote.removeEventListener('connect', onConnect)
+        remote.removeEventListener('disconnect', onDisconnect)
+        if (watchId !== undefined) remote.cancelWatchAvailability(watchId).catch(() => {})
+      }
+    }, 500)
+    return () => clearTimeout(tid)
+  }, [isGuest]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const isCastActive  = isCasting || remoteConnected
+  const isCastEnabled = isCastAvailable || remoteAvailable
+
+  function handleCastClick() {
+    if (remoteAvailable) {
+      // Remote Playback API — shows the native OS device picker (works on Android Chrome)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(audioRef.current as any)?.remote?.prompt?.().catch(() => {})
+    } else if (isCastAvailable) {
+      isCasting ? stopCasting() : startCasting()
+    }
+  }
 
   // Load settings from API — only used for direct_stream_url.
   // Audio settings come exclusively from the backend (getAudioState) for Phase 3 sync.
@@ -148,19 +194,20 @@ export function NowPlaying({ state, refreshState }: Props) {
       if (!isGuest) {
         // Map local setting names to backend AudioState field names
         const backendKey: Record<string, keyof AudioState | null> = {
-          volume:  'volume',
-          bass:    'tone_bass',
-          treble:  'tone_treble',
-          balance: 'balance',
-          loudness: null, // local only
+          volume:   'volume',
+          bass:     'tone_bass',
+          treble:   'tone_treble',
+          balance:  'balance',
+          loudness: 'loudness',
         }
         const bk = backendKey[key as string]
         if (bk !== null && bk !== undefined) {
-          let backendValue: number
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let backendValue: any
           if (key === 'balance') {
             backendValue = (value as number) * 10
           } else {
-            backendValue = value as number
+            backendValue = value
           }
           audioSyncPendingRef.current = true
           playbackApi.updateAudioState({ [bk]: backendValue })
@@ -215,10 +262,11 @@ export function NowPlaying({ state, refreshState }: Props) {
       if (audioSyncPendingRef.current) return // Ignore echo of our own update
       setAudioSettings(prev => ({
         ...prev,
-        volume:   d.volume  ?? prev.volume,
-        bass:     d.tone_bass    ?? prev.bass,
-        treble:   d.tone_treble  ?? prev.treble,
+        volume:   d.volume     ?? prev.volume,
+        bass:     d.tone_bass  ?? prev.bass,
+        treble:   d.tone_treble ?? prev.treble,
         balance:  d.balance != null ? Math.round(d.balance / 10) : prev.balance,
+        loudness: d.loudness   ?? prev.loudness,
       }))
     },
   })
@@ -229,10 +277,11 @@ export function NowPlaying({ state, refreshState }: Props) {
     playbackApi.getAudioState().then((s) => {
       setAudioSettings(prev => ({
         ...prev,
-        volume:  s.volume,
-        bass:    s.tone_bass,
-        treble:  s.tone_treble,
-        balance: Math.round(s.balance / 10),
+        volume:   s.volume,
+        bass:     s.tone_bass,
+        treble:   s.tone_treble,
+        balance:  Math.round(s.balance / 10),
+        loudness: s.loudness ?? prev.loudness,
       }))
     }).catch(() => {})
   }, [isGuest]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -595,21 +644,21 @@ export function NowPlaying({ state, refreshState }: Props) {
                   <SkipForward size={24} />
                 </button>
               )}
-              {/* Phase 4: Cast button — always visible for owners; dimmed when Chrome/Cast is not available */}
+              {/* Phase 4: Cast button — always visible for owners; enabled when Cast SDK or Remote Playback is detected */}
               {!isGuest && (
                 <button
                   className="btn btn-ghost btn-icon"
-                  onClick={isCastAvailable ? (isCasting ? stopCasting : startCasting) : undefined}
-                  disabled={!isCastAvailable}
-                  aria-label={isCasting ? 'Stop casting' : 'Cast til enhed'}
+                  onClick={isCastEnabled ? handleCastClick : undefined}
+                  disabled={!isCastEnabled}
+                  aria-label={isCastActive ? 'Stop casting' : 'Cast til enhed'}
                   title={
-                    isCastAvailable
-                      ? (isCasting ? 'Stop casting' : 'Cast til Chromecast')
-                      : 'Chromecast kræver Chrome-browser'
+                    isCastEnabled
+                      ? (isCastActive ? 'Stop casting' : 'Cast til Chromecast / SHIELD')
+                      : 'Chromecast kræver Chrome-browser på samme netværk'
                   }
                   style={{
-                    color: isCasting ? 'var(--neon-primary)' : 'var(--text-dim)',
-                    opacity: isCastAvailable ? 1 : 0.3,
+                    color: isCastActive ? 'var(--neon-primary)' : 'var(--text-dim)',
+                    opacity: isCastEnabled ? 1 : 0.3,
                   }}
                 >
                   <Cast size={24} />

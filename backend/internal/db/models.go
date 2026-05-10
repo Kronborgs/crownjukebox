@@ -216,6 +216,7 @@ type Room struct {
 	ToneMid               int       `db:"tone_mid"                 json:"tone_mid"`
 	ToneTreble            int       `db:"tone_treble"              json:"tone_treble"`
 	IsMuted               bool      `db:"is_muted"                 json:"is_muted"`
+	Loudness              bool      `db:"loudness"                 json:"loudness"`
 	CreatedAt             time.Time `db:"created_at"               json:"created_at"`
 	UpdatedAt             time.Time `db:"updated_at"               json:"updated_at"`
 }

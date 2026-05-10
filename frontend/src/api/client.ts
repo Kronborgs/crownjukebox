@@ -388,6 +388,7 @@ export interface AudioState {
   tone_mid: number
   tone_treble: number
   is_muted: boolean
+  loudness: boolean
 }
 
 export const playbackApi = {
