@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from 'react'
+import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { CoverArt } from '@/components/CoverArt'
 import { adminApi, playbackApi, AudioState } from '@/api/client'
@@ -118,8 +118,22 @@ export function NowPlaying({ state, refreshState }: Props) {
   const isActivePlayer = isOwner && (activePlayerSessionId === null || activePlayerSessionId === sessionId)
 
   // Phase 4: Google Cast (desktop Chrome + Cast extension)
+  // Cast stream URL is computed independently of audioSrc/isActivePlayer so that:
+  //  (a) Cast works even if this device hasn't claimed the active-player role yet
+  //  (b) No circular dependency between isCasting and audioSrc
+  const castStreamUrl = useMemo(() => {
+    if (!track?.id) return null
+    const token = sessionStorage.getItem('cj_token') ?? ''
+    const path = `/api/playback/stream/${track.id}?token=${encodeURIComponent(token)}`
+    const rawBase = directStreamUrl.trim().replace(/\/+$/, '')
+    if (rawBase) {
+      try { return new URL(rawBase).origin + path } catch { /* ignore */ }
+    }
+    return path
+  }, [track?.id, directStreamUrl])
+
   const { isCastAvailable, isCasting, startCasting, stopCasting } = useCast({
-    streamUrl: audioSrc,
+    streamUrl: castStreamUrl,
     title: track?.title,
     artist: track?.artist,
   })
@@ -161,12 +175,15 @@ export function NowPlaying({ state, refreshState }: Props) {
   const isCastEnabled = isCastAvailable || remoteAvailable
 
   function handleCastClick() {
-    if (remoteAvailable) {
-      // Remote Playback API — shows the native OS device picker (works on Android Chrome)
+    if (isCastAvailable) {
+      // CAF SDK (desktop Chrome + Cast extension) — most reliable for Chromecast.
+      // Prefer this over Remote Playback API: CAF handles Chromecast protocol correctly,
+      // while Remote Playback API on desktop Chrome doesn't reliably reach Chromecasts.
+      isCasting ? stopCasting() : startCasting()
+    } else if (remoteAvailable) {
+      // Remote Playback API — fallback for mobile Chrome (no CAF SDK there)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(audioRef.current as any)?.remote?.prompt?.().catch(() => {})
-    } else if (isCastAvailable) {
-      isCasting ? stopCasting() : startCasting()
     }
   }
 
@@ -365,11 +382,15 @@ export function NowPlaying({ state, refreshState }: Props) {
   // When track changes (or audioKey is bumped after track-ended), reload audio.
   // audioKey ensures this re-runs even when the same track ID is picked again.
   // directStreamUrl is included so audioSrc updates when settings load (async race fix).
-  // isActivePlayer gates audio: only the device that holds the player role streams audio.
-  // All other owner devices stay silent (audioSrc = null) so there is no double-playback.
+  // Gates: only load audio when this device holds the active-player role AND is not
+  // casting (Chromecast plays the stream directly — no local playback needed).
   useEffect(() => {
     setNeedsInteraction(false)
-    if (!isActivePlayer || !track?.id) {
+    if (!isActivePlayer || !track?.id || isCasting) {
+      // Explicitly pause before clearing src so the position-update interval stops
+      // immediately. Without this, the browser may buffer-play briefly and keep
+      // reporting positions even after losing the active-player role.
+      audioRef.current?.pause()
       setAudioSrc(null)
       return
     }
@@ -387,7 +408,7 @@ export function NowPlaying({ state, refreshState }: Props) {
       }
     }
     setAudioSrc(resolvedSrc)
-  }, [track?.id, audioKey, directStreamUrl, isActivePlayer]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [track?.id, audioKey, directStreamUrl, isActivePlayer, isCasting]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync play/pause from server state
   useEffect(() => {
