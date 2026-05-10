@@ -2,9 +2,13 @@ package external
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +17,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 
+	"github.com/crownjukebox/crownjukebox/internal/artwork"
 	"github.com/crownjukebox/crownjukebox/internal/queue"
 )
 
@@ -20,12 +25,13 @@ import (
 var activeDownloads = make(map[string]bool)
 
 type ytDLPInfo struct {
-	ID       string  `json:"id"`
-	Title    string  `json:"title"`
-	Uploader string  `json:"uploader"`
-	Creator  string  `json:"creator"`
-	Artist   string  `json:"artist"`
-	Duration float64 `json:"duration"`
+	ID        string  `json:"id"`
+	Title     string  `json:"title"`
+	Uploader  string  `json:"uploader"`
+	Creator   string  `json:"creator"`
+	Artist    string  `json:"artist"`
+	Duration  float64 `json:"duration"`
+	Thumbnail string  `json:"thumbnail"`
 }
 
 // DownloadAndQueue fetches metadata immediately, queues the track, then downloads
@@ -132,10 +138,78 @@ func DownloadAndQueue(
 				return
 			}
 			log.Printf("[external] download complete: %s %q by %q", videoID, info.Title, artistName)
+			// Save YouTube thumbnail as cover art for the album.
+			if info.Thumbnail != "" {
+				saveYouTubeThumbnail(database, albumID, info.Thumbnail, externalDir)
+			}
 		}()
 	}
 
 	return result, nil
+}
+
+// saveYouTubeThumbnail downloads the YouTube video thumbnail and stores it as
+// cover art for the album, only if the album doesn't already have art.
+func saveYouTubeThumbnail(database *sqlx.DB, albumID, thumbnailURL, cacheDir string) {
+	// Skip if album already has art.
+	var existing string
+	if err := database.Get(&existing, `SELECT COALESCE(cover_art_id,'') FROM albums WHERE id = ?`, albumID); err == nil && existing != "" {
+		return
+	}
+
+	resp, err := http.Get(thumbnailURL) //nolint:noctx
+	if err != nil {
+		log.Printf("[external] thumbnail fetch failed: %v", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("[external] thumbnail read failed: %v", err)
+		return
+	}
+
+	mimeType := resp.Header.Get("Content-Type")
+	if mimeType == "" {
+		mimeType = "image/jpeg"
+	}
+
+	hashBytes := sha256.Sum256(data)
+	hash := hex.EncodeToString(hashBytes[:])
+
+	// Check for duplicate by hash.
+	var dupID string
+	if err := database.Get(&dupID, `SELECT id FROM album_art WHERE original_hash = ?`, hash); err == nil {
+		// Art already exists, just link it.
+		_, _ = database.Exec(`UPDATE albums SET cover_art_id = ?, cover_status = 'found', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, dupID, albumID)
+		return
+	}
+
+	thumbGen := artwork.NewThumbnailGenerator(cacheDir)
+	artID := uuid.NewString()
+	thumbs, w, h, err := thumbGen.Generate(artID, data, mimeType)
+	if err != nil {
+		log.Printf("[external] thumbnail generate failed: %v", err)
+		return
+	}
+
+	now := time.Now()
+	_, err = database.Exec(`
+		INSERT INTO album_art
+			(id, album_id, track_id, source_type, source_path, original_hash, mime_type, width, height,
+			 small_path, medium_path, large_path, color_palette_json, created_at, updated_at)
+		VALUES (?, ?, '', 'external', ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?)`,
+		artID, albumID, thumbnailURL, hash, mimeType, w, h,
+		thumbs.Small, thumbs.Medium, thumbs.Large, now, now,
+	)
+	if err != nil {
+		log.Printf("[external] insert album_art failed: %v", err)
+		return
+	}
+
+	_, _ = database.Exec(`UPDATE albums SET cover_art_id = ?, cover_status = 'found', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, artID, albumID)
+	log.Printf("[external] saved thumbnail for album %s", albumID)
 }
 
 // enqueue adds an already-existing track to the room queue and returns its metadata.
