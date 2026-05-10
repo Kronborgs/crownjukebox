@@ -328,21 +328,38 @@ export function NowPlaying({ state, refreshState }: Props) {
     }).catch(() => {})
   }, [isGuest]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Phase 2: Auto-claim the player role when an owner loads the jukebox.
-  // Seek to the current server position so the audio starts in sync with
-  // whatever the previous active player was reporting.
+  // Phase 2: Auto-claim the player role when an owner loads the jukebox —
+  // BUT only if no other device is already playing. If someone else holds the
+  // player, stay silent (display-only) and let the user decide what to do.
+  //
+  // We wait for `state` to arrive (it's null on first render while loading)
+  // so we can inspect active_player_session_id before deciding.
   const claimAttemptedRef = useRef(false)
   useEffect(() => {
     if (isGuest) return
+    if (state === null) return  // wait for state to load
     if (claimAttemptedRef.current) return
     claimAttemptedRef.current = true
-    playbackApi.claimPlayer()
-      .then(res => {
-        resumePositionRef.current = stateRef.current?.position_secs ?? 0
-        setActivePlayerSessionId(res.active_player_session_id)
-      })
-      .catch(() => {})
-  }, [isGuest]) // eslint-disable-line react-hooks/exhaustive-deps
+
+    const currentHolder = state.active_player_session_id ?? null
+
+    if (currentHolder === null) {
+      // No one is playing — claim automatically.
+      playbackApi.claimPlayer()
+        .then(res => {
+          resumePositionRef.current = stateRef.current?.position_secs ?? 0
+          setActivePlayerSessionId(res.active_player_session_id)
+        })
+        .catch(() => {})
+    } else if (currentHolder === sessionId) {
+      // We already hold the player (e.g. page refresh) — just reflect that.
+      setActivePlayerSessionId(currentHolder)
+    } else {
+      // Another device is active — stay silent. The UI will offer "Take over"
+      // or "Play here too" options.
+      setActivePlayerSessionId(currentHolder)
+    }
+  }, [isGuest, state]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Release player on unmount / page close
   useEffect(() => {
@@ -644,24 +661,57 @@ export function NowPlaying({ state, refreshState }: Props) {
             })()}
           </div>
 
-          {/* Controls — hidden for guests (Fase 1) */}
-          {!isGuest && (
-            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', justifyContent: 'center' }}>
-              {/* Phase 2: Claim/release player button — shown when another device is active */}
-              {isOwner && !isActivePlayer && (
+          {/* "Another device is playing" banner — shown when we are an owner but not the active player */}
+          {isOwner && !isActivePlayer && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              background: 'rgba(0,255,204,0.08)',
+              border: '1px solid rgba(0,255,204,0.25)',
+              borderRadius: 'var(--radius-sm)',
+              padding: '0.5rem 0.9rem',
+              fontSize: '0.82rem',
+              color: 'var(--text-dim)',
+              width: '100%',
+            }}>
+              <Radio size={14} style={{ flexShrink: 0, color: 'var(--neon-teal)' }} />
+              <span>En anden enhed afspiller lyden.&nbsp;
                 <button
-                  className="btn btn-ghost btn-icon"
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--neon-teal)', textDecoration: 'underline', fontSize: 'inherit' }}
                   onClick={async () => {
                     resumePositionRef.current = stateRef.current?.position_secs ?? 0
                     const res = await playbackApi.claimPlayer()
                     setActivePlayerSessionId(res.active_player_session_id)
                   }}
-                  aria-label="Overtag afspiller"
-                  title="Overtag afspiller til denne enhed"
-                  style={{ color: 'var(--neon-teal)' }}
-                >
-                  <Radio size={24} />
+                >Tag over
                 </button>
+                &nbsp;for at spille lyden her.
+              </span>
+            </div>
+          )}
+
+          {/* Controls — hidden for guests (Fase 1) */}
+          {!isGuest && (
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', justifyContent: 'center' }}>
+              {/* Phase 2: Another device holds the player — show two choices instead of auto-stealing */}
+              {isOwner && !isActivePlayer && (
+                <>
+                  <button
+                    className="btn btn-ghost btn-icon"
+                    onClick={async () => {
+                      // "Tag over" — steal the active player role and start playing here
+                      resumePositionRef.current = stateRef.current?.position_secs ?? 0
+                      const res = await playbackApi.claimPlayer()
+                      setActivePlayerSessionId(res.active_player_session_id)
+                    }}
+                    aria-label="Tag over som afspiller"
+                    title="Afspil lyden på denne enhed (stopper den anden)"
+                    style={{ color: 'var(--neon-teal)' }}
+                  >
+                    <Radio size={24} />
+                  </button>
+                </>
               )}
               <button
                 className="btn btn-ghost btn-icon"

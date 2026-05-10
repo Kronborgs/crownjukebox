@@ -782,7 +782,19 @@ func (s *Server) handlePlaybackState(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "state error", http.StatusInternalServerError)
 		return
 	}
-	jsonOK(w, state)
+	// Include active_player_session_id from the DB so clients can decide
+	// whether to auto-claim or stay silent on first load.
+	var activePlayerID *string
+	_ = s.db.GetContext(r.Context(), &activePlayerID,
+		`SELECT active_player_session_id FROM rooms WHERE id = ?`, rm.Info.ID)
+
+	// Marshal state to a map, then inject active_player_session_id alongside it.
+	// This avoids importing the playback package from the api package.
+	stateBytes, _ := json.Marshal(state)
+	var stateMap map[string]any
+	_ = json.Unmarshal(stateBytes, &stateMap)
+	stateMap["active_player_session_id"] = activePlayerID
+	jsonOK(w, stateMap)
 }
 
 func (s *Server) handlePlay(w http.ResponseWriter, r *http.Request) {
@@ -957,6 +969,9 @@ func (s *Server) handleClaimPlayer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Keep the in-memory cache in sync so handleReleasePlayer's guard check is accurate.
+	rm.Info.ActivePlayerSessionID = &sessionID
+
 	s.hub.BroadcastToRoom(rm.Info.ID, "active_player_changed", map[string]any{
 		"active_player_session_id": sessionID,
 	})
@@ -992,6 +1007,9 @@ func (s *Server) handleReleasePlayer(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "db error", http.StatusInternalServerError)
 		return
 	}
+
+	// Keep the in-memory cache in sync.
+	rm.Info.ActivePlayerSessionID = nil
 
 	s.hub.BroadcastToRoom(rm.Info.ID, "active_player_changed", map[string]any{"active_player_session_id": nil})
 

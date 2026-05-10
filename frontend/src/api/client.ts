@@ -81,6 +81,7 @@ export interface PlaybackState {
   position_secs: number
   queue_length: number
   updated_at: string
+  active_player_session_id?: string | null
 }
 
 export interface SearchResults {
