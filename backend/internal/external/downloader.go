@@ -16,6 +16,9 @@ import (
 	"github.com/crownjukebox/crownjukebox/internal/queue"
 )
 
+// activeDownloads tracks video IDs currently being downloaded to avoid duplicates.
+var activeDownloads = make(map[string]bool)
+
 type ytDLPInfo struct {
 	ID       string  `json:"id"`
 	Title    string  `json:"title"`
@@ -25,9 +28,8 @@ type ytDLPInfo struct {
 	Duration float64 `json:"duration"`
 }
 
-// DownloadAndQueue downloads a YouTube video as M4A audio via yt-dlp, upserts
-// the artist/album/track into the database, and appends the track to the
-// specified room's queue. Returns the song metadata on success.
+// DownloadAndQueue fetches metadata immediately, queues the track, then downloads
+// in the background. Returns song metadata as soon as the track is queued.
 func DownloadAndQueue(
 	ctx context.Context,
 	database *sqlx.DB,
@@ -48,7 +50,7 @@ func DownloadAndQueue(
 		return enqueue(ctx, database, existingID, roomID, userID)
 	}
 
-	// ── Fetch metadata ──────────────────────────────────────────
+	// ── Fetch metadata (fast, ~1-2s) ────────────────────────────
 	metaCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
@@ -64,26 +66,6 @@ func DownloadAndQueue(
 		return AddedSong{}, fmt.Errorf("parse yt-dlp json: %w", err)
 	}
 
-	// ── Download audio ──────────────────────────────────────────
-	outTemplate := filepath.Join(externalDir, videoID+".%(ext)s")
-
-	dlCtx, dlCancel := context.WithTimeout(ctx, 5*time.Minute)
-	defer dlCancel()
-
-	dlOut, err := exec.CommandContext(dlCtx, "yt-dlp",
-		"--extract-audio",
-		"--audio-format", "m4a",
-		"--audio-quality", "0",
-		"--no-playlist",
-		"-o", outTemplate,
-		videoURL,
-	).CombinedOutput()
-	if err != nil {
-		return AddedSong{}, fmt.Errorf("yt-dlp download: %w\n%s", err, string(dlOut))
-	}
-
-	filePath := filepath.Join(externalDir, videoID+".m4a")
-
 	// Best-effort artist name: prefer tagged artist > creator > uploader.
 	artistName := info.Uploader
 	if info.Artist != "" {
@@ -92,7 +74,7 @@ func DownloadAndQueue(
 		artistName = info.Creator
 	}
 
-	// ── Upsert artist / album / track ───────────────────────────
+	// ── Upsert artist / album / track (before download) ─────────
 	artistID, err := upsertArtist(ctx, database, artistName)
 	if err != nil {
 		return AddedSong{}, fmt.Errorf("upsert artist: %w", err)
@@ -103,15 +85,16 @@ func DownloadAndQueue(
 		return AddedSong{}, fmt.Errorf("upsert album: %w", err)
 	}
 
+	filePath := filepath.Join(externalDir, videoID+".m4a")
 	trackID := uuid.NewString()
 	now := time.Now()
 	_, err = database.ExecContext(ctx, `
 		INSERT INTO tracks
-			(id, album_id, artist_id, title, artist, album, track_number, disc_number,
+			(id, album_id, artist_id, title, track_number, disc_number,
 			 duration, file_path, source_type, source_id, stream_url, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, 'YouTube Downloads', 0, 1, ?, ?, 'youtube', ?, '', ?, ?)`,
+		VALUES (?, ?, ?, ?, 0, 1, ?, ?, 'youtube', ?, '', ?, ?)`,
 		trackID, albumID, artistID,
-		info.Title, artistName,
+		info.Title,
 		int(info.Duration),
 		filePath,
 		videoID,
@@ -121,18 +104,50 @@ func DownloadAndQueue(
 		return AddedSong{}, fmt.Errorf("insert track: %w", err)
 	}
 
-	log.Printf("[external] downloaded and inserted track %s: %q by %q", trackID, info.Title, artistName)
-	return enqueue(ctx, database, trackID, roomID, userID)
+	// ── Queue immediately, download in background ────────────────
+	result, err := enqueue(ctx, database, trackID, roomID, userID)
+	if err != nil {
+		// Clean up track record if we can't queue it.
+		_, _ = database.ExecContext(ctx, `DELETE FROM tracks WHERE id = ?`, trackID)
+		return AddedSong{}, err
+	}
+
+	if !activeDownloads[videoID] {
+		activeDownloads[videoID] = true
+		go func() {
+			defer func() { delete(activeDownloads, videoID) }()
+			outTemplate := filepath.Join(externalDir, videoID+".%(ext)s")
+			dlCtx, dlCancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer dlCancel()
+			dlOut, dlErr := exec.CommandContext(dlCtx, "yt-dlp",
+				"--extract-audio",
+				"--audio-format", "m4a",
+				"--audio-quality", "0",
+				"--no-playlist",
+				"-o", outTemplate,
+				videoURL,
+			).CombinedOutput()
+			if dlErr != nil {
+				log.Printf("[external] yt-dlp download failed for %s: %v\n%s", videoID, dlErr, string(dlOut))
+				return
+			}
+			log.Printf("[external] download complete: %s %q by %q", videoID, info.Title, artistName)
+		}()
+	}
+
+	return result, nil
 }
 
 // enqueue adds an already-existing track to the room queue and returns its metadata.
 func enqueue(ctx context.Context, database *sqlx.DB, trackID, roomID, userID string) (AddedSong, error) {
 	var t struct {
-		Title  string `db:"title"`
-		Artist string `db:"artist"`
+		Title      string `db:"title"`
+		ArtistName string `db:"artist_name"`
 	}
 	if err := database.GetContext(ctx, &t,
-		`SELECT title, artist FROM tracks WHERE id = ?`, trackID,
+		`SELECT t.title, COALESCE(a.name, '') AS artist_name
+		 FROM tracks t LEFT JOIN artists a ON a.id = t.artist_id
+		 WHERE t.id = ?`, trackID,
 	); err != nil {
 		return AddedSong{}, fmt.Errorf("get track: %w", err)
 	}
@@ -143,7 +158,7 @@ func enqueue(ctx context.Context, database *sqlx.DB, trackID, roomID, userID str
 		log.Printf("[external] queue add note: %v", err)
 	}
 
-	return AddedSong{Title: t.Title, Artist: t.Artist}, nil
+	return AddedSong{Title: t.Title, Artist: t.ArtistName}, nil
 }
 
 func upsertArtist(ctx context.Context, database *sqlx.DB, name string) (string, error) {

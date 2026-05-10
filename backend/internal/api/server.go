@@ -785,13 +785,31 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// For YouTube tracks the file may still be downloading in the background.
+	// Wait up to 5 minutes for it to appear before giving up.
+	if track.SourceType == "youtube" {
+		deadline := time.Now().Add(5 * time.Minute)
+		for time.Now().Before(deadline) {
+			if _, statErr := os.Stat(track.FilePath); statErr == nil {
+				break
+			}
+			time.Sleep(2 * time.Second)
+		}
+		if _, statErr := os.Stat(track.FilePath); statErr != nil {
+			jsonError(w, "track file not ready yet", http.StatusServiceUnavailable)
+			return
+		}
+	}
+
 	// Security: reject paths that escape allowed media directories.
 	cleanTrack := filepath.Clean(track.FilePath)
 	cleanMusic := filepath.Clean(s.cfg.MusicDir)
 	cleanUploads := filepath.Clean(config.GlobalPartyUploadsDir(s.cfg.DBPath))
+	cleanExternal := filepath.Clean(s.cfg.ExternalMusicDir)
 	allowedMusic := strings.HasPrefix(cleanTrack, cleanMusic+string(filepath.Separator)) || cleanTrack == cleanMusic
 	allowedUploads := strings.HasPrefix(cleanTrack, cleanUploads+string(filepath.Separator)) || cleanTrack == cleanUploads
-	if !allowedMusic && !allowedUploads {
+	allowedExternal := s.cfg.ExternalMusicDir != "" && (strings.HasPrefix(cleanTrack, cleanExternal+string(filepath.Separator)) || cleanTrack == cleanExternal)
+	if !allowedMusic && !allowedUploads && !allowedExternal {
 		jsonError(w, "forbidden", http.StatusForbidden)
 		return
 	}
