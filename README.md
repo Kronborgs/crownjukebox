@@ -110,7 +110,9 @@ The **audio streams directly from the backend** to the kiosk browser. The kiosk 
 - **QR code guest access** — generate a scannable link (with optional expiry date) and print it or put it on a table card. Guests scan and are immediately logged in as a guest user
 - **Email invitations** — send a login link directly to a user via SMTP
 - **Permission flags** per user: `can_search`, `can_view_queue`, `can_add_to_queue`, `can_use_party_button` — full control over what each person can do
-- **Session management** — admin can see all active logins and revoke any session
+- **Session management** — admin can see all active logins and revoke any session instantly from the admin panel
+- **Active player ownership** — only one device can "own" the audio output at a time. A second device sees a "Tag over" prompt instead of silently stealing playback
+- **Revoking the last owner session pauses music** — if an admin logs out the last real user, playback stops automatically. No ghost music with nobody home
 - Each user gets their own **room** (their own queue and playback context)
 
 ### ⚙️ Admin Panel
@@ -121,6 +123,8 @@ The **audio streams directly from the backend** to the kiosk browser. The kiosk 
 - Assign a party playlist to each room
 - Configure keyboard bindings for kiosk installs (useful for a physical button panel)
 - **YouTube API key** — configure your Google YouTube Data API v3 key directly in Admin → YouTube. Never stored in environment variables or config files
+- **Live jukebox overview** — the Jukeboxes tab shows every user's room: current track, queue length, active sessions (device, login time, last seen), and which device is the active audio player. Revoke any session with one click
+- **"Playing with no owner" warning** — orange banner appears on any room that is playing music but has no logged-in owner session
 
 ### 🚀 Self-hosting & Deployment
 - **Multi-arch Docker image** — runs on both `amd64` (regular PC/server) and `arm64` (Raspberry Pi 4/5, Apple Silicon)
@@ -253,6 +257,7 @@ All live updates use Server-Sent Events. The backend broadcasts named events to 
 | `party_ended` | Party track finished, normal playback restored |
 | `settings_changed` | Admin changes a setting |
 | `user_access_revoked` | Admin revokes a user's access |
+| `active_player_changed` | Active audio player device changes |
 
 ---
 
@@ -288,6 +293,29 @@ The only thing that takes longer with a large library is the **initial scan** �
 ---
 
 ## Changelog
+
+### v0.2.0 — 2026-05-10
+
+#### New Features
+
+- **Active player ownership** — only one device can own the audio output at a time. When a second device opens the jukebox, it sees a "Tag over" banner instead of silently stealing playback from the first device. The takeover is always a conscious choice
+- **"Tag over" prompt** — if another device is already playing, a banner appears: *"En anden enhed afspiller lyden. Tag over for at spille lyden her."* Tapping it claims the player role and syncs position seamlessly
+- **Seek-on-claim** — when a device claims the player role, the audio element seeks to the exact position the previous player was at, preventing any jump in the music
+- **Audio slider debounce** — volume, balance, tone, and mute controls are debounced (400 ms per setting) to prevent flooding the backend with requests while dragging a slider
+- **Live session list in admin Jukeboxes panel** — each jukebox card now shows all active sessions: device name, login time, last-seen time, device type icon (desktop/mobile), GÆST badge, and a 🔊 AFSPILLER badge for the current audio owner. Revoke any session with one click directly from the panel
+- **"Playing with no owner" warning** — orange warning banner on any jukebox card that is playing music but has no logged-in owner session
+- **Auto-pause on last owner revoke** — revoking the last non-guest session for a room via the admin panel now automatically pauses playback and clears the active player role. Music no longer keeps playing with nobody home
+- **Autoplay skips boot if no owner is logged in** — on server startup, autoplay only kicks in for rooms where the owner has an active session. Rooms with no logged-in user start silent
+- **Instant logout on session expiry** — if the server revokes your session (e.g. an admin logs you out), the browser detects the 401 immediately and shows the login screen without requiring a page refresh
+- **401 polling guard** — the admin panel stops its auto-refresh polling the moment a request returns 401, preventing an infinite loop of unauthenticated requests in the server logs
+
+#### Bug Fixes
+
+- **Music kept playing after admin revoked owner session** — `handleAdminRevokeSession` now checks if the revoked session was the active player, clears it, and pauses if no owner sessions remain
+- **Admin panel spammed 401s after self-revoke** — `refetchInterval` now returns `false` on any query error, and `retry: false` prevents the default retry burst
+- **Stale position on player claim** — `resumePositionRef` is now set from the latest server state at claim time, not from a stale closure value
+
+---
 
 ### v0.1.2 — 2026-05-10
 
