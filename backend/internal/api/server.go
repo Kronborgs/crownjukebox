@@ -460,14 +460,38 @@ func (s *Server) handleCreateGuestLink(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, "failed to create guest link", http.StatusInternalServerError)
 		return
 	}
-	// qrSvc builds the URL from its internal baseURL (the SubsonicURL config or
-	// localhost fallback). Replace it with the real public address so the QR code
-	// points to the correct host (e.g. https://jukeboxen.kronborgs.dk).
-	// Priority: 1) browser Origin header, 2) admin-configured jukebox_url, 3) localhost.
+	// Replace the internal base URL (localhost fallback from qrSvc) with the real
+	// public address so the QR code points to the correct host.
 	if idx := strings.Index(loginURL, "/login?token="); idx >= 0 {
-		loginURL = s.resolveBaseURL(r.Context(), r.Header.Get("Origin")) + loginURL[idx:]
+		loginURL = s.publicBaseFromRequest(r) + loginURL[idx:]
 	}
 	jsonOK(w, map[string]string{"login_url": loginURL})
+}
+
+// publicBaseFromRequest derives the public base URL from an incoming request.
+// Priority:
+//  1. Origin header (browsers send this on POST; most reliable when available)
+//  2. Host header + scheme heuristic (nginx always forwards Host via proxy_set_header)
+//  3. admin-configured jukebox_url DB setting
+//  4. localhost fallback
+func (s *Server) publicBaseFromRequest(r *http.Request) string {
+	// Origin is sent by all browsers for POST/PUT/DELETE even on same-origin requests.
+	if origin := strings.TrimRight(strings.TrimSpace(r.Header.Get("Origin")), "/"); origin != "" {
+		return origin
+	}
+	// Host is always present (nginx: proxy_set_header Host $host).
+	if host := r.Host; host != "" {
+		scheme := "https"
+		if proto := r.Header.Get("X-Forwarded-Proto"); proto == "http" {
+			scheme = "http"
+		} else if strings.HasPrefix(host, "localhost") || strings.HasPrefix(host, "127.") {
+			scheme = "http"
+		}
+		return scheme + "://" + host
+	}
+	// Fall back to admin-configured jukebox_url or localhost.
+	url, _ := s.getPublicBaseURL(r.Context())
+	return url
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -989,13 +1013,21 @@ type audioStateRequest struct {
 
 func (s *Server) handleGetAudioState(w http.ResponseWriter, r *http.Request) {
 	rm := getRoomFromCtx(r.Context())
+	// Read directly from DB — the in-memory Room cache loads Info only once (on first
+	// access) and does not update it when audio settings change via handleUpdateAudioState.
+	// Reading from DB ensures Device B always sees the current values set by Device A.
+	var info db.Room
+	if err := s.db.GetContext(r.Context(), &info, `SELECT * FROM rooms WHERE id = ?`, rm.Info.ID); err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
 	jsonOK(w, map[string]any{
-		"volume":      rm.Info.Volume,
-		"balance":     rm.Info.Balance,
-		"tone_bass":   rm.Info.ToneBass,
-		"tone_mid":    rm.Info.ToneMid,
-		"tone_treble": rm.Info.ToneTreble,
-		"is_muted":    rm.Info.IsMuted,
+		"volume":      info.Volume,
+		"balance":     info.Balance,
+		"tone_bass":   info.ToneBass,
+		"tone_mid":    info.ToneMid,
+		"tone_treble": info.ToneTreble,
+		"is_muted":    info.IsMuted,
 	})
 }
 
