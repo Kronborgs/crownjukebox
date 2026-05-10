@@ -163,6 +163,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/auth/logout", s.handleLogout)
 		r.Get("/api/auth/me", s.handleMe)
 		r.Post("/api/auth/set-pin", s.handleSetPin)
+		r.Post("/api/auth/guest-link", s.handleCreateGuestLink)
 
 		// Library
 		r.Get("/api/library/artists", s.handleListArtists)
@@ -444,6 +445,22 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		"is_guest_session": sd.Session.IsGuestSession,
 		"session_id":       sd.Session.ID,
 	})
+}
+
+// handleCreateGuestLink creates a 24-hour one-time access link for guests.
+// Any authenticated non-guest user can call this to get a QR login URL.
+func (s *Server) handleCreateGuestLink(w http.ResponseWriter, r *http.Request) {
+	sd, _ := auth.GetSessionFromContext(r.Context())
+	if sd == nil || sd.Session.IsGuestSession {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	_, loginURL, err := s.qrSvc.CreateAccessLink(r.Context(), sd.User.ID, 24*time.Hour)
+	if err != nil {
+		jsonError(w, "failed to create guest link", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w, map[string]string{"login_url": loginURL})
 }
 
 // ─────────────────────────────────────────────────────────────

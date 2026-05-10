@@ -1,13 +1,44 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import { useSearchParams } from 'react-router-dom'
 import { useSession } from '@/hooks/useSession'
 
 export function LoginScreen() {
-  const { login } = useSession()
+  const { login, loginWithQR } = useSession()
+  const [searchParams] = useSearchParams()
   const [username, setUsername] = useState('')
   const [pin, setPin]           = useState('')
   const [error, setError]       = useState('')
   const [loading, setLoading]   = useState(false)
+  const [autoLogin, setAutoLogin] = useState(false)
+
+  // Auto-login if ?token= is present in URL (guest QR code flow)
+  useEffect(() => {
+    const token = searchParams.get('token')
+    if (!token) return
+    setAutoLogin(true)
+    setError('')
+    loginWithQR(token).catch((err: unknown) => {
+      setError(err instanceof Error ? err.message : 'Ugyldig eller udløbet QR kode')
+      setAutoLogin(false)
+    })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (autoLogin) {
+    return (
+      <div style={{
+        height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'radial-gradient(ellipse at center, #1a0a30 0%, #0d0520 70%)',
+      }}>
+        <div style={{ textAlign: 'center', color: 'var(--neon-primary)' }}>
+          <div style={{ fontSize: '3rem', marginBottom: '16px' }}>♛</div>
+          <p style={{ fontFamily: 'var(--font-display)', letterSpacing: '2px', fontSize: '1rem', color: 'var(--chrome-bright)' }}>
+            KOBLER TIL…
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()

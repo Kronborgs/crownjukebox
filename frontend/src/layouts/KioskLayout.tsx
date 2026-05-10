@@ -5,11 +5,12 @@ import { AlbumBrowser } from '@/components/AlbumBrowser'
 import { SearchScreen } from '@/components/SearchScreen'
 import { Queue } from '@/components/Queue'
 import { PartyOverlay } from '@/components/PartyOverlay'
+import { GuestQRModal } from '@/components/GuestQRModal'
 import { usePlayback } from '@/hooks/usePlayback'
 import { useSession } from '@/hooks/useSession'
 import { useSSE } from '@/hooks/useSSE'
 import { partyApi } from '@/api/client'
-import { Search, ListMusic, Disc3, LogOut, Settings } from 'lucide-react'
+import { Search, ListMusic, Disc3, LogOut, Settings, QrCode } from 'lucide-react'
 
 type Tab = 'browse' | 'search' | 'queue'
 
@@ -23,6 +24,7 @@ export function KioskLayout() {
   const { state: playback, refreshState } = usePlayback(!isGuest)
   const [activeTab, setActiveTab]     = useState<Tab>('browse')
   const [partyBusy, setPartyBusy] = useState(false)
+  const [showGuestQR, setShowGuestQR] = useState(false)
 
   // partyActive is derived from backend state so fresh login / page refresh always reflects reality.
   // partyBusy is separate — it disables the button optimistically from the moment it's clicked.
@@ -75,6 +77,11 @@ export function KioskLayout() {
             <h1 className="kiosk-brand">CrownJukebox</h1>
           </div>
           <div className="kiosk-header-actions">
+            {!isGuest && (
+              <button className="btn btn-ghost btn-icon" style={{ padding: '8px' }} onClick={() => setShowGuestQR(true)} title="Gæst QR kode">
+                <QrCode size={16} />
+              </button>
+            )}
             {isAdmin && (
               <a href="/admin" className="btn btn-ghost btn-icon" style={{ padding: '8px' }} title="Admin">
                 <Settings size={16} />
@@ -168,6 +175,9 @@ export function KioskLayout() {
         active={partyActive}
         onClose={async () => { try { await partyApi.end() } catch {} setPartyBusy(false) }}
       />
+
+      {/* Guest QR modal */}
+      {showGuestQR && <GuestQRModal onClose={() => setShowGuestQR(false)} />}
     </div>
   )
 }

@@ -324,13 +324,15 @@ const getList = async <T>(path: string): Promise<T[]> => {
 // ─── Auth ─────────────────────────────────────────────────────────
 
 export const authApi = {
-  login:   (username: string, pin: string) =>
+  login:     (username: string, pin: string) =>
     post<{ token: string; user: User }>('/api/auth/login', { username, pin }),
-  qrLogin: (token: string) =>
+  qrLogin:   (token: string) =>
     post<{ token: string; user: User }>('/api/auth/qr-login', { token }),
-  logout:  () => post('/api/auth/logout'),
-  me:      () => get<{ user: User; permissions: Permissions; is_guest_session: boolean; session_id: string }>('/api/auth/me'),
-  setPin:  (newPin: string) => post<{ status: string }>('/api/auth/set-pin', { new_pin: newPin }),
+  guestLink: () =>
+    post<{ login_url: string }>('/api/auth/guest-link'),
+  logout:    () => post('/api/auth/logout'),
+  me:        () => get<{ user: User; permissions: Permissions; is_guest_session: boolean; session_id: string }>('/api/auth/me'),
+  setPin:    (newPin: string) => post<{ status: string }>('/api/auth/set-pin', { new_pin: newPin }),
 }
 
 // ─── Library ──────────────────────────────────────────────────────

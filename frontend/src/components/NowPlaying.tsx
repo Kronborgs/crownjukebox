@@ -124,8 +124,8 @@ export function NowPlaying({ state, refreshState }: Props) {
     artist: track?.artist,
   })
 
-  // Load settings from API — always needed for direct_stream_url.
-  // Audio settings fall back to localStorage if present.
+  // Load settings from API — only used for direct_stream_url.
+  // Audio settings come exclusively from the backend (getAudioState) for Phase 3 sync.
   useEffect(() => {
     adminApi.settings()
       .then((settings) => {
@@ -136,27 +136,6 @@ export function NowPlaying({ state, refreshState }: Props) {
         }
         directStreamUrlRef.current = url
         setDirectStreamUrl(url)
-
-        // Audio settings: localStorage overrides API defaults
-        try {
-          const stored = localStorage.getItem('cj_audio_settings')
-          if (stored) {
-            const parsed = JSON.parse(stored)
-            // Migrate balance from old -100..100 range to new -10..10
-            if (typeof parsed.balance === 'number' && (parsed.balance > 10 || parsed.balance < -10)) {
-              parsed.balance = Math.round(parsed.balance / 10)
-            }
-            setAudioSettings(prev => ({ ...prev, ...parsed }))
-            return
-          }
-        } catch {}
-        setAudioSettings({
-          volume: Number(settings.audio_volume ?? settings.volume ?? '85'),
-          bass: Number(settings.audio_bass ?? '0'),
-          treble: Number(settings.audio_treble ?? '0'),
-          balance: Number(settings.audio_balance ?? '0'),
-          loudness: (settings.audio_loudness ?? '0') === '1',
-        })
       })
       .catch(() => {})
   }, [])
@@ -164,7 +143,6 @@ export function NowPlaying({ state, refreshState }: Props) {
   function updateAudioSetting<K extends keyof typeof audioSettings>(key: K, value: (typeof audioSettings)[K]) {
     setAudioSettings(prev => {
       const next = { ...prev, [key]: value }
-      try { localStorage.setItem('cj_audio_settings', JSON.stringify(next)) } catch {}
 
       // Phase 3: sync to backend for owner sessions
       if (!isGuest) {

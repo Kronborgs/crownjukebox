@@ -14,6 +14,7 @@ interface SessionState {
 
 interface SessionContextValue extends SessionState {
   login:  (username: string, pin: string) => Promise<void>
+  loginWithQR: (token: string) => Promise<void>
   logout: () => Promise<void>
   setRoom: (roomId: string) => void
   clearForcePinChange: () => void
@@ -80,6 +81,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setState(s => ({ ...s, user, permissions, token, sessionId: session_id, isLoading: false, currentRoomId: user.id, forcePinChange: !!user.force_pin_change, isGuestSession: !!is_guest_session }))
   }, [])
 
+  const loginWithQR = useCallback(async (rawToken: string) => {
+    const { token, user } = await authApi.qrLogin(rawToken)
+    sessionStorage.setItem('cj_token', token)
+    setCurrentRoomId(user.id)
+    const { permissions, is_guest_session, session_id } = await authApi.me()
+    setState(s => ({ ...s, user, permissions, token, sessionId: session_id, isLoading: false, currentRoomId: user.id, forcePinChange: false, isGuestSession: !!is_guest_session }))
+  }, [])
+
   const logout = useCallback(async () => {
     try { await authApi.logout() } catch {}
     sessionStorage.removeItem('cj_token')
@@ -101,6 +110,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const value: SessionContextValue = {
     ...state,
     login,
+    loginWithQR,
     logout,
     setRoom,
     clearForcePinChange,

@@ -5,11 +5,12 @@ import { Queue } from '@/components/Queue'
 import { AlbumBrowser } from '@/components/AlbumBrowser'
 import { SearchScreen } from '@/components/SearchScreen'
 import { PartyOverlay } from '@/components/PartyOverlay'
+import { GuestQRModal } from '@/components/GuestQRModal'
 import { usePlayback } from '@/hooks/usePlayback'
 import { useSession } from '@/hooks/useSession'
 import { useSSE } from '@/hooks/useSSE'
 import { partyApi } from '@/api/client'
-import { Disc3, Search, ListMusic, LogOut } from 'lucide-react'
+import { Disc3, Search, ListMusic, LogOut, QrCode } from 'lucide-react'
 
 type Tab = 'now' | 'browse' | 'search' | 'queue'
 
@@ -24,6 +25,7 @@ export function MobileLayout() {
   const { state: playback, refreshState } = usePlayback(!isGuest)
   const [activeTab, setActiveTab]     = useState<Tab>('now')
   const [partyBusy, setPartyBusy] = useState(false)
+  const [showGuestQR, setShowGuestQR] = useState(false)
 
   // partyActive derived from backend state — always correct on fresh login / page refresh
   const partyActive = !!playback?.is_party_mode
@@ -88,6 +90,16 @@ export function MobileLayout() {
         }}>
           CrownJukebox
         </span>
+        {!isGuest && (
+          <button
+            className="btn btn-ghost btn-icon"
+            style={{ padding: '6px', marginRight: '4px' }}
+            onClick={() => setShowGuestQR(true)}
+            title="Gæst QR kode"
+          >
+            <QrCode size={16} />
+          </button>
+        )}
         <button
           className="btn btn-ghost btn-icon"
           style={{ padding: '6px' }}
@@ -187,6 +199,9 @@ export function MobileLayout() {
         active={partyActive}
         onClose={async () => { try { await partyApi.end() } catch {} setPartyBusy(false) }}
       />
+
+      {/* Guest QR modal */}
+      {showGuestQR && <GuestQRModal onClose={() => setShowGuestQR(false)} />}
     </div>
   )
 }
