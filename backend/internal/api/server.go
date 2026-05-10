@@ -934,7 +934,8 @@ func (s *Server) handleClaimPlayer(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleReleasePlayer releases the active player role for the room.
-// Only the current active player (or an admin) may release it.
+// Only the current active player or an admin may release it.
+// If this session is not the active player, it's a no-op (200 OK).
 func (s *Server) handleReleasePlayer(w http.ResponseWriter, r *http.Request) {
 	sd, _ := auth.GetSessionFromContext(r.Context())
 	if sd == nil {
@@ -944,11 +945,11 @@ func (s *Server) handleReleasePlayer(w http.ResponseWriter, r *http.Request) {
 
 	rm := getRoomFromCtx(r.Context())
 
-	// Only the current active player or an admin may release.
+	// If someone else holds the player and this isn't an admin, treat as no-op.
 	if rm.Info.ActivePlayerSessionID != nil &&
 		*rm.Info.ActivePlayerSessionID != sd.Session.ID &&
 		sd.User.Role != "admin" {
-		jsonError(w, "not the active player", http.StatusForbidden)
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 

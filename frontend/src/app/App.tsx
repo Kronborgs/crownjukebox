@@ -44,13 +44,7 @@ function AppRoutes() {
   const [pinError, setPinError] = useState('')
   const [pinSaving, setPinSaving] = useState(false)
 
-  // Public /connect route — always available, no auth required. Early return is fine here
-  // because all hooks above have already been called unconditionally.
-  if (location.pathname === '/connect') {
-    return <ConnectScreen />
-  }
-
-  // Check setup status on mount
+  // Check setup status on mount (always called — hooks must never be conditional)
   useEffect(() => {
     setupApi.status()
       .then(({ needs_setup }) => setNeedsSetup(needs_setup))
@@ -65,6 +59,12 @@ function AppRoutes() {
       setRoomSelected(true)
     }
   }, [user, roomSelected]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Public /connect route — always available, no auth required.
+  // ALL hooks above have been called unconditionally, so this early return is valid.
+  if (location.pathname === '/connect') {
+    return <ConnectScreen />
+  }
 
   if (isLoading) {
     return (
