@@ -110,6 +110,8 @@ export function NowPlaying({ state, refreshState }: Props) {
   const [activePlayerSessionId, setActivePlayerSessionId] = useState<string | null>(null)
   // Phase 3: whether we are syncing audio state to backend
   const audioSyncPendingRef = useRef(false)
+  // Debounce timers for each audio setting — prevents a burst of PUT requests while dragging sliders.
+  const audioSyncTimers = useRef<Partial<Record<string, ReturnType<typeof setTimeout>>>>({})
 
   // Ref that always holds the latest state prop — used inside callbacks/intervals
   // that would otherwise capture a stale closure.
@@ -238,9 +240,14 @@ export function NowPlaying({ state, refreshState }: Props) {
             backendValue = value
           }
           audioSyncPendingRef.current = true
-          playbackApi.updateAudioState({ [bk]: backendValue })
-            .finally(() => { setTimeout(() => { audioSyncPendingRef.current = false }, 300) })
-            .catch(() => {})
+          // Debounce: cancel any pending flush for this key and wait 400ms
+          // before sending to avoid flooding the server while dragging sliders.
+          clearTimeout(audioSyncTimers.current[bk])
+          audioSyncTimers.current[bk] = setTimeout(() => {
+            playbackApi.updateAudioState({ [bk]: backendValue })
+              .finally(() => { setTimeout(() => { audioSyncPendingRef.current = false }, 300) })
+              .catch(() => {})
+          }, 400)
         }
       }
 
