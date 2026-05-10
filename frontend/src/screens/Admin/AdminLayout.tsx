@@ -5,7 +5,7 @@ import { adminApi, User, Track, Playlist, KeyboardBinding, setCurrentRoomId } fr
 import { useSession } from '@/hooks/useSession'
 import { Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio, LayoutDashboard, Mail, PartyPopper, Upload, Star, ChevronUp, ChevronDown, LogOut } from 'lucide-react'
 
-type AdminTab = 'dashboard' | 'users' | 'jukeboxes' | 'settings' | 'library' | 'smtp' | 'skaal'
+type AdminTab = 'dashboard' | 'users' | 'jukeboxes' | 'settings' | 'library' | 'smtp' | 'youtube' | 'skaal'
 
 export function AdminLayout() {
   const [tab, setTab] = useState<AdminTab>('dashboard')
@@ -38,6 +38,7 @@ export function AdminLayout() {
           { id: 'skaal',     icon: <PartyPopper size={16} />,    label: 'SKÅL' },
           { id: 'library',   icon: <Music2 size={16} />,         label: 'Bibliotek' },
           { id: 'smtp',      icon: <Mail size={16} />,           label: 'SMTP' },
+          { id: 'youtube',   icon: <span style={{ fontSize: '0.9rem' }}>▶</span>, label: 'YouTube' },
           { id: 'settings',  icon: <Settings size={16} />,       label: 'Indstillinger' },
         ] as { id: AdminTab; icon: React.ReactNode; label: string }[]).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
@@ -60,6 +61,7 @@ export function AdminLayout() {
         {tab === 'skaal'     && <SkaalPanel />}
         {tab === 'library'   && <LibraryPanel />}
         {tab === 'smtp'      && <SmtpPanel />}
+        {tab === 'youtube'   && <YouTubePanel />}
         {tab === 'settings'  && <SettingsPanel />}
       </div>
     </div>
@@ -1240,6 +1242,116 @@ function SmtpPanel() {
               Test-mail sendt! Tjek din indbakke.
             </p>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── YouTube panel ────────────────────────────────────────────────
+
+function YouTubePanel() {
+  const qc = useQueryClient()
+  const { data: yt, isLoading } = useQuery({
+    queryKey: ['admin-youtube'],
+    queryFn: adminApi.getYouTube,
+  })
+  const [apiKey, setApiKey] = useState('')
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+
+  async function handleSave() {
+    setSaveStatus('saving')
+    try {
+      await adminApi.updateYouTube(apiKey)
+      qc.invalidateQueries({ queryKey: ['admin-youtube'] })
+      setApiKey('')
+      setSaveStatus('saved')
+      setTimeout(() => setSaveStatus('idle'), 3000)
+    } catch {
+      setSaveStatus('error')
+      setTimeout(() => setSaveStatus('idle'), 4000)
+    }
+  }
+
+  if (isLoading) return <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-dim)' }}>Indlæser...</div>
+
+  return (
+    <div style={{ maxWidth: '620px' }}>
+      <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '6px' }}>YouTube API-nøgle</h2>
+      <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', marginBottom: '24px' }}>
+        Bruges til at søge YouTube-videoer, når brugere scanner QR-koden og tilføjer sange.
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        {/* Status */}
+        <div className="glass-card" style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
+            <span style={{ fontSize: '1.2rem' }}>▶</span>
+            <p style={{ fontWeight: 600, fontSize: '0.95rem', margin: 0 }}>YouTube Data API v3</p>
+            {yt?.api_key_set ? (
+              <span style={{ marginLeft: 'auto', color: 'var(--neon-green)', fontSize: '0.8rem', fontWeight: 700 }}>
+                ✓ Nøgle sat
+              </span>
+            ) : (
+              <span style={{ marginLeft: 'auto', color: 'var(--neon-red)', fontSize: '0.8rem', fontWeight: 700 }}>
+                ✗ Ikke konfigureret
+              </span>
+            )}
+          </div>
+
+          <label style={{ display: 'block', color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '5px' }}>
+            API-nøgle {yt?.api_key_set && <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>(efterlad blank for at beholde eksisterende)</span>}
+          </label>
+          <input
+            className="input"
+            type="password"
+            placeholder={yt?.api_key_set ? '••••••••••••••••••••• (sat)' : 'AIza...'}
+            value={apiKey}
+            onChange={e => setApiKey(e.target.value)}
+            autoComplete="off"
+            style={{ fontFamily: 'monospace' }}
+          />
+          <p style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '8px', lineHeight: 1.5 }}>
+            Opret nøglen på{' '}
+            <a
+              href="https://console.cloud.google.com"
+              target="_blank"
+              rel="noreferrer noopener"
+              style={{ color: 'var(--neon-teal)', textDecoration: 'underline' }}
+            >
+              console.cloud.google.com
+            </a>
+            {' '}→ YouTube Data API v3 → Credentials → Create API key
+          </p>
+        </div>
+
+        <button
+          className="btn btn-primary"
+          style={{ alignSelf: 'flex-start' }}
+          onClick={handleSave}
+          disabled={saveStatus === 'saving' || (!apiKey && yt?.api_key_set)}
+        >
+          {saveStatus === 'saving' ? 'Gemmer...' :
+           saveStatus === 'saved'  ? '✓ Gemt!' :
+           saveStatus === 'error'  ? '✗ Fejl ved gem' :
+           'Gem API-nøgle'}
+        </button>
+
+        {/* How-to box */}
+        <div className="glass-card" style={{ padding: '20px', borderColor: 'rgba(0,229,255,0.2)' }}>
+          <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--neon-teal)', marginBottom: '12px' }}>
+            Sådan opsætter du nøglen
+          </h3>
+          <ol style={{ color: 'var(--text-dim)', fontSize: '0.8rem', lineHeight: 1.8, paddingLeft: '18px', margin: 0 }}>
+            <li>Gå til <strong style={{ color: 'var(--text-secondary)' }}>console.cloud.google.com</strong></li>
+            <li>Opret et projekt (eller brug et eksisterende)</li>
+            <li>Aktiver <strong style={{ color: 'var(--text-secondary)' }}>YouTube Data API v3</strong> under "APIs &amp; Services"</li>
+            <li>Gå til Credentials → Create Credentials → API key</li>
+            <li>Kopiér nøglen og indsæt den ovenfor</li>
+          </ol>
+          <p style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '12px' }}>
+            YouTube Data API v3 er gratis op til 10.000 søgninger om dagen, hvilket er mere end nok til privat brug.
+          </p>
         </div>
       </div>
     </div>

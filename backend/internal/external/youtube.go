@@ -43,7 +43,7 @@ type ytSearchResponse struct {
 // Returns an error if apiKey is empty or the API responds with an error.
 func SearchYouTube(apiKey, query string) ([]YouTubeSearchResult, error) {
 	if apiKey == "" {
-		return nil, fmt.Errorf("YouTube API key not configured — set the YOUTUBE_API_KEY environment variable")
+		return nil, fmt.Errorf("YouTube API-nøgle mangler — konfigurér den i Admin → YouTube")
 	}
 
 	params := url.Values{

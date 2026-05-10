@@ -483,6 +483,10 @@ export const adminApi = {
   getSMTP: () => get<SmtpConfig>('/api/admin/smtp'),
   updateSMTP: (data: SmtpSavePayload) => put<void>('/api/admin/smtp', data),
   testSMTP: (to: string) => post<{ status: string }>('/api/admin/smtp/test', { to }),
+
+  // YouTube API key
+  getYouTube: () => get<{ api_key_set: boolean }>('/api/admin/youtube'),
+  updateYouTube: (apiKey: string) => put<void>('/api/admin/youtube', { api_key: apiKey }),
 }
 
 // ─── Rooms ────────────────────────────────────────────────────────

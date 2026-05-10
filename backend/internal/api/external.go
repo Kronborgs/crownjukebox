@@ -82,7 +82,12 @@ func (s *Server) handleExternalYouTubeSearch(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	results, err := external.SearchYouTube(s.cfg.YouTubeAPIKey, q)
+	// Read API key from database (set via Admin → YouTube panel)
+	var apiKey string
+	_ = s.db.QueryRowContext(r.Context(),
+		`SELECT COALESCE(value,'') FROM settings WHERE key = 'youtube_api_key'`).Scan(&apiKey)
+
+	results, err := external.SearchYouTube(apiKey, q)
 	if err != nil {
 		log.Printf("[external] youtube search: %v", err)
 		writeExtError(w, http.StatusInternalServerError, err.Error())

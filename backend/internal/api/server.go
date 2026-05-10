@@ -38,18 +38,18 @@ const roomContextKey contextKey = "room"
 
 // Server holds all service dependencies.
 type Server struct {
-	cfg       *config.Config
-	version   string
-	db        *sqlx.DB
-	hub       *events.Hub
-	authSvc   *auth.Service
-	qrSvc     *auth.QRService
-	roomSvc   *rooms.Service
-	emailSvc  *email.Service
-	artExt    *artwork.Extractor
-	scanner   *music.Scanner
-	startTime time.Time
-	loginRL   *auth.LoginRateLimiter
+	cfg           *config.Config
+	version       string
+	db            *sqlx.DB
+	hub           *events.Hub
+	authSvc       *auth.Service
+	qrSvc         *auth.QRService
+	roomSvc       *rooms.Service
+	emailSvc      *email.Service
+	artExt        *artwork.Extractor
+	scanner       *music.Scanner
+	startTime     time.Time
+	loginRL       *auth.LoginRateLimiter
 	externalStore *external.Store
 }
 
@@ -276,6 +276,10 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/admin/smtp", s.handleGetSMTP)
 		r.Put("/api/admin/smtp", s.handleUpdateSMTP)
 		r.Post("/api/admin/smtp/test", s.handleTestSMTP)
+
+		// YouTube API key
+		r.Get("/api/admin/youtube", s.handleGetYouTubeSettings)
+		r.Put("/api/admin/youtube", s.handleUpdateYouTubeSettings)
 	})
 
 	return r
@@ -2355,6 +2359,38 @@ func (s *Server) handleTestSMTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOK(w, map[string]string{"status": "sent"})
+}
+
+// ─────────────────────────────────────────────────────────────
+// YouTube API key handlers
+// ─────────────────────────────────────────────────────────────
+
+func (s *Server) handleGetYouTubeSettings(w http.ResponseWriter, r *http.Request) {
+	var key string
+	_ = s.db.QueryRowContext(r.Context(),
+		`SELECT COALESCE(value,'') FROM settings WHERE key = 'youtube_api_key'`).Scan(&key)
+	jsonOK(w, map[string]any{
+		"api_key_set": key != "",
+	})
+}
+
+func (s *Server) handleUpdateYouTubeSettings(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		APIKey string `json:"api_key"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	// Allow clearing the key by sending an empty string
+	_, err := s.db.ExecContext(r.Context(),
+		`INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('youtube_api_key', ?, CURRENT_TIMESTAMP)`,
+		req.APIKey)
+	if err != nil {
+		jsonError(w, "database error", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w, map[string]string{"status": "updated"})
 }
 
 // ─────────────────────────────────────────────────────────────
