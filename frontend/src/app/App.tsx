@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Component, type ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { SessionProvider, useSession } from '@/hooks/useSession'
@@ -169,9 +169,46 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <SessionProvider>
         <BrowserRouter>
-          <AppRoutes />
+          <AppErrorBoundary>
+            <AppRoutes />
+          </AppErrorBoundary>
         </BrowserRouter>
       </SessionProvider>
     </QueryClientProvider>
   )
+}
+
+class AppErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props)
+    this.state = { error: null }
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{
+          height: '100vh', display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          background: '#0d0520', color: '#f5f0ff', gap: '16px', padding: '32px', textAlign: 'center',
+        }}>
+          <span style={{ fontSize: '2.5rem', color: '#bf00ff' }}>♛</span>
+          <h2 style={{ color: '#ff2d78', fontSize: '1.1rem' }}>Noget gik galt</h2>
+          <p style={{ color: '#a090c0', fontSize: '0.85rem' }}>{this.state.error.message}</p>
+          <button
+            onClick={() => { this.setState({ error: null }); window.location.reload() }}
+            style={{
+              padding: '12px 24px', background: 'rgba(191,0,255,0.2)', border: '1px solid #bf00ff',
+              borderRadius: '8px', color: '#f5f0ff', cursor: 'pointer', fontSize: '0.9rem',
+            }}
+          >
+            Genindlæs siden
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
 }

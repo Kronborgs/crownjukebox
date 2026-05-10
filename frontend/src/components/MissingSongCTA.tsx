@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import QRCode from 'react-qr-code'
+import { QRCode } from 'react-qr-code'
 import { externalApi, type ExternalStatus } from '@/api/client'
 
 /**
