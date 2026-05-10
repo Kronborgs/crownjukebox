@@ -44,6 +44,13 @@ export function useCast({ streamUrl, title, artist, coverUrl }: UseCastOptions) 
   const [castState, setCastState] = useState<CastState>('unavailable')
   const initializedRef = useRef(false)
 
+  // Always-current ref for Cast options. The SESSION_STARTED event listener is
+  // registered once (inside useEffect([], [])) and would otherwise capture the
+  // initial values via closure — at that point streamUrl is typically null because
+  // the track hasn't loaded yet. Using a ref breaks the stale-closure problem.
+  const optsRef = useRef({ streamUrl, title, artist, coverUrl })
+  optsRef.current = { streamUrl, title, artist, coverUrl }
+
   useEffect(() => {
     if (initializedRef.current) return
 
@@ -63,10 +70,13 @@ export function useCast({ streamUrl, title, artist, coverUrl }: UseCastOptions) 
         (ev: cast.framework.SessionStateEventData) => {
           switch (ev.sessionState) {
             case w.cast!.framework.SessionState.SESSION_STARTED:
-            case w.cast!.framework.SessionState.SESSION_RESUMED:
+            case w.cast!.framework.SessionState.SESSION_RESUMED: {
               setCastState('casting')
-              if (streamUrl) _loadMedia(streamUrl, title, artist, coverUrl)
+              // Read from ref — not from closure — to always get the current track URL.
+              const { streamUrl: url, title: t, artist: a, coverUrl: c } = optsRef.current
+              if (url) _loadMedia(url, t, a, c)
               break
+            }
             case w.cast!.framework.SessionState.SESSION_ENDED:
               setCastState('idle')
               break
@@ -88,10 +98,12 @@ export function useCast({ streamUrl, title, artist, coverUrl }: UseCastOptions) 
     w.__onGCastApiAvailable = initializeCast
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // When stream URL changes and we are casting, load the new track
+  // When stream URL changes while casting, reload the track on the receiver.
   useEffect(() => {
-    if (castState !== 'casting' || !streamUrl) return
-    _loadMedia(streamUrl, title, artist, coverUrl)
+    if (castState !== 'casting') return
+    const { streamUrl: url, title: t, artist: a, coverUrl: c } = optsRef.current
+    if (!url) return
+    _loadMedia(url, t, a, c)
   }, [streamUrl, castState]) // eslint-disable-line react-hooks/exhaustive-deps
 
   function _loadMedia(url: string, trackTitle?: string, trackArtist?: string, cover?: string) {

@@ -111,11 +111,22 @@ export function NowPlaying({ state, refreshState }: Props) {
   // Phase 3: whether we are syncing audio state to backend
   const audioSyncPendingRef = useRef(false)
 
+  // Ref that always holds the latest state prop — used inside callbacks/intervals
+  // that would otherwise capture a stale closure.
+  const stateRef = useRef(state)
+  useEffect(() => { stateRef.current = state }, [state])
+
+  // Ref that always holds the latest isActivePlayer value — used inside the
+  // position-report interval to immediately stop reporting when another device claims.
+  const isActivePlayerRef = useRef(false)
+
   const track = state?.current_track
 
   // Phase 2: can this session play audio? (owner and holds the player, or no one holds it yet)
   const isOwner = !isGuest
   const isActivePlayer = isOwner && (activePlayerSessionId === null || activePlayerSessionId === sessionId)
+  // Keep the ref in sync with the derived value so intervals see current state
+  isActivePlayerRef.current = isActivePlayer
 
   // Phase 4: Google Cast (desktop Chrome + Cast extension)
   // Cast stream URL is computed independently of audioSrc/isActivePlayer so that:
@@ -271,7 +282,14 @@ export function NowPlaying({ state, refreshState }: Props) {
     // Phase 2: track who holds the active player role
     active_player_changed: (data) => {
       const d = data as { active_player_session_id: string | null }
-      setActivePlayerSessionId(d.active_player_session_id ?? null)
+      const newId = d.active_player_session_id ?? null
+      // When WE just became the active player (another device triggered the SSE by releasing,
+      // or the claim came from another tab), seek to the server-reported position so we
+      // start in sync instead of from position 0.
+      if (newId === sessionId && !isActivePlayerRef.current) {
+        resumePositionRef.current = stateRef.current?.position_secs ?? 0
+      }
+      setActivePlayerSessionId(newId)
     },
     // Phase 3: sync audio state from another device
     audio_state_changed: (data) => {
@@ -303,14 +321,19 @@ export function NowPlaying({ state, refreshState }: Props) {
     }).catch(() => {})
   }, [isGuest]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Phase 2: Auto-claim the player role when an owner loads the jukebox
+  // Phase 2: Auto-claim the player role when an owner loads the jukebox.
+  // Seek to the current server position so the audio starts in sync with
+  // whatever the previous active player was reporting.
   const claimAttemptedRef = useRef(false)
   useEffect(() => {
     if (isGuest) return
     if (claimAttemptedRef.current) return
     claimAttemptedRef.current = true
     playbackApi.claimPlayer()
-      .then(res => setActivePlayerSessionId(res.active_player_session_id))
+      .then(res => {
+        resumePositionRef.current = stateRef.current?.position_secs ?? 0
+        setActivePlayerSessionId(res.active_player_session_id)
+      })
       .catch(() => {})
   }, [isGuest]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -432,12 +455,14 @@ export function NowPlaying({ state, refreshState }: Props) {
     }
   }, [state?.is_playing, audioSrc])
 
-  // Report position to server every 5s
+  // Report position to server every 5s — ONLY when this device is the active player.
+  // Using isActivePlayerRef (not state) so the interval picks up role changes immediately
+  // without waiting for the next 5-second tick to fire after a React re-render.
   useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
     const id = setInterval(() => {
-      if (!audio.paused) {
+      if (!audio.paused && isActivePlayerRef.current) {
         playbackApi.updatePosition(audio.currentTime).catch(() => {})
       }
     }, 5000)
@@ -620,6 +645,7 @@ export function NowPlaying({ state, refreshState }: Props) {
                 <button
                   className="btn btn-ghost btn-icon"
                   onClick={async () => {
+                    resumePositionRef.current = stateRef.current?.position_secs ?? 0
                     const res = await playbackApi.claimPlayer()
                     setActivePlayerSessionId(res.active_player_session_id)
                   }}
