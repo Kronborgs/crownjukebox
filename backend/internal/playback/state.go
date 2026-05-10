@@ -514,6 +514,20 @@ func (m *Manager) StartIfIdle(ctx context.Context) {
 		return
 	}
 
+	// Don't auto-start if no owner (non-guest) session is currently active.
+	// The room ID equals the owner's user_id.
+	var ownerSessions int
+	_ = m.db.GetContext(ctx, &ownerSessions, `
+		SELECT COUNT(*) FROM sessions
+		WHERE user_id = ?
+		  AND is_guest_session = 0
+		  AND revoked_at IS NULL
+		  AND expires_at > CURRENT_TIMESTAMP`, m.roomID)
+	if ownerSessions == 0 {
+		log.Printf("[playback] room=%s skipping autoplay boot — no owner logged in", m.roomID)
+		return
+	}
+
 	log.Printf("[playback] room=%s starting autoplay (idle on boot)", m.roomID)
 	if err := m.Play(ctx, "", ""); err != nil {
 		log.Printf("[playback] room=%s autoplay boot start failed: %v", m.roomID, err)
