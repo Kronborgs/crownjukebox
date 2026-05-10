@@ -94,15 +94,52 @@ func (s *Service) CreateSession(ctx context.Context, userID, deviceName, userAge
 
 	_, err = s.db.ExecContext(ctx, `
 		INSERT INTO sessions
-			(id, user_id, session_token_hash, device_name, user_agent, ip_address, created_at, expires_at, last_seen_at)
+			(id, user_id, session_token_hash, device_name, user_agent, ip_address, is_guest_session, created_at, expires_at, last_seen_at)
 		VALUES
-			(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			(?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
 		session.ID, session.UserID, session.SessionTokenHash,
 		session.DeviceName, session.UserAgent, session.IPAddress,
 		session.CreatedAt, session.ExpiresAt, session.LastSeenAt,
 	)
 	if err != nil {
 		return "", fmt.Errorf("insert session: %w", err)
+	}
+
+	return token, nil
+}
+
+// CreateGuestSession generates a session for a QR access-link user.
+// The session is flagged is_guest_session=1, which prevents audio playback on the client.
+func (s *Service) CreateGuestSession(ctx context.Context, userID, deviceName, userAgent, ipAddress string) (string, error) {
+	token, err := GenerateSecureToken()
+	if err != nil {
+		return "", err
+	}
+
+	session := db.Session{
+		ID:               uuid.NewString(),
+		UserID:           userID,
+		SessionTokenHash: HashToken(token),
+		DeviceName:       deviceName,
+		UserAgent:        userAgent,
+		IPAddress:        ipAddress,
+		IsGuestSession:   true,
+		CreatedAt:        time.Now(),
+		ExpiresAt:        time.Now().Add(s.sessionTTL),
+		LastSeenAt:       time.Now(),
+	}
+
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO sessions
+			(id, user_id, session_token_hash, device_name, user_agent, ip_address, is_guest_session, created_at, expires_at, last_seen_at)
+		VALUES
+			(?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+		session.ID, session.UserID, session.SessionTokenHash,
+		session.DeviceName, session.UserAgent, session.IPAddress,
+		session.CreatedAt, session.ExpiresAt, session.LastSeenAt,
+	)
+	if err != nil {
+		return "", fmt.Errorf("insert guest session: %w", err)
 	}
 
 	return token, nil

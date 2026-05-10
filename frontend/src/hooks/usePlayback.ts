@@ -6,8 +6,10 @@ import { useSSE } from './useSSE'
 /**
  * Manages playback state: fetches initial state, listens to SSE for updates,
  * and handles local position tick while playing.
+ *
+ * @param canPlay - Set to false for guest sessions to prevent auto-play calls.
  */
-export function usePlayback() {
+export function usePlayback(canPlay = true) {
   const qc = useQueryClient()
   const [state, setState] = useState<PlaybackState | null>(null)
   const tickRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
@@ -19,14 +21,14 @@ export function usePlayback() {
 
   // Initial fetch — if party mode is stuck from a previous session (page reload / re-login),
   // end it automatically so the jukebox is usable. Audio doesn't survive page load anyway.
-  // If nothing is playing, kick off autoplay immediately so the user doesn't have to press Play.
+  // If nothing is playing, kick off autoplay immediately so the jukebox is ready immediately.
   useEffect(() => {
     playbackApi.state().then(async (next) => {
       if (next?.is_party_mode) {
         try { await partyApi.end() } catch {}
         const clean = await playbackApi.state()
         setState(clean)
-      } else if (!next?.is_playing) {
+      } else if (!next?.is_playing && canPlay) {
         // Nothing playing on load — auto-start so the jukebox is ready immediately.
         try { await playbackApi.play() } catch {}
         const fresh = await playbackApi.state()

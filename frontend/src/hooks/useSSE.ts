@@ -14,6 +14,8 @@ export type SSEEventType =
   | 'artwork_scan_progress'
   | 'artwork_updated'
   | 'missing_artwork_found'
+  | 'active_player_changed'
+  | 'audio_state_changed'
 
 export type SSEHandler = (data: unknown) => void
 
@@ -55,6 +57,7 @@ export function useSSE(
       'party_started', 'party_ended', 'user_access_revoked', 'user_access_expired',
       'settings_changed', 'library_scan_progress', 'artwork_scan_progress',
       'artwork_updated', 'missing_artwork_found',
+      'active_player_changed', 'audio_state_changed',
     ]
     for (const type of knownTypes) {
       es.addEventListener(type, (ev) => {

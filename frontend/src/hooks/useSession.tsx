@@ -5,9 +5,11 @@ interface SessionState {
   user: User | null
   permissions: Permissions | null
   token: string | null
+  sessionId: string | null
   isLoading: boolean
   currentRoomId: string
   forcePinChange: boolean
+  isGuestSession: boolean
 }
 
 interface SessionContextValue extends SessionState {
@@ -16,18 +18,21 @@ interface SessionContextValue extends SessionState {
   setRoom: (roomId: string) => void
   clearForcePinChange: () => void
   isAdmin: boolean
+  isGuest: boolean
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null)
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<SessionState>({
-    user:        null,
-    permissions: null,
-    token:       sessionStorage.getItem('cj_token'),
-    isLoading:   true,
-    currentRoomId: getCurrentRoomId(),
+    user:           null,
+    permissions:    null,
+    token:          sessionStorage.getItem('cj_token'),
+    sessionId:      null,
+    isLoading:      true,
+    currentRoomId:  getCurrentRoomId(),
     forcePinChange: false,
+    isGuestSession: false,
   })
 
   // Validate existing token on mount
@@ -37,19 +42,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return
     }
     authApi.me()
-      .then(({ user, permissions }) => {
+      .then(({ user, permissions, is_guest_session, session_id }) => {
         // On page load with an existing token, restore the user's own room
         // if no specific room was already chosen (e.g., via admin viewJukebox).
         if (getCurrentRoomId() === 'default') {
           setCurrentRoomId(user.id)
         }
-        setState(s => ({ ...s, user, permissions, isLoading: false, currentRoomId: getCurrentRoomId() }))
+        setState(s => ({ ...s, user, permissions, sessionId: session_id, isGuestSession: !!is_guest_session, isLoading: false, currentRoomId: getCurrentRoomId() }))
       })
       .catch((err: ApiError) => {
         if (err.status === 401) {
           sessionStorage.removeItem('cj_token')
           setCurrentRoomId('default')
-          setState({ user: null, permissions: null, token: null, isLoading: false, currentRoomId: 'default', forcePinChange: false })
+          setState({ user: null, permissions: null, token: null, sessionId: null, isLoading: false, currentRoomId: 'default', forcePinChange: false, isGuestSession: false })
         } else {
           setState(s => ({ ...s, isLoading: false }))
         }
@@ -71,15 +76,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const { token, user } = await authApi.login(username, pin)
     sessionStorage.setItem('cj_token', token)
     setCurrentRoomId(user.id)
-    const { permissions } = await authApi.me()
-    setState(s => ({ ...s, user, permissions, token, isLoading: false, currentRoomId: user.id, forcePinChange: !!user.force_pin_change }))
+    const { permissions, is_guest_session, session_id } = await authApi.me()
+    setState(s => ({ ...s, user, permissions, token, sessionId: session_id, isLoading: false, currentRoomId: user.id, forcePinChange: !!user.force_pin_change, isGuestSession: !!is_guest_session }))
   }, [])
 
   const logout = useCallback(async () => {
     try { await authApi.logout() } catch {}
     sessionStorage.removeItem('cj_token')
     setCurrentRoomId('default')
-    setState({ user: null, permissions: null, token: null, isLoading: false, currentRoomId: 'default', forcePinChange: false })
+    setState({ user: null, permissions: null, token: null, sessionId: null, isLoading: false, currentRoomId: 'default', forcePinChange: false, isGuestSession: false })
   }, [])
 
   const clearForcePinChange = useCallback(() => {
@@ -91,6 +96,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setState(s => ({ ...s, currentRoomId: roomId }))
   }, [])
 
+  const isGuest = state.isGuestSession
+
   const value: SessionContextValue = {
     ...state,
     login,
@@ -98,6 +105,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setRoom,
     clearForcePinChange,
     isAdmin: state.user?.role === 'admin',
+    isGuest,
   }
 
   return (

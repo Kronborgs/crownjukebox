@@ -167,6 +167,13 @@ export interface Room {
   name: string
   owner_user_id?: string
   party_playlist_id?: string
+  active_player_session_id?: string | null
+  volume: number
+  balance: number
+  tone_bass: number
+  tone_mid: number
+  tone_treble: number
+  is_muted: boolean
   created_at: string
   updated_at: string
 }
@@ -322,7 +329,7 @@ export const authApi = {
   qrLogin: (token: string) =>
     post<{ token: string; user: User }>('/api/auth/qr-login', { token }),
   logout:  () => post('/api/auth/logout'),
-  me:      () => get<{ user: User; permissions: Permissions }>('/api/auth/me'),
+  me:      () => get<{ user: User; permissions: Permissions; is_guest_session: boolean; session_id: string }>('/api/auth/me'),
   setPin:  (newPin: string) => post<{ status: string }>('/api/auth/set-pin', { new_pin: newPin }),
 }
 
@@ -372,6 +379,15 @@ export const queueApi = {
 
 // ─── Playback ─────────────────────────────────────────────────────
 
+export interface AudioState {
+  volume: number
+  balance: number
+  tone_bass: number
+  tone_mid: number
+  tone_treble: number
+  is_muted: boolean
+}
+
 export const playbackApi = {
   state:          () => get<PlaybackState>('/api/playback/state'),
   play:           (trackId?: string) => post('/api/playback/play', trackId ? { track_id: trackId } : {}),
@@ -380,6 +396,12 @@ export const playbackApi = {
   trackEnded:     (trackId: string) => post<void>('/api/playback/track-ended', { track_id: trackId }),
   updatePosition: (position: number) => post('/api/playback/position', { position }),
   history:        () => getList<PlaybackHistory>('/api/playback/history'),
+  // Phase 2: Active player session
+  claimPlayer:   () => post<{ active_player_session_id: string }>('/api/playback/claim-player'),
+  releasePlayer: () => post<void>('/api/playback/release-player'),
+  // Phase 3: Audio state
+  getAudioState:    () => get<AudioState>('/api/playback/audio-state'),
+  updateAudioState: (state: Partial<AudioState>) => put<AudioState>('/api/playback/audio-state', state),
 }
 
 // ─── Party ────────────────────────────────────────────────────────

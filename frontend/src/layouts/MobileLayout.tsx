@@ -20,8 +20,8 @@ type Tab = 'now' | 'browse' | 'search' | 'queue'
  * kiosk runs on the main screen.
  */
 export function MobileLayout() {
-  const { logout, permissions, isAdmin } = useSession()
-  const { state: playback, refreshState } = usePlayback()
+  const { logout, permissions, isAdmin, isGuest } = useSession()
+  const { state: playback, refreshState } = usePlayback(!isGuest)
   const [activeTab, setActiveTab]     = useState<Tab>('now')
   const [partyBusy, setPartyBusy] = useState(false)
 

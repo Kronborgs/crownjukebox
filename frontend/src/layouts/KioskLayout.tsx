@@ -19,8 +19,8 @@ type Tab = 'browse' | 'search' | 'queue'
  * Bottom: SKÅLE party button.
  */
 export function KioskLayout() {
-  const { logout, isAdmin, permissions } = useSession()
-  const { state: playback, refreshState } = usePlayback()
+  const { logout, isAdmin, permissions, isGuest } = useSession()
+  const { state: playback, refreshState } = usePlayback(!isGuest)
   const [activeTab, setActiveTab]     = useState<Tab>('browse')
   const [partyBusy, setPartyBusy] = useState(false)
 

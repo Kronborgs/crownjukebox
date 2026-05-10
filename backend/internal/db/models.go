@@ -114,6 +114,7 @@ type Session struct {
 	DeviceName       string     `db:"device_name"`
 	UserAgent        string     `db:"user_agent"`
 	IPAddress        string     `db:"ip_address"`
+	IsGuestSession   bool       `db:"is_guest_session"`
 	CreatedAt        time.Time  `db:"created_at"`
 	ExpiresAt        time.Time  `db:"expires_at"`
 	RevokedAt        *time.Time `db:"revoked_at"`
@@ -204,12 +205,19 @@ type RoomPlaybackState struct {
 // ─────────────────────────────────────────────────────────────
 
 type Room struct {
-	ID              string    `db:"id"                json:"id"`
-	Name            string    `db:"name"              json:"name"`
-	OwnerUserID     *string   `db:"owner_user_id"     json:"owner_user_id,omitempty"`
-	PartyPlaylistID *string   `db:"party_playlist_id" json:"party_playlist_id,omitempty"`
-	CreatedAt       time.Time `db:"created_at"        json:"created_at"`
-	UpdatedAt       time.Time `db:"updated_at"        json:"updated_at"`
+	ID                    string    `db:"id"                       json:"id"`
+	Name                  string    `db:"name"                     json:"name"`
+	OwnerUserID           *string   `db:"owner_user_id"            json:"owner_user_id,omitempty"`
+	PartyPlaylistID       *string   `db:"party_playlist_id"        json:"party_playlist_id,omitempty"`
+	ActivePlayerSessionID *string   `db:"active_player_session_id" json:"active_player_session_id,omitempty"`
+	Volume                int       `db:"volume"                   json:"volume"`
+	Balance               int       `db:"balance"                  json:"balance"`
+	ToneBass              int       `db:"tone_bass"                json:"tone_bass"`
+	ToneMid               int       `db:"tone_mid"                 json:"tone_mid"`
+	ToneTreble            int       `db:"tone_treble"              json:"tone_treble"`
+	IsMuted               bool      `db:"is_muted"                 json:"is_muted"`
+	CreatedAt             time.Time `db:"created_at"               json:"created_at"`
+	UpdatedAt             time.Time `db:"updated_at"               json:"updated_at"`
 }
 
 // ─────────────────────────────────────────────────────────────

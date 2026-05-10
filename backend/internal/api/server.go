@@ -192,6 +192,14 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/playback/history", s.handlePlaybackHistory)
 		r.Post("/api/playback/position", s.handleUpdatePosition)
 
+		// Phase 2: Active player session claim/release
+		r.Post("/api/playback/claim-player", s.handleClaimPlayer)
+		r.Post("/api/playback/release-player", s.handleReleasePlayer)
+
+		// Phase 3: Audio state (volume, balance, tone, mute)
+		r.Put("/api/playback/audio-state", s.handleUpdateAudioState)
+		r.Get("/api/playback/audio-state", s.handleGetAudioState)
+
 		// Party
 		r.Post("/api/party/cheers", auth.RequirePermission(s.authSvc, "can_use_party_button")(http.HandlerFunc(s.handleCheers)).ServeHTTP)
 		r.Post("/api/party/end", s.handlePartyEnd)
@@ -375,7 +383,7 @@ func (s *Server) handleQRLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := s.authSvc.CreateSession(r.Context(), user.ID,
+	token, err := s.authSvc.CreateGuestSession(r.Context(), user.ID,
 		"QR Login", r.Header.Get("User-Agent"), r.RemoteAddr)
 	if err != nil {
 		jsonError(w, "session creation failed", http.StatusInternalServerError)
@@ -431,8 +439,10 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOK(w, map[string]any{
-		"user":        userResponse(sd.User),
-		"permissions": sd.Permissions,
+		"user":             userResponse(sd.User),
+		"permissions":      sd.Permissions,
+		"is_guest_session": sd.Session.IsGuestSession,
+		"session_id":       sd.Session.ID,
 	})
 }
 
@@ -868,6 +878,211 @@ func (s *Server) handleUpdatePosition(w http.ResponseWriter, r *http.Request) {
 	rm := getRoomFromCtx(r.Context())
 	rm.Playback.UpdatePosition(r.Context(), req.Position, userID)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// ─────────────────────────────────────────────────────────────
+// Phase 2: Active player session handlers
+// ─────────────────────────────────────────────────────────────
+
+// handleClaimPlayer lets a session claim the "active player" role for the room.
+// Only one session can hold it at a time. Guests (is_guest_session=1) are blocked.
+func (s *Server) handleClaimPlayer(w http.ResponseWriter, r *http.Request) {
+	sd, _ := auth.GetSessionFromContext(r.Context())
+	if sd == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if sd.Session.IsGuestSession {
+		jsonError(w, "guests cannot claim the player", http.StatusForbidden)
+		return
+	}
+
+	rm := getRoomFromCtx(r.Context())
+	sessionID := sd.Session.ID
+
+	_, err := s.db.ExecContext(r.Context(),
+		`UPDATE rooms SET active_player_session_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		sessionID, rm.Info.ID,
+	)
+	if err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
+
+	s.hub.BroadcastToRoom(rm.Info.ID, "active_player_changed", map[string]any{
+		"active_player_session_id": sessionID,
+	})
+
+	jsonOK(w, map[string]any{"active_player_session_id": sessionID})
+}
+
+// handleReleasePlayer releases the active player role for the room.
+// Only the current active player (or an admin) may release it.
+func (s *Server) handleReleasePlayer(w http.ResponseWriter, r *http.Request) {
+	sd, _ := auth.GetSessionFromContext(r.Context())
+	if sd == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	rm := getRoomFromCtx(r.Context())
+
+	// Only the current active player or an admin may release.
+	if rm.Info.ActivePlayerSessionID != nil &&
+		*rm.Info.ActivePlayerSessionID != sd.Session.ID &&
+		sd.User.Role != "admin" {
+		jsonError(w, "not the active player", http.StatusForbidden)
+		return
+	}
+
+	_, err := s.db.ExecContext(r.Context(),
+		`UPDATE rooms SET active_player_session_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+		rm.Info.ID,
+	)
+	if err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
+
+	s.hub.BroadcastToRoom(rm.Info.ID, "active_player_changed", map[string]any{"active_player_session_id": nil})
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ─────────────────────────────────────────────────────────────
+// Phase 3: Audio state (volume, balance, tone, mute) handlers
+// ─────────────────────────────────────────────────────────────
+
+type audioStateRequest struct {
+	Volume     *int  `json:"volume"`
+	Balance    *int  `json:"balance"`
+	ToneBass   *int  `json:"tone_bass"`
+	ToneMid    *int  `json:"tone_mid"`
+	ToneTreble *int  `json:"tone_treble"`
+	IsMuted    *bool `json:"is_muted"`
+}
+
+func (s *Server) handleGetAudioState(w http.ResponseWriter, r *http.Request) {
+	rm := getRoomFromCtx(r.Context())
+	jsonOK(w, map[string]any{
+		"volume":      rm.Info.Volume,
+		"balance":     rm.Info.Balance,
+		"tone_bass":   rm.Info.ToneBass,
+		"tone_mid":    rm.Info.ToneMid,
+		"tone_treble": rm.Info.ToneTreble,
+		"is_muted":    rm.Info.IsMuted,
+	})
+}
+
+func (s *Server) handleUpdateAudioState(w http.ResponseWriter, r *http.Request) {
+	sd, _ := auth.GetSessionFromContext(r.Context())
+	if sd == nil {
+		jsonError(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if sd.Session.IsGuestSession {
+		jsonError(w, "guests cannot change audio settings", http.StatusForbidden)
+		return
+	}
+
+	var req audioStateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+
+	rm := getRoomFromCtx(r.Context())
+
+	// Build partial UPDATE using only supplied fields.
+	sets := []string{"updated_at = CURRENT_TIMESTAMP"}
+	args := []any{}
+
+	if req.Volume != nil {
+		v := *req.Volume
+		if v < 0 {
+			v = 0
+		}
+		if v > 100 {
+			v = 100
+		}
+		sets = append(sets, "volume = ?")
+		args = append(args, v)
+	}
+	if req.Balance != nil {
+		b := *req.Balance
+		if b < -100 {
+			b = -100
+		}
+		if b > 100 {
+			b = 100
+		}
+		sets = append(sets, "balance = ?")
+		args = append(args, b)
+	}
+	if req.ToneBass != nil {
+		sets = append(sets, "tone_bass = ?")
+		args = append(args, clamp(*req.ToneBass, -12, 12))
+	}
+	if req.ToneMid != nil {
+		sets = append(sets, "tone_mid = ?")
+		args = append(args, clamp(*req.ToneMid, -12, 12))
+	}
+	if req.ToneTreble != nil {
+		sets = append(sets, "tone_treble = ?")
+		args = append(args, clamp(*req.ToneTreble, -12, 12))
+	}
+	if req.IsMuted != nil {
+		sets = append(sets, "is_muted = ?")
+		args = append(args, *req.IsMuted)
+	}
+
+	if len(sets) == 1 {
+		// Nothing to update
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	query := "UPDATE rooms SET " + strings.Join(sets, ", ") + " WHERE id = ?"
+	args = append(args, rm.Info.ID)
+	if _, err := s.db.ExecContext(r.Context(), query, args...); err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
+
+	// Re-read updated room to broadcast accurate values.
+	var updated db.Room
+	if err := s.db.GetContext(r.Context(), &updated, `SELECT * FROM rooms WHERE id = ?`, rm.Info.ID); err != nil {
+		jsonError(w, "db read error", http.StatusInternalServerError)
+		return
+	}
+
+	s.hub.BroadcastToRoom(rm.Info.ID, "audio_state_changed", map[string]any{
+		"volume":      updated.Volume,
+		"balance":     updated.Balance,
+		"tone_bass":   updated.ToneBass,
+		"tone_mid":    updated.ToneMid,
+		"tone_treble": updated.ToneTreble,
+		"is_muted":    updated.IsMuted,
+	})
+
+	jsonOK(w, map[string]any{
+		"volume":      updated.Volume,
+		"balance":     updated.Balance,
+		"tone_bass":   updated.ToneBass,
+		"tone_mid":    updated.ToneMid,
+		"tone_treble": updated.ToneTreble,
+		"is_muted":    updated.IsMuted,
+	})
+}
+
+func clamp(v, min, max int) int {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
 }
 
 // ─────────────────────────────────────────────────────────────

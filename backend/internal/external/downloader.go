@@ -135,7 +135,7 @@ func DownloadAndQueue(
 		activeDownloads[videoID] = true
 		go func() {
 			defer func() { delete(activeDownloads, videoID) }()
-		outTemplate := filepath.Join(externalDir, safeFilename(artistName, info.Title)+".%(ext)s")
+			outTemplate := filepath.Join(externalDir, safeFilename(artistName, info.Title)+".%(ext)s")
 			dlCtx, dlCancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer dlCancel()
 			dlOut, dlErr := exec.CommandContext(dlCtx, "yt-dlp",

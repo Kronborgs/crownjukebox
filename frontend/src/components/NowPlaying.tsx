@@ -1,11 +1,12 @@
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { CoverArt } from '@/components/CoverArt'
-import { adminApi, playbackApi } from '@/api/client'
+import { adminApi, playbackApi, AudioState } from '@/api/client'
 import { PlaybackState } from '@/api/client'
-import { Pause, Play, SkipForward } from 'lucide-react'
+import { Pause, Play, SkipForward, Radio, Cast } from 'lucide-react'
 import { useSSE } from '@/hooks/useSSE'
 import { useSession } from '@/hooks/useSession'
+import { useCast } from '@/hooks/useCast'
 import { RetroDial, RetroPushButton } from '@/components/RetroDial'
 
 interface Props {
@@ -79,7 +80,7 @@ function LEDScrollingText({ text, color, size }: LEDScrollingTextProps) {
 }
 
 export function NowPlaying({ state, refreshState }: Props) {
-  const { isAdmin } = useSession()
+  const { isAdmin, isGuest, sessionId } = useSession()
   const audioRef = useRef<HTMLAudioElement>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null)
@@ -105,7 +106,23 @@ export function NowPlaying({ state, refreshState }: Props) {
     loudness: false,
   })
 
+  // Phase 2: active player session ID for this room
+  const [activePlayerSessionId, setActivePlayerSessionId] = useState<string | null>(null)
+  // Phase 3: whether we are syncing audio state to backend
+  const audioSyncPendingRef = useRef(false)
+
   const track = state?.current_track
+
+  // Phase 2: can this session play audio? (owner and holds the player, or no one holds it yet)
+  const isOwner = !isGuest
+  const isActivePlayer = isOwner && (activePlayerSessionId === null || activePlayerSessionId === sessionId)
+
+  // Phase 4: Google Cast
+  const { isCastAvailable, isCasting, startCasting, stopCasting } = useCast({
+    streamUrl: audioSrc,
+    title: track?.title,
+    artist: track?.artist,
+  })
 
   // Load settings from API — always needed for direct_stream_url.
   // Audio settings fall back to localStorage if present.
@@ -148,6 +165,32 @@ export function NowPlaying({ state, refreshState }: Props) {
     setAudioSettings(prev => {
       const next = { ...prev, [key]: value }
       try { localStorage.setItem('cj_audio_settings', JSON.stringify(next)) } catch {}
+
+      // Phase 3: sync to backend for owner sessions
+      if (!isGuest) {
+        // Map local setting names to backend AudioState field names
+        const backendKey: Record<string, keyof AudioState | null> = {
+          volume:  'volume',
+          bass:    'tone_bass',
+          treble:  'tone_treble',
+          balance: 'balance',
+          loudness: null, // local only
+        }
+        const bk = backendKey[key as string]
+        if (bk !== null && bk !== undefined) {
+          let backendValue: number
+          if (key === 'balance') {
+            backendValue = (value as number) * 10
+          } else {
+            backendValue = value as number
+          }
+          audioSyncPendingRef.current = true
+          playbackApi.updateAudioState({ [bk]: backendValue })
+            .finally(() => { setTimeout(() => { audioSyncPendingRef.current = false }, 300) })
+            .catch(() => {})
+        }
+      }
+
       return next
     })
   }
@@ -188,7 +231,60 @@ export function NowPlaying({ state, refreshState }: Props) {
         resumePositionRef.current = d.resume_position_secs
       }
     },
+    // Phase 2: track who holds the active player role
+    active_player_changed: (data) => {
+      const d = data as { active_player_session_id: string | null }
+      setActivePlayerSessionId(d.active_player_session_id ?? null)
+    },
+    // Phase 3: sync audio state from another device
+    audio_state_changed: (data) => {
+      const d = data as AudioState
+      if (audioSyncPendingRef.current) return // Ignore echo of our own update
+      setAudioSettings(prev => ({
+        ...prev,
+        volume:   d.volume  ?? prev.volume,
+        bass:     d.tone_bass    ?? prev.bass,
+        treble:   d.tone_treble  ?? prev.treble,
+        balance:  d.balance != null ? Math.round(d.balance / 10) : prev.balance,
+      }))
+    },
   })
+
+  // Phase 2: Fetch initial active player session on mount
+  useEffect(() => {
+    if (isGuest) return
+    playbackApi.getAudioState().then((s) => {
+      setAudioSettings(prev => ({
+        ...prev,
+        volume:  s.volume,
+        bass:    s.tone_bass,
+        treble:  s.tone_treble,
+        balance: Math.round(s.balance / 10),
+      }))
+    }).catch(() => {})
+  }, [isGuest]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Phase 2: Auto-claim the player role when an owner loads the jukebox
+  const claimAttemptedRef = useRef(false)
+  useEffect(() => {
+    if (isGuest) return
+    if (claimAttemptedRef.current) return
+    claimAttemptedRef.current = true
+    playbackApi.claimPlayer()
+      .then(res => setActivePlayerSessionId(res.active_player_session_id))
+      .catch(() => {})
+  }, [isGuest]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Release player on unmount / page close
+  useEffect(() => {
+    if (isGuest) return
+    const release = () => { playbackApi.releasePlayer().catch(() => {}) }
+    window.addEventListener('beforeunload', release)
+    return () => {
+      window.removeEventListener('beforeunload', release)
+      release()
+    }
+  }, [isGuest]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const audio = audioRef.current
@@ -405,8 +501,10 @@ export function NowPlaying({ state, refreshState }: Props) {
         </div>
       )}
 
-      {/* Hidden audio element — ALWAYS at this tree position, never moved */}
-      <audio ref={audioRef} src={audioSrc ?? undefined} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }} />
+      {/* Hidden audio element — only rendered for non-guest sessions (Fase 1) */}
+      {!isGuest && (
+        <audio ref={audioRef} src={audioSrc ?? undefined} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }} />
+      )}
 
       {/* All visual UI is hidden during party mode — only audio keeps playing */}
       {!isParty && (
@@ -467,50 +565,80 @@ export function NowPlaying({ state, refreshState }: Props) {
             })()}
           </div>
 
-          {/* Controls */}
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', justifyContent: 'center' }}>
-            <button
-              className="btn btn-ghost btn-icon"
-              onClick={async () => {
-                if (state?.is_playing) {
-                  await playbackApi.pause()
-                } else {
-                  audioContextRef.current?.resume().catch(() => {})
-                  if (audioRef.current && audioSrc) {
-                    audioRef.current.play().catch((err) => {
-                      if (err.name === 'NotAllowedError' || err.name === 'NotSupportedError') {
-                        setNeedsInteraction(true)
-                      }
-                    })
-                  }
-                  await playbackApi.play()
-                }
-                refreshState?.().catch(console.error)
-              }}
-              aria-label={state?.is_playing ? 'Pause' : 'Afspil'}
-              title={state?.is_playing ? 'Pause' : 'Afspil'}
-            >
-              {state?.is_playing
-                ? <Pause size={24} />
-                : <Play size={24} />}
-            </button>
-            {isAdmin && track && (
+          {/* Controls — hidden for guests (Fase 1) */}
+          {!isGuest && (
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', justifyContent: 'center' }}>
+              {/* Phase 2: Claim/release player button — shown when another device is active */}
+              {isOwner && !isActivePlayer && (
+                <button
+                  className="btn btn-ghost btn-icon"
+                  onClick={async () => {
+                    const res = await playbackApi.claimPlayer()
+                    setActivePlayerSessionId(res.active_player_session_id)
+                  }}
+                  aria-label="Overtag afspiller"
+                  title="Overtag afspiller til denne enhed"
+                  style={{ color: 'var(--neon-teal)' }}
+                >
+                  <Radio size={24} />
+                </button>
+              )}
               <button
                 className="btn btn-ghost btn-icon"
                 onClick={async () => {
-                  await playbackApi.skip()
+                  if (state?.is_playing) {
+                    await playbackApi.pause()
+                  } else {
+                    audioContextRef.current?.resume().catch(() => {})
+                    if (audioRef.current && audioSrc) {
+                      audioRef.current.play().catch((err) => {
+                        if (err.name === 'NotAllowedError' || err.name === 'NotSupportedError') {
+                          setNeedsInteraction(true)
+                        }
+                      })
+                    }
+                    await playbackApi.play()
+                  }
                   refreshState?.().catch(console.error)
                 }}
-                aria-label="Spring over"
-                title="Spring over (kun admin)"
-                style={{ color: 'var(--neon-accent)' }}
+                aria-label={state?.is_playing ? 'Pause' : 'Afspil'}
+                title={state?.is_playing ? 'Pause' : 'Afspil'}
               >
-                <SkipForward size={24} />
+                {state?.is_playing
+                  ? <Pause size={24} />
+                  : <Play size={24} />}
               </button>
-            )}
-          </div>
+              {isAdmin && track && (
+                <button
+                  className="btn btn-ghost btn-icon"
+                  onClick={async () => {
+                    await playbackApi.skip()
+                    refreshState?.().catch(console.error)
+                  }}
+                  aria-label="Spring over"
+                  title="Spring over (kun admin)"
+                  style={{ color: 'var(--neon-accent)' }}
+                >
+                  <SkipForward size={24} />
+                </button>
+              )}
+              {/* Phase 4: Cast button — only in Chrome with Cast extension */}
+              {isCastAvailable && (
+                <button
+                  className="btn btn-ghost btn-icon"
+                  onClick={isCasting ? stopCasting : startCasting}
+                  aria-label={isCasting ? 'Stop casting' : 'Cast til enhed'}
+                  title={isCasting ? 'Stop casting' : 'Cast til Chromecast'}
+                  style={{ color: isCasting ? 'var(--neon-primary)' : 'var(--text-dim)' }}
+                >
+                  <Cast size={24} />
+                </button>
+              )}
+            </div>
+          )}
 
-          {/* Audio Controls */}
+          {/* Audio Controls — hidden for guests (Fase 1) */}
+          {!isGuest && (
           <div style={{ width: '100%' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <span style={{ color: 'var(--text-dim)', fontSize: '0.72rem', letterSpacing: '2px', textTransform: 'uppercase' }}>Lydkontrol</span>
@@ -540,6 +668,7 @@ export function NowPlaying({ state, refreshState }: Props) {
               <RetroDial label="L  Balance  R" value={audioSettings.balance} min={-10} max={10} step={1} accent="purple" onChange={v => updateAudioSetting('balance', v)} formatValue={v => v === 0 ? '0' : v < 0 ? `L${Math.abs(v)}` : `R${v}`} />
             </div>
           </div>
+          )}
         </>
       )}
     </div>
