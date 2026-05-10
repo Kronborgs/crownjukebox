@@ -14,12 +14,12 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -ldflags="-s -w -X 
 
 # ─── Stage 2: Build frontend ──────────────────────────────────
 # Always build on native host platform — JS output is platform-independent
-FROM --platform=$BUILDPLATFORM node:22-alpine AS node-builder
+FROM --platform=$BUILDPLATFORM node:24-alpine AS node-builder
 
 WORKDIR /app
 
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --silent
+COPY frontend/package.json ./
+RUN npm install --no-audit --no-fund
 
 COPY frontend/ .
 RUN npm run build
