@@ -902,6 +902,14 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check file exists before serving — self-heal by removing orphaned tracks.
+	if _, statErr := os.Stat(track.FilePath); os.IsNotExist(statErr) {
+		s.db.Exec(`DELETE FROM tracks WHERE id = ?`, trackID)
+		log.Printf("[stream] track %s missing file %s — removed from library", trackID, track.FilePath)
+		jsonError(w, "track file not found", http.StatusNotFound)
+		return
+	}
+
 	// Determine content-type from file extension
 	contentType := audioContentType(track.FilePath)
 	w.Header().Set("Content-Type", contentType)

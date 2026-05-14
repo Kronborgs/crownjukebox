@@ -538,6 +538,16 @@ export function NowPlaying({ state, refreshState }: Props) {
           .finally(() => { refreshState?.().catch(() => {}) })
       }
     }
+    const onError = () => {
+      // Audio failed to load (e.g. file missing on server — 404).
+      // Treat it the same as track-ended so the queue advances automatically.
+      setAudioKey(k => k + 1)
+      if (track?.id) {
+        playbackApi.trackEnded(track.id)
+          .catch(() => {})
+          .finally(() => { refreshState?.().catch(() => {}) })
+      }
+    }
     const onCanPlay = () => {
       if (resumePositionRef.current !== null) {
         audio.currentTime = resumePositionRef.current
@@ -545,9 +555,11 @@ export function NowPlaying({ state, refreshState }: Props) {
       }
     }
     audio.addEventListener('ended', onEnded)
+    audio.addEventListener('error', onError)
     audio.addEventListener('canplay', onCanPlay)
     return () => {
       audio.removeEventListener('ended', onEnded)
+      audio.removeEventListener('error', onError)
       audio.removeEventListener('canplay', onCanPlay)
     }
   }, [audioSrc, track?.id])
