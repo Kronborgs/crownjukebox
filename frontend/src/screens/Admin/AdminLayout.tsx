@@ -60,7 +60,7 @@ export function AdminLayout() {
         {tab === 'users'     && <UsersPanel />}
         {tab === 'jukeboxes' && <JukeboxesPanel />}
         {tab === 'skaal'     && <SkaalPanel />}
-        {tab === 'library'   && <LibraryPanel />}
+        <div style={{ display: tab === 'library' ? 'block' : 'none' }}><LibraryPanel /></div>
         {tab === 'smtp'      && <SmtpPanel />}
         {tab === 'youtube'   && <YouTubePanel />}
         {tab === 'settings'  && <SettingsPanel />}
