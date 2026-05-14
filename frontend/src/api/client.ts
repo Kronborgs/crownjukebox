@@ -391,7 +391,19 @@ export const libraryApi = {
 // ─── Queue ────────────────────────────────────────────────────────
 
 export const queueApi = {
-  get:     () => getList<QueueItem>('/api/queue'),
+  get:       () => getList<QueueItem>('/api/queue'),
+  /** Returns the next track without advancing the queue.
+   *  Pre-queues the next autoplay track when the queue is empty so the
+   *  upcoming trackEnded call dequeues the exact same track. Returns null
+   *  when there is nothing to play next. */
+  nextTrack: async (): Promise<QueueItem | null> => {
+    try {
+      const item = await get<QueueItem>('/api/queue/next')
+      return item ?? null
+    } catch {
+      return null
+    }
+  },
   add:     (trackId: string) => post<QueueItem>('/api/queue', { track_id: trackId }),
   remove:  (id: string) => del(`/api/queue/${id}`),
   reorder: (order: string[]) => post('/api/queue/reorder', { order }),

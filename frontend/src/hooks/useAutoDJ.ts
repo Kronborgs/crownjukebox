@@ -60,7 +60,7 @@ export interface UseAutoDJOptions {
   currentTrackId: string | null
 
   /** Called when fade is complete. NowPlaying should call trackEnded + refreshState. */
-  onFadeComplete: (finishedTrackId: string, nextTrackId: string) => void
+  onFadeComplete: (finishedTrackId: string, nextTrackId: string, nextSrc: string) => void
 
   /** Whether BPM-based tempo matching is enabled */
   tempoMatchEnabled: boolean
@@ -150,18 +150,34 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
     if (t < 1) {
       fadeRafRef.current = requestAnimationFrame(runFadeLoop)
     } else {
-      // Fade complete: stop Player A, reset gains
+      // Fade complete — transfer Player B's playback to Player A for seamless continuity.
+      // Capturing B's state BEFORE modifying anything.
+      const playerB = playerBRef.current
       const playerA = playerARef.current
-      if (playerA) {
+      const nextSrc  = playerB?.src ?? ''
+      const nextTime = playerB?.currentTime ?? 0
+
+      if (playerA && nextSrc) {
+        // Hand off: Player A takes over Player B's track at the same position.
+        // Setting src while already-loaded causes a seek, not a full reload from 0.
+        playerA.src = nextSrc
+        playerA.currentTime = nextTime
+        playerA.play().catch(() => {})
+      } else if (playerA) {
+        // No next-track source (shouldn't happen, but safe fallback).
         playerA.pause()
-        playerA.src = '' // Release the old source so the browser can free memory
+        playerA.src = ''
       }
+
+      // Silence and clear Player B
       if (crossfadeGainARef.current) crossfadeGainARef.current.gain.value = 1
       if (crossfadeGainBRef.current) crossfadeGainBRef.current.gain.value = 0
-      // Reset Player B's tempo adjustment — it becomes the new Player A going forward
-      if (playerARef.current) playerARef.current.playbackRate = 1
-      const playerB_done = playerBRef.current
-      if (playerB_done) playerB_done.playbackRate = 1
+      if (playerB) {
+        playerB.pause()
+        playerB.src = ''
+        playerB.playbackRate = 1
+      }
+      if (playerA) playerA.playbackRate = 1
 
       const finished = finishedTrackIdRef.current
       const next = nextTrackIdRef.current
@@ -175,7 +191,7 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
       finishedTrackIdRef.current = null
 
       if (finished && next) {
-        onFadeComplete(finished, next)
+        onFadeComplete(finished, next, nextSrc)
       }
     }
   }, [playerARef, crossfadeGainARef, crossfadeGainBRef, onFadeComplete])
@@ -271,13 +287,12 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
       fetchedForTrackId = currentTrackId
 
       try {
-        const queue = await queueApi.get()
+        const nextItem = await queueApi.nextTrack()
         if (cancelled) return
-        const firstItem = queue[0]
-        if (!firstItem) return // Queue empty — normal track-ended will handle it
+        if (!nextItem) return // Nothing to play next — normal track-ended will handle it
 
-        scheduledNextId = firstItem.track_id
-        scheduledNextBpm = firstItem.track_bpm ?? 0
+        scheduledNextId = nextItem.track_id
+        scheduledNextBpm = nextItem.track_bpm ?? 0
         if (!isFadingRef.current) {
           await startFade(scheduledNextId, scheduledNextBpm)
         }

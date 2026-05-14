@@ -220,3 +220,64 @@ func (m *Manager) ClearAutoplayItems(ctx context.Context) error {
 	_, err := m.db.ExecContext(ctx, `DELETE FROM queue_items WHERE is_autoplay = 1 AND room_id = ?`, m.roomID)
 	return err
 }
+
+// PeekNext returns the next track that will play without advancing the queue.
+// If the queue is non-empty it returns the first item. If the queue is empty it
+// calls AutoplayNext, pre-queues the result (is_autoplay=true) so that the
+// upcoming TrackEnded → Advance path dequeues exactly the same track, and then
+// returns it. Returns nil, nil when there is no next track (empty library, autoplay off).
+func (m *Manager) PeekNext(ctx context.Context) (*db.QueueItemRich, error) {
+	items, err := m.GetQueue(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(items) > 0 {
+		return &items[0], nil
+	}
+
+	// Queue is empty — check if an autoplay item is already pre-queued from a
+	// previous PeekNext call (avoids pre-queuing duplicates).
+	var preQueued int
+	_ = m.db.GetContext(ctx, &preQueued, `SELECT COUNT(*) FROM queue_items WHERE room_id = ? AND is_autoplay = 1`, m.roomID)
+	if preQueued > 0 {
+		items, err = m.GetQueue(ctx)
+		if err == nil && len(items) > 0 {
+			return &items[0], nil
+		}
+		return nil, nil
+	}
+
+	// Pick the next autoplay track
+	track, err := m.AutoplayNext(ctx)
+	if err != nil || track == nil {
+		return nil, nil
+	}
+
+	// Pre-queue it so TrackEnded → Advance will dequeue the same track
+	var maxPos int
+	_ = m.db.GetContext(ctx, &maxPos, `SELECT COALESCE(MAX(position), 0) FROM queue_items WHERE room_id = ?`, m.roomID)
+	id := uuid.NewString()
+	_, qErr := m.db.ExecContext(ctx, `
+		INSERT INTO queue_items (id, room_id, track_id, added_by_user_id, position, is_autoplay, added_at)
+		VALUES (?, ?, ?, '', ?, 1, ?)`,
+		id, m.roomID, track.ID, maxPos+1, time.Now())
+	if qErr != nil {
+		// Could not pre-queue — return minimal info so Auto DJ can still preload
+		return &db.QueueItemRich{
+			TrackID:      track.ID,
+			TrackTitle:   track.Title,
+			TrackArtist:  track.Artist,
+			TrackAlbum:   track.Album,
+			DurationSecs: track.Duration,
+			TrackBPM:     track.BPM,
+			IsAutoplay:   true,
+		}, nil
+	}
+
+	// Re-fetch the full rich item (with all joined fields)
+	items, err = m.GetQueue(ctx)
+	if err == nil && len(items) > 0 {
+		return &items[0], nil
+	}
+	return nil, nil
+}

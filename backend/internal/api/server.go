@@ -196,6 +196,7 @@ func (s *Server) Router() http.Handler {
 
 		// Queue
 		r.Get("/api/queue", auth.RequirePermission(s.authSvc, "can_view_queue")(http.HandlerFunc(s.handleGetQueue)).ServeHTTP)
+		r.Get("/api/queue/next", s.handleQueuePeekNext)
 		r.Post("/api/queue", auth.RequirePermission(s.authSvc, "can_add_to_queue")(http.HandlerFunc(s.handleAddToQueue)).ServeHTTP)
 		r.Delete("/api/queue/{id}", s.handleRemoveFromQueue)
 		r.Post("/api/queue/reorder", s.handleReorderQueue)
@@ -715,6 +716,24 @@ func (s *Server) handleGetQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOK(w, items)
+}
+
+// handleQueuePeekNext returns the next track that will play without advancing the queue.
+// Used by Auto DJ to preload the next track for crossfade — works for both user-queued
+// and autoplay tracks. Pre-queues an autoplay track when the queue is empty so the
+// subsequent TrackEnded call dequeues exactly the same track.
+func (s *Server) handleQueuePeekNext(w http.ResponseWriter, r *http.Request) {
+	rm := getRoomFromCtx(r.Context())
+	item, err := rm.Queue.PeekNext(r.Context())
+	if err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	if item == nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	jsonOK(w, item)
 }
 
 func (s *Server) handleAddToQueue(w http.ResponseWriter, r *http.Request) {

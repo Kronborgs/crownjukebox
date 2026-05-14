@@ -454,9 +454,14 @@ export function NowPlaying({ state, refreshState }: Props) {
   const autoDJRef = useRef<{ isFading: boolean } | null>(null)
 
   // Called by useAutoDJ when crossfade finishes.
-  // We advance the queue as if the track ended normally.
-  const onFadeComplete = useCallback((finishedTrackId: string, _nextTrackId: string) => {
-    setAudioKey(k => k + 1) // Triggers audioSrc to reload for new track
+  // Player A has already been synced to Player B's src+position in the hook.
+  // We sync React's audioSrc state to that src so the audioSrc effect won't
+  // reload Player A when track?.id later changes via refreshState.
+  const onFadeComplete = useCallback((finishedTrackId: string, _nextTrackId: string, nextSrc: string) => {
+    // Sync React state — same URL Player A was just set to in runFadeLoop.
+    // When the audioSrc effect later fires (due to track?.id change), it will compute
+    // the same URL and call setAudioSrc with an identical value → React bails out → no reload.
+    if (nextSrc) setAudioSrc(nextSrc)
     playbackApi.trackEnded(finishedTrackId)
       .catch(() => {})
       .finally(() => { refreshState?.().catch(() => {}) })
