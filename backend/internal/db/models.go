@@ -46,6 +46,7 @@ type Track struct {
 	SourceID    string    `db:"source_id" json:"source_id"`
 	StreamURL   string    `db:"stream_url" json:"stream_url"`
 	CoverArtID  *string   `db:"cover_art_id" json:"cover_art_id"`
+	BPM         int       `db:"bpm"          json:"bpm"`
 	CreatedAt   time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt   time.Time `db:"updated_at" json:"updated_at"`
 }
@@ -161,6 +162,7 @@ type QueueItemRich struct {
 	TrackArtist  string    `db:"track_artist"        json:"track_artist"`
 	TrackAlbum   string    `db:"track_album"         json:"track_album"`
 	DurationSecs int       `db:"duration_secs"       json:"duration_secs"`
+	TrackBPM     int       `db:"track_bpm"           json:"track_bpm"`
 	CoverArtID   string    `db:"album_cover_art_id"  json:"album_cover_art_id"`
 	AddedByUser  string    `db:"added_by_user_id"    json:"added_by_user_id"`
 	Position     int       `db:"position"            json:"position"`

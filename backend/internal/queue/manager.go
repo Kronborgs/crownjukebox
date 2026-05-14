@@ -37,6 +37,7 @@ func (m *Manager) GetQueue(ctx context.Context) ([]db.QueueItemRich, error) {
 			ar.name                                     AS track_artist,
 			al.title                                    AS track_album,
 			t.duration                                  AS duration_secs,
+			t.bpm                                       AS track_bpm,
 			COALESCE(t.cover_art_id, al.cover_art_id, '') AS album_cover_art_id
 		FROM queue_items qi
 		JOIN tracks  t  ON t.id  = qi.track_id

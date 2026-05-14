@@ -58,6 +58,7 @@ export interface Track {
   file_path: string
   file_size: number
   cover_art_id: string
+  bpm?: number
   is_intro?: boolean
 }
 
@@ -68,6 +69,7 @@ export interface QueueItem {
   track_artist: string
   track_album: string
   duration_secs: number
+  track_bpm?: number
   added_by_user_id: string
   position: number
   is_autoplay: boolean

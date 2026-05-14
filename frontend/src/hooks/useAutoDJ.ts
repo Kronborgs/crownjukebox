@@ -1,8 +1,8 @@
 /**
  * useAutoDJ — crossfade engine for the CrownJukebox Auto DJ feature.
  *
- * Etape 1: pure audio crossfade (no BPM match).
- * Etape 2 (future): BPM-aware tempo adjustment layered on top.
+ * Etape 1: pure audio crossfade.
+ * Etape 2: BPM-aware tempo adjustment (playbackRate) layered on top.
  *
  * Design principles:
  * - All state is local to the hook instance → one per jukebox session, never global.
@@ -61,11 +61,20 @@ export interface UseAutoDJOptions {
 
   /** Called when fade is complete. NowPlaying should call trackEnded + refreshState. */
   onFadeComplete: (finishedTrackId: string, nextTrackId: string) => void
+
+  /** Whether BPM-based tempo matching is enabled */
+  tempoMatchEnabled: boolean
+  /** Maximum tempo adjustment in percent (e.g. 8 means ±8%) */
+  maxTempoAdjustPercent: number
+  /** BPM of the currently playing track. 0 = unknown, disables BPM match. */
+  currentTrackBpm: number
 }
 
 export interface UseAutoDJResult {
   /** True while a crossfade is in progress */
   isFading: boolean
+  /** True while a BPM tempo-match playback rate adjustment is active */
+  isBpmMatch: boolean
   /** The track id currently preloaded in Player B */
   nextTrackId: string | null
   /** Cancel an in-progress fade (e.g. on manual skip) */
@@ -86,6 +95,9 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
     directStreamUrlRef,
     currentTrackId,
     onFadeComplete,
+    tempoMatchEnabled,
+    maxTempoAdjustPercent,
+    currentTrackBpm,
   } = options
 
   // Internal state kept in refs to avoid React re-render overhead in the RAF loop.
@@ -98,8 +110,9 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
   // startFade loading guard: prevents concurrent startFade calls during async preload.
   const fadeLoadingRef = useRef(false)
 
-  // React state for UI re-renders (isFading indicator in NowPlaying)
+  // React state for UI re-renders (isFading + isBpmMatch indicators in NowPlaying)
   const [isFadingState, setIsFadingState] = useState(false)
+  const [isBpmMatchState, setIsBpmMatchState] = useState(false)
 
   // Abort any running fade and reset both gain nodes.
   const cancelFade = useCallback(() => {
@@ -116,10 +129,12 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
     if (playerB) {
       playerB.pause()
       playerB.src = ''
+      playerB.playbackRate = 1
     }
     if (crossfadeGainARef.current) crossfadeGainARef.current.gain.value = 1
     if (crossfadeGainBRef.current) crossfadeGainBRef.current.gain.value = 0
     nextTrackIdRef.current = null
+    setIsBpmMatchState(false)
   }, [playerBRef, crossfadeGainARef, crossfadeGainBRef])
 
   // The main RAF fade loop. Runs each animation frame until t >= 1.
@@ -143,6 +158,10 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
       }
       if (crossfadeGainARef.current) crossfadeGainARef.current.gain.value = 1
       if (crossfadeGainBRef.current) crossfadeGainBRef.current.gain.value = 0
+      // Reset Player B's tempo adjustment — it becomes the new Player A going forward
+      if (playerARef.current) playerARef.current.playbackRate = 1
+      const playerB_done = playerBRef.current
+      if (playerB_done) playerB_done.playbackRate = 1
 
       const finished = finishedTrackIdRef.current
       const next = nextTrackIdRef.current
@@ -150,6 +169,7 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
       isFadingRef.current = false
       fadeLoadingRef.current = false
       setIsFadingState(false)
+      setIsBpmMatchState(false)
       fadeRafRef.current = undefined
       nextTrackIdRef.current = null
       finishedTrackIdRef.current = null
@@ -161,7 +181,7 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
   }, [playerARef, crossfadeGainARef, crossfadeGainBRef, onFadeComplete])
 
   // Start the crossfade toward the given next track.
-  const startFade = useCallback(async (nextId: string) => {
+  const startFade = useCallback(async (nextId: string, nextBpm: number = 0) => {
     if (isFadingRef.current || fadeLoadingRef.current) return // Already fading or loading
     const playerB = playerBRef.current
     const audioCtx = audioContextRef.current
@@ -192,6 +212,18 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
       playerB.currentTime = 0
       playerB.play().catch(() => {})
 
+      // BPM tempo match: adjust playback rate so the next track aligns with the current BPM.
+      let bpmMatch = false
+      if (tempoMatchEnabled && currentTrackBpm > 0 && nextBpm > 0) {
+        const ratio = nextBpm / currentTrackBpm
+        const maxAdj = maxTempoAdjustPercent / 100
+        if (Math.abs(ratio - 1) <= maxAdj) {
+          playerB.playbackRate = ratio
+          bpmMatch = true
+        }
+      }
+      setIsBpmMatchState(bpmMatch)
+
       isFadingRef.current = true
       setIsFadingState(true)
       nextTrackIdRef.current = nextId
@@ -203,7 +235,7 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
     } else {
       fadeLoadingRef.current = false // Was cancelled while loading — release guard
     }
-  }, [playerBRef, audioContextRef, crossfadeGainBRef, directStreamUrlRef, currentTrackId, crossfadeSeconds, runFadeLoop])
+  }, [playerBRef, audioContextRef, crossfadeGainBRef, directStreamUrlRef, currentTrackId, crossfadeSeconds, runFadeLoop, tempoMatchEnabled, maxTempoAdjustPercent, currentTrackBpm])
 
   // Watch Player A's time and trigger the crossfade when close to end.
   useEffect(() => {
@@ -212,7 +244,7 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
     let cancelled = false
     let fetchedForTrackId: string | null = null
     let scheduledNextId: string | null = null
-
+    let scheduledNextBpm: number = 0
     const checkTime = async () => {
       const playerA = playerARef.current
       if (!playerA || cancelled) return
@@ -231,7 +263,7 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
       if (fetchedForTrackId === currentTrackId) {
         // Already fetched; if we have a next track, start the fade.
         if (scheduledNextId && !isFadingRef.current) {
-          await startFade(scheduledNextId)
+          await startFade(scheduledNextId, scheduledNextBpm)
         }
         return
       }
@@ -245,8 +277,9 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
         if (!firstItem) return // Queue empty — normal track-ended will handle it
 
         scheduledNextId = firstItem.track_id
+        scheduledNextBpm = firstItem.track_bpm ?? 0
         if (!isFadingRef.current) {
-          await startFade(scheduledNextId)
+          await startFade(scheduledNextId, scheduledNextBpm)
         }
       } catch {
         // Network error — fall back to normal track-ended behaviour
@@ -287,6 +320,7 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
 
   return {
     isFading: isFadingState,
+    isBpmMatch: isBpmMatchState,
     get nextTrackId() { return nextTrackIdRef.current },
     cancelFade,
   }

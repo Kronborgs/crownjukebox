@@ -463,17 +463,20 @@ export function NowPlaying({ state, refreshState }: Props) {
   }, [refreshState])
 
   const autoDJ = useAutoDJ({
-    autoDjEnabled:    audioSettings.autoDjEnabled,
-    crossfadeSeconds: audioSettings.crossfadeSeconds,
+    autoDjEnabled:         audioSettings.autoDjEnabled,
+    crossfadeSeconds:      audioSettings.crossfadeSeconds,
+    tempoMatchEnabled:     audioSettings.tempoMatchEnabled,
+    maxTempoAdjustPercent: audioSettings.maxTempoAdjustPercent,
+    currentTrackBpm:       track?.bpm ?? 0,
     isActivePlayer,
-    isCasting:        isCastActive,
-    playerARef:       audioRef,
+    isCasting:             isCastActive,
+    playerARef:            audioRef,
     playerBRef,
     crossfadeGainARef,
     crossfadeGainBRef,
     audioContextRef,
     directStreamUrlRef,
-    currentTrackId:   track?.id ?? null,
+    currentTrackId:        track?.id ?? null,
     onFadeComplete,
   })
   // Keep the ref in sync for the ended/error guards above
@@ -940,10 +943,53 @@ export function NowPlaying({ state, refreshState }: Props) {
                   </div>
                 </div>
               )}
+              {audioSettings.autoDjEnabled && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
+                  <span style={{ color: 'var(--text-dim)', fontSize: '0.8rem' }}>BPM-match</span>
+                  <RetroPushButton
+                    label="BPM"
+                    active={audioSettings.tempoMatchEnabled}
+                    onToggle={() => updateAudioSetting('tempoMatchEnabled', !audioSettings.tempoMatchEnabled)}
+                  />
+                </div>
+              )}
+              {audioSettings.autoDjEnabled && audioSettings.tempoMatchEnabled && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px' }}>
+                  <span style={{ color: 'var(--text-dim)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>Max ±:</span>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {[4, 6, 8, 10].map(p => (
+                      <button
+                        key={p}
+                        onClick={() => updateAudioSetting('maxTempoAdjustPercent', p)}
+                        style={{
+                          padding: '3px 10px',
+                          fontSize: '0.8rem',
+                          borderRadius: '999px',
+                          border: audioSettings.maxTempoAdjustPercent === p
+                            ? '1px solid var(--neon-teal)'
+                            : '1px solid rgba(255,255,255,0.15)',
+                          background: audioSettings.maxTempoAdjustPercent === p
+                            ? 'rgba(0,255,200,0.12)'
+                            : 'rgba(255,255,255,0.05)',
+                          color: audioSettings.maxTempoAdjustPercent === p
+                            ? 'var(--neon-teal)'
+                            : 'var(--text-dim)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {p}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {autoDJ.isFading && (
-                <div style={{ marginTop: '8px', fontSize: '0.75rem', color: 'var(--neon-teal)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <div style={{ marginTop: '8px', fontSize: '0.75rem', color: autoDJ.isBpmMatch ? 'var(--neon-teal)' : 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ animation: 'pulse 1s infinite' }}>◉</span>
-                  Crossfader aktiv…
+                  {autoDJ.isBpmMatch ? 'BPM-match aktiv' : 'Crossfader aktiv…'}
+                  {(track?.bpm ?? 0) > 0 && (
+                    <span style={{ opacity: 0.6 }}>({track!.bpm} BPM)</span>
+                  )}
                 </div>
               )}
             </div>

@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -245,6 +246,7 @@ type Metadata struct {
 	Year                   int
 	Genre                  string
 	Duration               int
+	BPM                    int
 }
 
 func extractMetadata(filePath, originalFilename string, m tag.Metadata) Metadata {
@@ -294,6 +296,19 @@ func extractMetadata(filePath, originalFilename string, m tag.Metadata) Metadata
 		d = 1
 	}
 	meta.DiscNumber = d
+
+	// Extract BPM from raw tags: TBPM (ID3v2/MP3), BPM/bpm (Vorbis/FLAC/OGG)
+	if raw := m.Raw(); raw != nil {
+		for _, key := range []string{"TBPM", "BPM", "bpm"} {
+			if v, ok := raw[key]; ok {
+				s := strings.TrimSpace(strings.Split(fmt.Sprintf("%v", v), ".")[0])
+				if n, err := strconv.Atoi(s); err == nil && n > 0 && n < 300 {
+					meta.BPM = n
+					break
+				}
+			}
+		}
+	}
 
 	return meta
 }
@@ -364,18 +379,18 @@ func (s *Scanner) upsertTrack(albumID, artistID, filePath string, meta Metadata)
 		// Update metadata in case tags changed
 		_, err = s.db.Exec(`
 			UPDATE tracks
-			SET title=?, track_number=?, disc_number=?, duration=?, updated_at=?
+			SET title=?, track_number=?, disc_number=?, duration=?, bpm=?, updated_at=?
 			WHERE id=?`,
-			meta.Title, meta.TrackNumber, meta.DiscNumber, meta.Duration, time.Now(), existing.ID,
+			meta.Title, meta.TrackNumber, meta.DiscNumber, meta.Duration, meta.BPM, time.Now(), existing.ID,
 		)
 		return err
 	}
 
 	id := uuid.NewString()
 	_, err = s.db.Exec(`
-		INSERT INTO tracks (id, album_id, artist_id, title, track_number, disc_number, duration, file_path, source_type, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'local', ?, ?)`,
-		id, albumID, artistID, meta.Title, meta.TrackNumber, meta.DiscNumber, meta.Duration, filePath,
+		INSERT INTO tracks (id, album_id, artist_id, title, track_number, disc_number, duration, bpm, file_path, source_type, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', ?, ?)`,
+		id, albumID, artistID, meta.Title, meta.TrackNumber, meta.DiscNumber, meta.Duration, meta.BPM, filePath,
 		time.Now(), time.Now(),
 	)
 	if err != nil {
