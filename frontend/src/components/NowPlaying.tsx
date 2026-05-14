@@ -977,6 +977,7 @@ export function NowPlaying({ state, refreshState }: Props) {
                 <RetroPushButton
                   label="Auto DJ"
                   active={audioSettings.autoDjEnabled}
+                  blinking={audioSettings.autoDjEnabled && autoDJ.isFading}
                   onToggle={() => updateAudioSetting('autoDjEnabled', !audioSettings.autoDjEnabled)}
                 />
               </div>
@@ -1048,15 +1049,6 @@ export function NowPlaying({ state, refreshState }: Props) {
                       </button>
                     ))}
                   </div>
-                </div>
-              )}
-              {autoDJ.isFading && (
-                <div style={{ marginTop: '8px', fontSize: '0.75rem', color: autoDJ.isBpmMatch ? 'var(--neon-teal)' : 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ animation: 'pulse 1s infinite' }}>◉</span>
-                  {autoDJ.isBpmMatch ? 'BPM-match aktiv' : 'Crossfader aktiv…'}
-                  {(track?.bpm ?? 0) > 0 && (
-                    <span style={{ opacity: 0.6 }}>({track!.bpm} BPM)</span>
-                  )}
                 </div>
               )}
             </motion.div>

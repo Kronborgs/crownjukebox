@@ -672,6 +672,33 @@ body {
   box-shadow: 0 0 12px rgba(140,255,55,0.65), inset 0 1px 2px rgba(255,255,255,0.3);
 }
 
+/* Festive blink: the lamp cycles through neon colours when Auto DJ is crossfading */
+@keyframes retro-lamp-party {
+  0%   { background: #8cff37; box-shadow: 0 0 14px rgba(140,255,55,0.8),  inset 0 1px 2px rgba(255,255,255,0.3); }
+  20%  { background: #00ffe0; box-shadow: 0 0 14px rgba(0,255,224,0.8),   inset 0 1px 2px rgba(255,255,255,0.3); }
+  40%  { background: #bf00ff; box-shadow: 0 0 14px rgba(191,0,255,0.8),   inset 0 1px 2px rgba(255,255,255,0.3); }
+  60%  { background: #ff9500; box-shadow: 0 0 14px rgba(255,149,0,0.8),   inset 0 1px 2px rgba(255,255,255,0.3); }
+  80%  { background: #ff3b5c; box-shadow: 0 0 14px rgba(255,59,92,0.8),   inset 0 1px 2px rgba(255,255,255,0.3); }
+  100% { background: #8cff37; box-shadow: 0 0 14px rgba(140,255,55,0.8),  inset 0 1px 2px rgba(255,255,255,0.3); }
+}
+
+@keyframes retro-button-party-glow {
+  0%   { border-color: rgba(140,255,55,0.6);  box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), 0 0 22px rgba(140,255,55,0.4),  0 8px 18px rgba(0,0,0,0.35); }
+  20%  { border-color: rgba(0,255,224,0.6);   box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), 0 0 22px rgba(0,255,224,0.4),   0 8px 18px rgba(0,0,0,0.35); }
+  40%  { border-color: rgba(191,0,255,0.6);   box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), 0 0 22px rgba(191,0,255,0.4),   0 8px 18px rgba(0,0,0,0.35); }
+  60%  { border-color: rgba(255,149,0,0.6);   box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), 0 0 22px rgba(255,149,0,0.4),   0 8px 18px rgba(0,0,0,0.35); }
+  80%  { border-color: rgba(255,59,92,0.6);   box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), 0 0 22px rgba(255,59,92,0.4),   0 8px 18px rgba(0,0,0,0.35); }
+  100% { border-color: rgba(140,255,55,0.6);  box-shadow: inset 0 1px 0 rgba(255,255,255,0.28), 0 0 22px rgba(140,255,55,0.4),  0 8px 18px rgba(0,0,0,0.35); }
+}
+
+.retro-push-button.is-blinking {
+  animation: retro-button-party-glow 1.2s linear infinite;
+}
+
+.retro-push-button.is-blinking .retro-push-lamp {
+  animation: retro-lamp-party 1.2s linear infinite;
+}
+
 @media (max-width: 860px) {
   .retro-dial-grid {
     grid-template-columns: repeat(2, minmax(120px, 1fr));

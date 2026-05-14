@@ -158,11 +158,13 @@ interface RetroPushButtonProps {
 	label: string
 	active: boolean
 	onToggle: () => void
+	blinking?: boolean
 }
 
-export function RetroPushButton({ label, active, onToggle }: RetroPushButtonProps) {
+export function RetroPushButton({ label, active, onToggle, blinking }: RetroPushButtonProps) {
+	const cls = ['retro-push-button', active ? 'is-active' : '', blinking ? 'is-blinking' : ''].filter(Boolean).join(' ')
 	return (
-		<button type="button" className={`retro-push-button ${active ? 'is-active' : ''}`} onClick={onToggle}>
+		<button type="button" className={cls} onClick={onToggle}>
 			<span className="retro-push-lamp" />
 			<span>{label}</span>
 		</button>
