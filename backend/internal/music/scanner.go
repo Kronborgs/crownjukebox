@@ -96,6 +96,22 @@ func (s *Scanner) Scan(progress chan<- ScanProgress) error {
 		log.Printf("[scanner] update track counts: %v", err)
 	}
 
+	// Remove local tracks whose files no longer exist on disk.
+	// This handles mount-path changes and deleted files — orphaned entries
+	// would otherwise cause 404 stream errors until the next full re-scan.
+	if n, err := s.removeOrphanedTracks(); err != nil {
+		log.Printf("[scanner] orphan cleanup: %v", err)
+	} else if n > 0 {
+		log.Printf("[scanner] removed %d orphaned track(s) with missing files", n)
+		// Re-update album track counts after orphan removal
+		if _, err := s.db.Exec(`
+			UPDATE albums SET track_count = (
+				SELECT COUNT(*) FROM tracks WHERE tracks.album_id = albums.id
+			), updated_at = CURRENT_TIMESTAMP`); err != nil {
+			log.Printf("[scanner] update track counts after orphan removal: %v", err)
+		}
+	}
+
 	// Remove albums that ended up with no tracks (dedup artifacts).
 	if res, err := s.db.Exec(`
 		DELETE FROM albums
@@ -112,6 +128,44 @@ func (s *Scanner) Scan(progress chan<- ScanProgress) error {
 
 	log.Printf("[scanner] scan complete: %d files", total)
 	return nil
+}
+
+// removeOrphanedTracks deletes local tracks whose file_path no longer exists on
+// disk. Only tracks whose path lives under this scanner's music directory are
+// checked, so party uploads and external tracks are left untouched.
+// Returns the number of tracks removed.
+func (s *Scanner) removeOrphanedTracks() (int, error) {
+	rows, err := s.db.Queryx(`SELECT id, file_path FROM tracks WHERE source_type = 'local'`)
+	if err != nil {
+		return 0, fmt.Errorf("query local tracks: %w", err)
+	}
+	defer rows.Close()
+
+	musicPrefix := filepath.Clean(s.musicDir) + string(os.PathSeparator)
+
+	var orphanIDs []string
+	for rows.Next() {
+		var id, fp string
+		if err := rows.Scan(&id, &fp); err != nil {
+			continue
+		}
+		// Only check files that live inside the scanned music directory.
+		cleanFP := filepath.Clean(fp)
+		if cleanFP != filepath.Clean(s.musicDir) && !strings.HasPrefix(cleanFP, musicPrefix) {
+			continue
+		}
+		if _, statErr := os.Stat(fp); os.IsNotExist(statErr) {
+			orphanIDs = append(orphanIDs, id)
+		}
+	}
+	rows.Close()
+
+	for _, id := range orphanIDs {
+		if _, err := s.db.Exec(`DELETE FROM tracks WHERE id = ?`, id); err != nil {
+			log.Printf("[scanner] delete orphan track %s: %v", id, err)
+		}
+	}
+	return len(orphanIDs), nil
 }
 
 // IndexFile indexes one specific audio file path.

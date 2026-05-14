@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi, User, Track, Playlist, KeyboardBinding, setCurrentRoomId, JukeboxSession } from '@/api/client'
 import { useSession } from '@/hooks/useSession'
+import { useSSE } from '@/hooks/useSSE'
 import { Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio, LayoutDashboard, Mail, PartyPopper, Upload, Star, ChevronUp, ChevronDown, LogOut, Monitor, Smartphone, WifiOff, AlertTriangle } from 'lucide-react'
 
 type AdminTab = 'dashboard' | 'users' | 'jukeboxes' | 'settings' | 'library' | 'smtp' | 'youtube' | 'skaal'
@@ -906,16 +907,37 @@ function PartyPlaylistTracks({ playlistId, isActive }: { playlistId: string; isA
 function LibraryPanel() {
   const qc = useQueryClient()
   const [scanStatus, setScanStatus] = useState('')
+  const [scanProgress, setScanProgress] = useState<{ scanned: number; total: number } | null>(null)
   const { data: playlists = [] } = useQuery({ queryKey: ['admin-playlists'], queryFn: adminApi.playlists })
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [uploadingPartyFiles, setUploadingPartyFiles] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
+  useSSE({
+    library_scan_progress: (data) => {
+      const p = data as { total: number; scanned: number; current_file?: string; done?: boolean; error?: string }
+      if (p.error) {
+        setScanStatus(`Fejl under scanning: ${p.error}`)
+        setScanProgress(null)
+        return
+      }
+      if (p.done) {
+        setScanStatus(`Scanning færdig — ${p.total} filer behandlet`)
+        setScanProgress(null)
+        qc.invalidateQueries({ queryKey: ['system-metrics'] })
+        qc.invalidateQueries({ queryKey: ['admin-jukeboxes'] })
+        return
+      }
+      setScanProgress({ scanned: p.scanned, total: p.total })
+      setScanStatus('')
+    },
+  })
+
   async function rescan() {
     setScanStatus('Scanner…')
+    setScanProgress(null)
     try {
       await adminApi.rescan()
-      setScanStatus('Scanning startet — se SSE for fremgang')
     } catch { setScanStatus('Fejl ved scanning') }
   }
 
@@ -1001,7 +1023,22 @@ function LibraryPanel() {
         >
           <Plus size={16} /> {uploadingPartyFiles ? 'Uploader filer…' : 'Upload filer til SKÅL!'}
         </button>
-        {scanStatus && (
+        {scanProgress && (
+          <div style={{ marginTop: '8px' }}>
+            <p style={{ color: 'var(--neon-teal)', fontSize: '0.85rem', marginBottom: '6px' }}>
+              Scanner… {scanProgress.scanned} / {scanProgress.total}
+            </p>
+            <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden', height: '6px' }}>
+              <div style={{
+                background: 'var(--neon-primary)',
+                height: '100%',
+                width: `${Math.round((scanProgress.scanned / Math.max(1, scanProgress.total)) * 100)}%`,
+                transition: 'width 0.3s ease',
+              }} />
+            </div>
+          </div>
+        )}
+        {scanStatus && !scanProgress && (
           <p style={{ color: 'var(--neon-teal)', fontSize: '0.85rem', marginTop: '8px' }}>{scanStatus}</p>
         )}
       </div>
