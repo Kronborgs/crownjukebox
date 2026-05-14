@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { CoverArt } from '@/components/CoverArt'
 import { adminApi, playbackApi, AudioState } from '@/api/client'
 import { PlaybackState } from '@/api/client'
@@ -115,6 +115,8 @@ export function NowPlaying({ state, refreshState }: Props) {
     tempoMatchEnabled: false,
     maxTempoAdjustPercent: 6,
   })
+  // Whether the Volume/Bas/Diskant/Balance dials are expanded
+  const [showDials, setShowDials] = useState(true)
 
   // Phase 2: active player session ID for this room
   const [activePlayerSessionId, setActivePlayerSessionId] = useState<string | null>(null)
@@ -880,6 +882,7 @@ export function NowPlaying({ state, refreshState }: Props) {
           {/* Audio Controls — hidden for guests (Fase 1) */}
           {!isGuest && (
           <div style={{ width: '100%' }}>
+            {/* Header row: label · Direkte badge · Loudness · fold toggle */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
               <span style={{ color: 'var(--text-dim)', fontSize: '0.72rem', letterSpacing: '2px', textTransform: 'uppercase' }}>Lydkontrol</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -899,17 +902,76 @@ export function NowPlaying({ state, refreshState }: Props) {
                   active={audioSettings.loudness}
                   onToggle={() => updateAudioSetting('loudness', !audioSettings.loudness)}
                 />
+                {/* Retro fold toggle button */}
+                <motion.button
+                  type="button"
+                  onClick={() => setShowDials(v => !v)}
+                  title={showDials ? 'Skjul knapper' : 'Vis knapper'}
+                  aria-label={showDials ? 'Skjul lydknapper' : 'Vis lydknapper'}
+                  whileTap={{ scale: 0.88 }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    width: '32px',
+                    height: '32px',
+                    borderRadius: '50%',
+                    border: showDials
+                      ? '1px solid rgba(255,255,255,0.22)'
+                      : '1px solid rgba(191,0,255,0.55)',
+                    background: showDials
+                      ? 'linear-gradient(180deg, #3a3f53, #0e1018)'
+                      : 'linear-gradient(180deg, #4a2060, #1a0828)',
+                    boxShadow: showDials
+                      ? 'inset 0 1px 0 rgba(255,255,255,0.2), 0 4px 10px rgba(0,0,0,0.4)'
+                      : 'inset 0 1px 0 rgba(255,255,255,0.15), 0 0 14px rgba(191,0,255,0.35), 0 4px 10px rgba(0,0,0,0.4)',
+                    color: showDials ? 'rgba(255,255,255,0.55)' : 'var(--neon-primary)',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                    fontSize: '0.75rem',
+                    lineHeight: 1,
+                    transition: 'border-color 0.2s, background 0.2s, box-shadow 0.2s, color 0.2s',
+                  }}
+                >
+                  <motion.span
+                    animate={{ rotate: showDials ? 0 : 180 }}
+                    transition={{ type: 'spring', stiffness: 260, damping: 22 }}
+                    style={{ display: 'block', lineHeight: 1 }}
+                  >
+                    ▲
+                  </motion.span>
+                </motion.button>
               </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', justifyItems: 'center' }}>
-              <RetroDial label="Volumen" value={audioSettings.volume}  min={0}   max={100} step={1} unit="%"   accent="purple" onChange={v => updateAudioSetting('volume', v)} />
-              <RetroDial label="Bas"     value={audioSettings.bass}    min={-12} max={12}  step={1} unit=" dB" accent="green"  onChange={v => updateAudioSetting('bass', v)} />
-              <RetroDial label="Diskant" value={audioSettings.treble}  min={-12} max={12}  step={1} unit=" dB" accent="orange" onChange={v => updateAudioSetting('treble', v)} />
-              <RetroDial label="L  Balance  R" value={audioSettings.balance} min={-10} max={10} step={1} accent="purple" onChange={v => updateAudioSetting('balance', v)} formatValue={v => v === 0 ? '0' : v < 0 ? `L${Math.abs(v)}` : `R${v}`} />
-            </div>
 
-            {/* Auto DJ — crossfade control */}
-            <div style={{ marginTop: '18px', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px' }}>
+            {/* Dials panel — collapses/expands with a spring animation */}
+            <AnimatePresence initial={false}>
+              {showDials && (
+                <motion.div
+                  key="dials-panel"
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 280, damping: 28 }}
+                  style={{ overflow: 'hidden' }}
+                >
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', justifyItems: 'center', paddingBottom: '4px' }}>
+                    <RetroDial label="Volumen" value={audioSettings.volume}  min={0}   max={100} step={1} unit="%"   accent="purple" onChange={v => updateAudioSetting('volume', v)} />
+                    <RetroDial label="Bas"     value={audioSettings.bass}    min={-12} max={12}  step={1} unit=" dB" accent="green"  onChange={v => updateAudioSetting('bass', v)} />
+                    <RetroDial label="Diskant" value={audioSettings.treble}  min={-12} max={12}  step={1} unit=" dB" accent="orange" onChange={v => updateAudioSetting('treble', v)} />
+                    <RetroDial label="L  Balance  R" value={audioSettings.balance} min={-10} max={10} step={1} accent="purple" onChange={v => updateAudioSetting('balance', v)} formatValue={v => v === 0 ? '0' : v < 0 ? `L${Math.abs(v)}` : `R${v}`} />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Auto DJ — always visible; slides up when dials are hidden */}
+            <motion.div
+              layout
+              transition={{ type: 'spring', stiffness: 280, damping: 28 }}
+              style={{ marginTop: showDials ? '18px' : '0', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px',
+                       transition: 'margin-top 0.35s cubic-bezier(0.4,0,0.2,1)' }}
+            >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                 <span style={{ color: 'var(--text-dim)', fontSize: '0.72rem', letterSpacing: '2px', textTransform: 'uppercase' }}>Auto DJ</span>
                 <RetroPushButton
@@ -997,7 +1059,7 @@ export function NowPlaying({ state, refreshState }: Props) {
                   )}
                 </div>
               )}
-            </div>
+            </motion.div>
           </div>
           )}
         </>
