@@ -204,11 +204,12 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
   }, [playerARef, crossfadeGainARef, crossfadeGainBRef, onFadeComplete])
 
   // Start the crossfade toward the given next track.
-  const startFade = useCallback(async (nextId: string, nextBpm: number = 0) => {
-    if (isFadingRef.current || fadeLoadingRef.current) return // Already fading or loading
+  // Returns true if the fade was started, false if it was aborted (e.g. Player B 404).
+  const startFade = useCallback(async (nextId: string, nextBpm: number = 0): Promise<boolean> => {
+    if (isFadingRef.current || fadeLoadingRef.current) return false // Already fading or loading
     const playerB = playerBRef.current
     const audioCtx = audioContextRef.current
-    if (!playerB || !audioCtx) return
+    if (!playerB || !audioCtx) return false
 
     fadeLoadingRef.current = true // Guard against concurrent calls during async preload
 
@@ -221,10 +222,11 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
     playerB.volume = 1 // volume controlled by gain node, not element volume
     playerB.load()
 
-    // Wait for enough data to start playing
+    // Wait for enough data to start playing (or fail fast on error)
+    let loadError = false
     await new Promise<void>((resolve) => {
-      const onCanPlay = () => { playerB.removeEventListener('canplay', onCanPlay); resolve() }
-      const onError   = () => { playerB.removeEventListener('error', onCanPlay); resolve() }
+      const onCanPlay = () => { resolve() }
+      const onError   = () => { loadError = true; resolve() }
       playerB.addEventListener('canplay', onCanPlay, { once: true })
       playerB.addEventListener('error', onError, { once: true })
       // Fallback: start anyway after 3s if canplay never fires
@@ -232,6 +234,15 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
     })
 
     if (!isFadingRef.current) {
+      // If Player B failed to load (404 etc.), abort the fade gracefully so the
+      // normal track-ended path handles queue advancement instead of fading to silence.
+      if (loadError) {
+        fadeLoadingRef.current = false
+        playerB.pause()
+        playerB.src = ''
+        return false
+      }
+
       // Only start if not cancelled in the meantime
       if (crossfadeGainBRef.current) crossfadeGainBRef.current.gain.value = 0
       audioCtx.resume().catch(() => {})
@@ -258,8 +269,10 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
       fadeDurationMsRef.current = crossfadeSeconds * 1000
 
       fadeRafRef.current = requestAnimationFrame(runFadeLoop)
+      return true
     } else {
       fadeLoadingRef.current = false // Was cancelled while loading — release guard
+      return false
     }
   }, [playerBRef, audioContextRef, crossfadeGainBRef, directStreamUrlRef, currentTrackId, crossfadeSeconds, runFadeLoop, tempoMatchEnabled, maxTempoAdjustPercent, currentTrackBpm])
 
@@ -289,7 +302,10 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
       if (fetchedForTrackId === currentTrackId) {
         // Already fetched; if we have a next track, start the fade.
         if (scheduledNextId && !isFadingRef.current) {
-          await startFade(scheduledNextId, scheduledNextBpm)
+          const ok = await startFade(scheduledNextId, scheduledNextBpm)
+          // If the track failed to load (404 etc.) stop retrying it — normal
+          // track-ended will advance the queue to a working track instead.
+          if (!ok) scheduledNextId = null
         }
         return
       }
@@ -304,7 +320,8 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
         scheduledNextId = nextItem.track_id
         scheduledNextBpm = nextItem.track_bpm ?? 0
         if (!isFadingRef.current) {
-          await startFade(scheduledNextId, scheduledNextBpm)
+          const ok = await startFade(scheduledNextId, scheduledNextBpm)
+          if (!ok) scheduledNextId = null
         }
       } catch {
         // Network error — fall back to normal track-ended behaviour
