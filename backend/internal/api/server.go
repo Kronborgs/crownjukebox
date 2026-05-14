@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -51,6 +52,22 @@ type Server struct {
 	startTime     time.Time
 	loginRL       *auth.LoginRateLimiter
 	externalStore *external.Store
+
+	// scan state — protected by scanMu
+	scanMu          sync.RWMutex
+	libraryScan     *libraryScanInfo
+	artworkScan     *artworkScanInfo
+}
+
+type libraryScanInfo struct {
+	Total       int    `json:"total"`
+	Scanned     int    `json:"scanned"`
+	CurrentFile string `json:"current_file"`
+}
+
+type artworkScanInfo struct {
+	Total     int `json:"total"`
+	Processed int `json:"processed"`
 }
 
 // NewServer creates the API server with all wired dependencies.
@@ -254,6 +271,7 @@ func (s *Server) Router() http.Handler {
 
 		// Settings & scanning
 		r.Put("/api/settings", s.handleUpdateSettings)
+		r.Get("/api/admin/scan-status", s.handleGetScanStatus)
 		r.Post("/api/admin/rescan", s.handleRescan)
 		r.Post("/api/admin/rescan-artwork", s.handleRescanArtwork)
 		r.Post("/api/admin/rescan-missing-artwork", s.handleRescanMissingArtwork)
@@ -2088,6 +2106,10 @@ func (s *Server) handleUpdateSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRescan(w http.ResponseWriter, r *http.Request) {
+	s.scanMu.Lock()
+	s.libraryScan = &libraryScanInfo{}
+	s.scanMu.Unlock()
+
 	progress := make(chan music.ScanProgress, 10)
 	go func() {
 		if err := s.scanner.Scan(progress); err != nil {
@@ -2096,6 +2118,13 @@ func (s *Server) handleRescan(w http.ResponseWriter, r *http.Request) {
 	}()
 	go func() {
 		for p := range progress {
+			s.scanMu.Lock()
+			if p.Done || p.Error != "" {
+				s.libraryScan = nil
+			} else {
+				s.libraryScan = &libraryScanInfo{Total: p.Total, Scanned: p.Scanned, CurrentFile: p.CurrentFile}
+			}
+			s.scanMu.Unlock()
 			s.hub.Broadcast(events.EventLibraryScanProgress, p)
 		}
 	}()
@@ -2103,6 +2132,10 @@ func (s *Server) handleRescan(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRescanArtwork(w http.ResponseWriter, r *http.Request) {
+	s.scanMu.Lock()
+	s.artworkScan = &artworkScanInfo{}
+	s.scanMu.Unlock()
+
 	progress := make(chan artwork.ExtractProgress, 10)
 	go func() {
 		if err := s.artExt.ExtractAll(progress); err != nil {
@@ -2111,6 +2144,13 @@ func (s *Server) handleRescanArtwork(w http.ResponseWriter, r *http.Request) {
 	}()
 	go func() {
 		for p := range progress {
+			s.scanMu.Lock()
+			if p.Done {
+				s.artworkScan = nil
+			} else {
+				s.artworkScan = &artworkScanInfo{Total: p.Total, Processed: p.Processed}
+			}
+			s.scanMu.Unlock()
 			s.hub.Broadcast(events.EventArtworkScanProgress, p)
 			if p.AlbumID != "" {
 				s.hub.Broadcast(events.EventArtworkUpdated, map[string]any{"album_id": p.AlbumID})
@@ -2137,6 +2177,20 @@ func (s *Server) handleRescanMissingArtwork(w http.ResponseWriter, r *http.Reque
 
 func (s *Server) handleAdminMissingArtwork(w http.ResponseWriter, r *http.Request) {
 	s.handleMissingCovers(w, r)
+}
+
+func (s *Server) handleGetScanStatus(w http.ResponseWriter, r *http.Request) {
+	s.scanMu.RLock()
+	lib := s.libraryScan
+	art := s.artworkScan
+	s.scanMu.RUnlock()
+
+	jsonOK(w, map[string]any{
+		"library_scanning":  lib != nil,
+		"library_progress":  lib,
+		"artwork_scanning":  art != nil,
+		"artwork_progress":  art,
+	})
 }
 
 func (s *Server) handleGetKeyboardBindings(w http.ResponseWriter, r *http.Request) {

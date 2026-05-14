@@ -916,6 +916,24 @@ function LibraryPanel() {
   const [uploadingPartyFiles, setUploadingPartyFiles] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
+  // Restore scan state on mount (e.g. after logout/login while server was scanning)
+  useEffect(() => {
+    adminApi.scanStatus().then(s => {
+      if (s.library_scanning) {
+        setIsScanning(true)
+        if (s.library_progress) {
+          setScanProgress({ scanned: s.library_progress.scanned, total: s.library_progress.total, currentFile: s.library_progress.current_file })
+        }
+      }
+      if (s.artwork_scanning) {
+        setIsArtworkScanning(true)
+        if (s.artwork_progress) {
+          setArtworkProgress({ processed: s.artwork_progress.processed, total: s.artwork_progress.total })
+        }
+      }
+    }).catch(() => {})
+  }, [])
+
   useSSE({
     artwork_scan_progress: (data) => {
       const p = data as { total: number; processed: number; done?: boolean }
