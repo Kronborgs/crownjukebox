@@ -205,18 +205,23 @@ type RoomPlaybackState struct {
 // ─────────────────────────────────────────────────────────────
 
 type Room struct {
-	ID                    string    `db:"id"                       json:"id"`
-	Name                  string    `db:"name"                     json:"name"`
-	OwnerUserID           *string   `db:"owner_user_id"            json:"owner_user_id,omitempty"`
-	PartyPlaylistID       *string   `db:"party_playlist_id"        json:"party_playlist_id,omitempty"`
-	ActivePlayerSessionID *string   `db:"active_player_session_id" json:"active_player_session_id,omitempty"`
-	Volume                int       `db:"volume"                   json:"volume"`
-	Balance               int       `db:"balance"                  json:"balance"`
-	ToneBass              int       `db:"tone_bass"                json:"tone_bass"`
-	ToneMid               int       `db:"tone_mid"                 json:"tone_mid"`
-	ToneTreble            int       `db:"tone_treble"              json:"tone_treble"`
-	IsMuted               bool      `db:"is_muted"                 json:"is_muted"`
-	Loudness              bool      `db:"loudness"                 json:"loudness"`
+	ID                    string  `db:"id"                       json:"id"`
+	Name                  string  `db:"name"                     json:"name"`
+	OwnerUserID           *string `db:"owner_user_id"            json:"owner_user_id,omitempty"`
+	PartyPlaylistID       *string `db:"party_playlist_id"        json:"party_playlist_id,omitempty"`
+	ActivePlayerSessionID *string `db:"active_player_session_id" json:"active_player_session_id,omitempty"`
+	Volume                int     `db:"volume"                   json:"volume"`
+	Balance               int     `db:"balance"                  json:"balance"`
+	ToneBass              int     `db:"tone_bass"                json:"tone_bass"`
+	ToneMid               int     `db:"tone_mid"                 json:"tone_mid"`
+	ToneTreble            int     `db:"tone_treble"              json:"tone_treble"`
+	IsMuted               bool    `db:"is_muted"                 json:"is_muted"`
+	Loudness              bool    `db:"loudness"                 json:"loudness"`
+	// Auto DJ settings (migration 015)
+	AutoDjEnabled         bool      `db:"auto_dj_enabled"          json:"auto_dj_enabled"`
+	CrossfadeSeconds      int       `db:"crossfade_seconds"        json:"crossfade_seconds"`
+	TempoMatchEnabled     bool      `db:"tempo_match_enabled"      json:"tempo_match_enabled"`
+	MaxTempoAdjustPercent int       `db:"max_tempo_adjust_percent" json:"max_tempo_adjust_percent"`
 	CreatedAt             time.Time `db:"created_at"               json:"created_at"`
 	UpdatedAt             time.Time `db:"updated_at"               json:"updated_at"`
 }

@@ -54,9 +54,9 @@ type Server struct {
 	externalStore *external.Store
 
 	// scan state — protected by scanMu
-	scanMu          sync.RWMutex
-	libraryScan     *libraryScanInfo
-	artworkScan     *artworkScanInfo
+	scanMu      sync.RWMutex
+	libraryScan *libraryScanInfo
+	artworkScan *artworkScanInfo
 }
 
 type libraryScanInfo struct {
@@ -1054,6 +1054,11 @@ type audioStateRequest struct {
 	ToneTreble *int  `json:"tone_treble"`
 	IsMuted    *bool `json:"is_muted"`
 	Loudness   *bool `json:"loudness"`
+	// Auto DJ fields (migration 015)
+	AutoDjEnabled         *bool `json:"auto_dj_enabled"`
+	CrossfadeSeconds      *int  `json:"crossfade_seconds"`
+	TempoMatchEnabled     *bool `json:"tempo_match_enabled"`
+	MaxTempoAdjustPercent *int  `json:"max_tempo_adjust_percent"`
 }
 
 func (s *Server) handleGetAudioState(w http.ResponseWriter, r *http.Request) {
@@ -1067,13 +1072,17 @@ func (s *Server) handleGetAudioState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOK(w, map[string]any{
-		"volume":      info.Volume,
-		"balance":     info.Balance,
-		"tone_bass":   info.ToneBass,
-		"tone_mid":    info.ToneMid,
-		"tone_treble": info.ToneTreble,
-		"is_muted":    info.IsMuted,
-		"loudness":    info.Loudness,
+		"volume":                   info.Volume,
+		"balance":                  info.Balance,
+		"tone_bass":                info.ToneBass,
+		"tone_mid":                 info.ToneMid,
+		"tone_treble":              info.ToneTreble,
+		"is_muted":                 info.IsMuted,
+		"loudness":                 info.Loudness,
+		"auto_dj_enabled":          info.AutoDjEnabled,
+		"crossfade_seconds":        info.CrossfadeSeconds,
+		"tempo_match_enabled":      info.TempoMatchEnabled,
+		"max_tempo_adjust_percent": info.MaxTempoAdjustPercent,
 	})
 }
 
@@ -1142,6 +1151,22 @@ func (s *Server) handleUpdateAudioState(w http.ResponseWriter, r *http.Request) 
 		sets = append(sets, "loudness = ?")
 		args = append(args, *req.Loudness)
 	}
+	if req.AutoDjEnabled != nil {
+		sets = append(sets, "auto_dj_enabled = ?")
+		args = append(args, *req.AutoDjEnabled)
+	}
+	if req.CrossfadeSeconds != nil {
+		sets = append(sets, "crossfade_seconds = ?")
+		args = append(args, clamp(*req.CrossfadeSeconds, 2, 30))
+	}
+	if req.TempoMatchEnabled != nil {
+		sets = append(sets, "tempo_match_enabled = ?")
+		args = append(args, *req.TempoMatchEnabled)
+	}
+	if req.MaxTempoAdjustPercent != nil {
+		sets = append(sets, "max_tempo_adjust_percent = ?")
+		args = append(args, clamp(*req.MaxTempoAdjustPercent, 1, 20))
+	}
 
 	if len(sets) == 1 {
 		// Nothing to update
@@ -1164,23 +1189,31 @@ func (s *Server) handleUpdateAudioState(w http.ResponseWriter, r *http.Request) 
 	}
 
 	s.hub.BroadcastToRoom(rm.Info.ID, "audio_state_changed", map[string]any{
-		"volume":      updated.Volume,
-		"balance":     updated.Balance,
-		"tone_bass":   updated.ToneBass,
-		"tone_mid":    updated.ToneMid,
-		"tone_treble": updated.ToneTreble,
-		"is_muted":    updated.IsMuted,
-		"loudness":    updated.Loudness,
+		"volume":                   updated.Volume,
+		"balance":                  updated.Balance,
+		"tone_bass":                updated.ToneBass,
+		"tone_mid":                 updated.ToneMid,
+		"tone_treble":              updated.ToneTreble,
+		"is_muted":                 updated.IsMuted,
+		"loudness":                 updated.Loudness,
+		"auto_dj_enabled":          updated.AutoDjEnabled,
+		"crossfade_seconds":        updated.CrossfadeSeconds,
+		"tempo_match_enabled":      updated.TempoMatchEnabled,
+		"max_tempo_adjust_percent": updated.MaxTempoAdjustPercent,
 	})
 
 	jsonOK(w, map[string]any{
-		"volume":      updated.Volume,
-		"balance":     updated.Balance,
-		"tone_bass":   updated.ToneBass,
-		"tone_mid":    updated.ToneMid,
-		"tone_treble": updated.ToneTreble,
-		"is_muted":    updated.IsMuted,
-		"loudness":    updated.Loudness,
+		"volume":                   updated.Volume,
+		"balance":                  updated.Balance,
+		"tone_bass":                updated.ToneBass,
+		"tone_mid":                 updated.ToneMid,
+		"tone_treble":              updated.ToneTreble,
+		"is_muted":                 updated.IsMuted,
+		"loudness":                 updated.Loudness,
+		"auto_dj_enabled":          updated.AutoDjEnabled,
+		"crossfade_seconds":        updated.CrossfadeSeconds,
+		"tempo_match_enabled":      updated.TempoMatchEnabled,
+		"max_tempo_adjust_percent": updated.MaxTempoAdjustPercent,
 	})
 }
 
@@ -2194,10 +2227,10 @@ func (s *Server) handleGetScanStatus(w http.ResponseWriter, r *http.Request) {
 	s.scanMu.RUnlock()
 
 	jsonOK(w, map[string]any{
-		"library_scanning":  lib != nil,
-		"library_progress":  lib,
-		"artwork_scanning":  art != nil,
-		"artwork_progress":  art,
+		"library_scanning": lib != nil,
+		"library_progress": lib,
+		"artwork_scanning": art != nil,
+		"artwork_progress": art,
 	})
 }
 

@@ -8,6 +8,7 @@ import { useSSE } from '@/hooks/useSSE'
 import { useSession } from '@/hooks/useSession'
 import { useCast } from '@/hooks/useCast'
 import { RetroDial, RetroPushButton } from '@/components/RetroDial'
+import { useAutoDJ } from '@/hooks/useAutoDJ'
 
 interface Props {
   state: PlaybackState | null
@@ -82,8 +83,12 @@ function LEDScrollingText({ text, color, size }: LEDScrollingTextProps) {
 export function NowPlaying({ state, refreshState }: Props) {
   const { isAdmin, isGuest, sessionId } = useSession()
   const audioRef = useRef<HTMLAudioElement>(null)
+  const playerBRef = useRef<HTMLAudioElement>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null)
+  const sourceBNodeRef = useRef<MediaElementAudioSourceNode | null>(null)
+  const crossfadeGainARef = useRef<GainNode | null>(null)
+  const crossfadeGainBRef = useRef<GainNode | null>(null)
   const bassFilterRef = useRef<BiquadFilterNode | null>(null)
   const trebleFilterRef = useRef<BiquadFilterNode | null>(null)
   const gainNodeRef = useRef<GainNode | null>(null)
@@ -104,6 +109,11 @@ export function NowPlaying({ state, refreshState }: Props) {
     treble: 0,
     balance: 0,
     loudness: false,
+    // Auto DJ (migration 015)
+    autoDjEnabled: false,
+    crossfadeSeconds: 12,
+    tempoMatchEnabled: false,
+    maxTempoAdjustPercent: 6,
   })
 
   // Phase 2: active player session ID for this room
@@ -224,11 +234,15 @@ export function NowPlaying({ state, refreshState }: Props) {
       if (!isGuest) {
         // Map local setting names to backend AudioState field names
         const backendKey: Record<string, keyof AudioState | null> = {
-          volume:   'volume',
-          bass:     'tone_bass',
-          treble:   'tone_treble',
-          balance:  'balance',
-          loudness: 'loudness',
+          volume:                'volume',
+          bass:                  'tone_bass',
+          treble:                'tone_treble',
+          balance:               'balance',
+          loudness:              'loudness',
+          autoDjEnabled:         'auto_dj_enabled',
+          crossfadeSeconds:      'crossfade_seconds',
+          tempoMatchEnabled:     'tempo_match_enabled',
+          maxTempoAdjustPercent: 'max_tempo_adjust_percent',
         }
         const bk = backendKey[key as string]
         if (bk !== null && bk !== undefined) {
@@ -304,11 +318,15 @@ export function NowPlaying({ state, refreshState }: Props) {
       if (audioSyncPendingRef.current) return // Ignore echo of our own update
       setAudioSettings(prev => ({
         ...prev,
-        volume:   d.volume     ?? prev.volume,
-        bass:     d.tone_bass  ?? prev.bass,
-        treble:   d.tone_treble ?? prev.treble,
-        balance:  d.balance != null ? Math.round(d.balance / 10) : prev.balance,
-        loudness: d.loudness   ?? prev.loudness,
+        volume:                d.volume                     ?? prev.volume,
+        bass:                  d.tone_bass                  ?? prev.bass,
+        treble:                d.tone_treble                ?? prev.treble,
+        balance:               d.balance != null ? Math.round(d.balance / 10) : prev.balance,
+        loudness:              d.loudness                   ?? prev.loudness,
+        autoDjEnabled:         d.auto_dj_enabled            ?? prev.autoDjEnabled,
+        crossfadeSeconds:      d.crossfade_seconds          ?? prev.crossfadeSeconds,
+        tempoMatchEnabled:     d.tempo_match_enabled        ?? prev.tempoMatchEnabled,
+        maxTempoAdjustPercent: d.max_tempo_adjust_percent   ?? prev.maxTempoAdjustPercent,
       }))
     },
   })
@@ -319,11 +337,15 @@ export function NowPlaying({ state, refreshState }: Props) {
     playbackApi.getAudioState().then((s) => {
       setAudioSettings(prev => ({
         ...prev,
-        volume:   s.volume,
-        bass:     s.tone_bass,
-        treble:   s.tone_treble,
-        balance:  Math.round(s.balance / 10),
-        loudness: s.loudness ?? prev.loudness,
+        volume:                s.volume,
+        bass:                  s.tone_bass,
+        treble:                s.tone_treble,
+        balance:               Math.round(s.balance / 10),
+        loudness:              s.loudness              ?? prev.loudness,
+        autoDjEnabled:         s.auto_dj_enabled       ?? prev.autoDjEnabled,
+        crossfadeSeconds:      s.crossfade_seconds     ?? prev.crossfadeSeconds,
+        tempoMatchEnabled:     s.tempo_match_enabled   ?? prev.tempoMatchEnabled,
+        maxTempoAdjustPercent: s.max_tempo_adjust_percent ?? prev.maxTempoAdjustPercent,
       }))
     }).catch(() => {})
   }, [isGuest]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -380,8 +402,21 @@ export function NowPlaying({ state, refreshState }: Props) {
     const AudioContextCtor = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     if (!AudioContextCtor) return
 
+    const audioB = playerBRef.current
+    if (!audioB) return
+
     const context = new AudioContextCtor()
-    const source = context.createMediaElementSource(audio)
+
+    // Crossfade gain nodes: inserted between each source and the shared bass filter.
+    // Player A starts at gain 1, Player B at gain 0.
+    const cfGainA = context.createGain()
+    const cfGainB = context.createGain()
+    cfGainA.gain.value = 1
+    cfGainB.gain.value = 0
+
+    const source  = context.createMediaElementSource(audio)
+    const sourceB = context.createMediaElementSource(audioB)
+
     const bass = context.createBiquadFilter()
     bass.type = 'lowshelf'
     bass.frequency.value = 180
@@ -393,19 +428,56 @@ export function NowPlaying({ state, refreshState }: Props) {
     const gain = context.createGain()
     const panner = context.createStereoPanner()
 
-    source.connect(bass)
+    // Graph: sourceA → cfGainA ─┬─▶ bass → treble → gain → panner → dest
+    //        sourceB → cfGainB ─┘
+    source.connect(cfGainA)
+    sourceB.connect(cfGainB)
+    cfGainA.connect(bass)
+    cfGainB.connect(bass)
     bass.connect(treble)
     treble.connect(gain)
     gain.connect(panner)
     panner.connect(context.destination)
 
-    audioContextRef.current = context
-    sourceNodeRef.current = source
-    bassFilterRef.current = bass
-    trebleFilterRef.current = treble
-    gainNodeRef.current = gain
-    pannerNodeRef.current = panner
+    audioContextRef.current   = context
+    sourceNodeRef.current     = source
+    sourceBNodeRef.current    = sourceB
+    crossfadeGainARef.current = cfGainA
+    crossfadeGainBRef.current = cfGainB
+    bassFilterRef.current     = bass
+    trebleFilterRef.current   = treble
+    gainNodeRef.current       = gain
+    pannerNodeRef.current     = panner
   }, []) // Only create once, never recreate
+
+  // Auto DJ: stable ref so ended/error handlers can check isFading without stale closure.
+  const autoDJRef = useRef<{ isFading: boolean } | null>(null)
+
+  // Called by useAutoDJ when crossfade finishes.
+  // We advance the queue as if the track ended normally.
+  const onFadeComplete = useCallback((finishedTrackId: string, _nextTrackId: string) => {
+    setAudioKey(k => k + 1) // Triggers audioSrc to reload for new track
+    playbackApi.trackEnded(finishedTrackId)
+      .catch(() => {})
+      .finally(() => { refreshState?.().catch(() => {}) })
+  }, [refreshState])
+
+  const autoDJ = useAutoDJ({
+    autoDjEnabled:    audioSettings.autoDjEnabled,
+    crossfadeSeconds: audioSettings.crossfadeSeconds,
+    isActivePlayer,
+    isCasting:        isCastActive,
+    playerARef:       audioRef,
+    playerBRef,
+    crossfadeGainARef,
+    crossfadeGainBRef,
+    audioContextRef,
+    directStreamUrlRef,
+    currentTrackId:   track?.id ?? null,
+    onFadeComplete,
+  })
+  // Keep the ref in sync for the ended/error guards above
+  autoDJRef.current = { isFading: autoDJ.isFading }
 
   useEffect(() => {
     const audio = audioRef.current
@@ -476,6 +548,8 @@ export function NowPlaying({ state, refreshState }: Props) {
       })
     } else {
       audio.pause()
+      // Also pause Player B if Auto DJ is mid-fade when playback is paused
+      playerBRef.current?.pause()
     }
   }, [state?.is_playing, audioSrc])
 
@@ -529,8 +603,10 @@ export function NowPlaying({ state, refreshState }: Props) {
     const audio = audioRef.current
     if (!audio) return
     const onEnded = () => {
-      // Bump audioKey BEFORE the API call so that even if the backend selects
-      // the same track ID again, the audioSrc useEffect re-runs and restarts audio.
+      // Skip natural ended event when Auto DJ fade is in progress:
+      // the fade already pauses Player A before it reaches the natural end,
+      // so onFadeComplete is the single caller of trackEnded in that path.
+      if (autoDJRef.current?.isFading) return
       setAudioKey(k => k + 1)
       if (track?.id) {
         playbackApi.trackEnded(track.id)
@@ -541,6 +617,7 @@ export function NowPlaying({ state, refreshState }: Props) {
     const onError = () => {
       // Audio failed to load (e.g. file missing on server — 404).
       // Treat it the same as track-ended so the queue advances automatically.
+      if (autoDJRef.current?.isFading) return
       setAudioKey(k => k + 1)
       if (track?.id) {
         playbackApi.trackEnded(track.id)
@@ -611,7 +688,11 @@ export function NowPlaying({ state, refreshState }: Props) {
 
       {/* Hidden audio element — only rendered for non-guest sessions (Fase 1) */}
       {!isGuest && (
-        <audio ref={audioRef} src={audioSrc ?? undefined} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }} />
+        <>
+          <audio ref={audioRef} src={audioSrc ?? undefined} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }} />
+          {/* Player B — used by Auto DJ crossfade; src managed entirely by useAutoDJ */}
+          <audio ref={playerBRef} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }} />
+        </>
       )}
 
       {/* All visual UI is hidden during party mode — only audio keeps playing */}
@@ -754,6 +835,7 @@ export function NowPlaying({ state, refreshState }: Props) {
                 <button
                   className="btn btn-ghost btn-icon"
                   onClick={async () => {
+                    autoDJ.cancelFade() // Stop any in-progress crossfade
                     await playbackApi.skip()
                     refreshState?.().catch(console.error)
                   }}
@@ -816,6 +898,60 @@ export function NowPlaying({ state, refreshState }: Props) {
               <RetroDial label="Bas"     value={audioSettings.bass}    min={-12} max={12}  step={1} unit=" dB" accent="green"  onChange={v => updateAudioSetting('bass', v)} />
               <RetroDial label="Diskant" value={audioSettings.treble}  min={-12} max={12}  step={1} unit=" dB" accent="orange" onChange={v => updateAudioSetting('treble', v)} />
               <RetroDial label="L  Balance  R" value={audioSettings.balance} min={-10} max={10} step={1} accent="purple" onChange={v => updateAudioSetting('balance', v)} formatValue={v => v === 0 ? '0' : v < 0 ? `L${Math.abs(v)}` : `R${v}`} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', justifyItems: 'center' }}>
+              <RetroDial label="Volumen" value={audioSettings.volume}  min={0}   max={100} step={1} unit="%"   accent="purple" onChange={v => updateAudioSetting('volume', v)} />
+              <RetroDial label="Bas"     value={audioSettings.bass}    min={-12} max={12}  step={1} unit=" dB" accent="green"  onChange={v => updateAudioSetting('bass', v)} />
+              <RetroDial label="Diskant" value={audioSettings.treble}  min={-12} max={12}  step={1} unit=" dB" accent="orange" onChange={v => updateAudioSetting('treble', v)} />
+              <RetroDial label="L  Balance  R" value={audioSettings.balance} min={-10} max={10} step={1} accent="purple" onChange={v => updateAudioSetting('balance', v)} formatValue={v => v === 0 ? '0' : v < 0 ? `L${Math.abs(v)}` : `R${v}`} />
+            </div>
+
+            {/* Auto DJ — crossfade control */}
+            <div style={{ marginTop: '18px', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <span style={{ color: 'var(--text-dim)', fontSize: '0.72rem', letterSpacing: '2px', textTransform: 'uppercase' }}>Auto DJ</span>
+                <RetroPushButton
+                  label="Auto DJ"
+                  active={audioSettings.autoDjEnabled}
+                  onToggle={() => updateAudioSetting('autoDjEnabled', !audioSettings.autoDjEnabled)}
+                />
+              </div>
+              {audioSettings.autoDjEnabled && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <span style={{ color: 'var(--text-dim)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>Crossfade:</span>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {[5, 8, 10, 12, 15, 20].map(s => (
+                      <button
+                        key={s}
+                        onClick={() => updateAudioSetting('crossfadeSeconds', s)}
+                        style={{
+                          padding: '3px 10px',
+                          fontSize: '0.8rem',
+                          borderRadius: '999px',
+                          border: audioSettings.crossfadeSeconds === s
+                            ? '1px solid var(--neon-primary)'
+                            : '1px solid rgba(255,255,255,0.15)',
+                          background: audioSettings.crossfadeSeconds === s
+                            ? 'rgba(191,0,255,0.18)'
+                            : 'rgba(255,255,255,0.05)',
+                          color: audioSettings.crossfadeSeconds === s
+                            ? 'var(--neon-primary)'
+                            : 'var(--text-dim)',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {s}s
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {autoDJ.isFading && (
+                <div style={{ marginTop: '8px', fontSize: '0.75rem', color: 'var(--neon-teal)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ animation: 'pulse 1s infinite' }}>◉</span>
+                  Crossfader aktiv…
+                </div>
+              )}
             </div>
           </div>
           )}

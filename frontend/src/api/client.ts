@@ -405,6 +405,11 @@ export interface AudioState {
   tone_treble: number
   is_muted: boolean
   loudness: boolean
+  // Auto DJ settings (migration 015)
+  auto_dj_enabled: boolean
+  crossfade_seconds: number
+  tempo_match_enabled: boolean
+  max_tempo_adjust_percent: number
 }
 
 export const playbackApi = {
