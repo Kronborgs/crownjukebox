@@ -461,6 +461,12 @@ export function NowPlaying({ state, refreshState }: Props) {
   // resumePositionRef seek — the crossfade already positioned Player A correctly.
   const crossfadeHandoverRef = useRef(false)
 
+  // Holds the track-id that was just faded away by a crossfade. When the browser
+  // fires a natural 'ended' event for that track shortly after the fade completes
+  // (because Player A genuinely ran to its end), onEnded must ignore it — otherwise
+  // it bumps audioKey and reloads Player A from 0, jumping sang 2 back to the start.
+  const fadeFinishedTrackRef = useRef<string | null>(null)
+
   // Called by useAutoDJ when crossfade finishes.
   // Player A has already been synced to Player B's src+position in the hook.
   // We sync React's audioSrc state to that src so the audioSrc effect won't
@@ -472,6 +478,8 @@ export function NowPlaying({ state, refreshState }: Props) {
     // track transition SSE) would otherwise override that position and cause a jump.
     crossfadeHandoverRef.current = true
     resumePositionRef.current = null
+    // Remember which track was faded out so onEnded can ignore its natural 'ended' event.
+    fadeFinishedTrackRef.current = finishedTrackId
 
     // Sync React state — same URL Player A was just set to in runFadeLoop.
     // When the audioSrc effect later fires (due to track?.id change), it will compute
@@ -631,6 +639,14 @@ export function NowPlaying({ state, refreshState }: Props) {
       // because isFading (React state) is still false during the async canplay-wait window,
       // which would otherwise let onEnded fire a duplicate trackEnded during crossfade load.
       if (autoDJRef.current?.isBusy()) return
+      // Skip if this 'ended' event is for the track that was just crossfaded away.
+      // After a successful fade, Player A's src is set to sang 2; but the browser
+      // may still fire 'ended' for sang A (it had genuinely reached its end).
+      // Without this guard, onEnded bumps audioKey → audioSrc effect reloads Player A → sang 2 jumps to 0.
+      if (track?.id && track.id === fadeFinishedTrackRef.current) {
+        fadeFinishedTrackRef.current = null
+        return
+      }
       setAudioKey(k => k + 1)
       if (track?.id) {
         playbackApi.trackEnded(track.id)
