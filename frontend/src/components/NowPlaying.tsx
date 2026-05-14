@@ -452,14 +452,27 @@ export function NowPlaying({ state, refreshState }: Props) {
     pannerNodeRef.current     = panner
   }, []) // Only create once, never recreate
 
-  // Auto DJ: stable ref so ended/error handlers can check isFading without stale closure.
-  const autoDJRef = useRef<{ isFading: boolean } | null>(null)
+  // Auto DJ: stable ref so ended/error handlers can bypass stale React state closures.
+  // isBusy() checks both isFadingRef AND fadeLoadingRef synchronously — this is critical
+  // because isFading (React state) is still false during the async canplay-wait window.
+  const autoDJRef = useRef<{ isFading: boolean; isBusy: () => boolean } | null>(null)
+
+  // Set to true by onFadeComplete to tell the next canplay handler to skip any
+  // resumePositionRef seek — the crossfade already positioned Player A correctly.
+  const crossfadeHandoverRef = useRef(false)
 
   // Called by useAutoDJ when crossfade finishes.
   // Player A has already been synced to Player B's src+position in the hook.
   // We sync React's audioSrc state to that src so the audioSrc effect won't
   // reload Player A when track?.id later changes via refreshState.
   const onFadeComplete = useCallback((finishedTrackId: string, _nextTrackId: string, nextSrc: string) => {
+    // Signal the next canplay event to skip any resumePositionRef seek.
+    // After a crossfade, Player A is already positioned correctly by runFadeLoop;
+    // a stale resumePositionRef (e.g. set by active_player_changed during the
+    // track transition SSE) would otherwise override that position and cause a jump.
+    crossfadeHandoverRef.current = true
+    resumePositionRef.current = null
+
     // Sync React state — same URL Player A was just set to in runFadeLoop.
     // When the audioSrc effect later fires (due to track?.id change), it will compute
     // the same URL and call setAudioSrc with an identical value → React bails out → no reload.
@@ -487,7 +500,7 @@ export function NowPlaying({ state, refreshState }: Props) {
     onFadeComplete,
   })
   // Keep the ref in sync for the ended/error guards above
-  autoDJRef.current = { isFading: autoDJ.isFading }
+  autoDJRef.current = { isFading: autoDJ.isFading, isBusy: autoDJ.isBusy }
 
   useEffect(() => {
     const audio = audioRef.current
@@ -613,10 +626,11 @@ export function NowPlaying({ state, refreshState }: Props) {
     const audio = audioRef.current
     if (!audio) return
     const onEnded = () => {
-      // Skip natural ended event when Auto DJ fade is in progress:
-      // the fade already pauses Player A before it reaches the natural end,
-      // so onFadeComplete is the single caller of trackEnded in that path.
-      if (autoDJRef.current?.isFading) return
+      // Skip natural ended event when Auto DJ is fading OR still loading the next track.
+      // isBusy() checks both isFadingRef AND fadeLoadingRef synchronously — important
+      // because isFading (React state) is still false during the async canplay-wait window,
+      // which would otherwise let onEnded fire a duplicate trackEnded during crossfade load.
+      if (autoDJRef.current?.isBusy()) return
       setAudioKey(k => k + 1)
       if (track?.id) {
         playbackApi.trackEnded(track.id)
@@ -627,7 +641,7 @@ export function NowPlaying({ state, refreshState }: Props) {
     const onError = () => {
       // Audio failed to load (e.g. file missing on server — 404).
       // Treat it the same as track-ended so the queue advances automatically.
-      if (autoDJRef.current?.isFading) return
+      if (autoDJRef.current?.isBusy()) return
       setAudioKey(k => k + 1)
       if (track?.id) {
         playbackApi.trackEnded(track.id)
@@ -636,6 +650,13 @@ export function NowPlaying({ state, refreshState }: Props) {
       }
     }
     const onCanPlay = () => {
+      // After a crossfade handover, Player A's src was changed by runFadeLoop and
+      // currentTime was already set correctly. Skip any resume-position seek here
+      // to avoid overriding that with a stale value (e.g. Song 1's last position).
+      if (crossfadeHandoverRef.current) {
+        crossfadeHandoverRef.current = false
+        return
+      }
       if (resumePositionRef.current !== null) {
         audio.currentTime = resumePositionRef.current
         resumePositionRef.current = null

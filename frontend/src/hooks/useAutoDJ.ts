@@ -79,6 +79,13 @@ export interface UseAutoDJResult {
   nextTrackId: string | null
   /** Cancel an in-progress fade (e.g. on manual skip) */
   cancelFade: () => void
+  /**
+   * Returns true when Auto DJ is either actively fading OR in the async
+   * pre-load phase (waiting for Player B canplay). Use this — not isFading —
+   * to guard onEnded/onError handlers, because isFading (React state) lags
+   * behind the synchronous fadeLoadingRef during the canplay wait window.
+   */
+  isBusy: () => boolean
 }
 
 export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
@@ -204,6 +211,9 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
     if (!playerB || !audioCtx) return
 
     fadeLoadingRef.current = true // Guard against concurrent calls during async preload
+
+    // Defensive reset — playbackRate persists across src changes on the same element.
+    playerB.playbackRate = 1
 
     // Pre-load Player B
     const url = buildStreamUrl(nextId, directStreamUrlRef)
@@ -338,5 +348,6 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
     isBpmMatch: isBpmMatchState,
     get nextTrackId() { return nextTrackIdRef.current },
     cancelFade,
+    isBusy: () => isFadingRef.current || fadeLoadingRef.current,
   }
 }
