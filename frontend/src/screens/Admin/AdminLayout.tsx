@@ -909,12 +909,25 @@ function LibraryPanel() {
   const [scanStatus, setScanStatus] = useState('')
   const [scanProgress, setScanProgress] = useState<{ scanned: number; total: number; currentFile: string } | null>(null)
   const [isScanning, setIsScanning] = useState(false)
+  const [isArtworkScanning, setIsArtworkScanning] = useState(false)
+  const [artworkProgress, setArtworkProgress] = useState<{ processed: number; total: number } | null>(null)
   const { data: playlists = [] } = useQuery({ queryKey: ['admin-playlists'], queryFn: adminApi.playlists })
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [uploadingPartyFiles, setUploadingPartyFiles] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   useSSE({
+    artwork_scan_progress: (data) => {
+      const p = data as { total: number; processed: number; done?: boolean }
+      if (p.done) {
+        setScanStatus(`Album covers opdateret — ${p.total} album behandlet`)
+        setArtworkProgress(null)
+        setIsArtworkScanning(false)
+        qc.invalidateQueries({ queryKey: ['system-metrics'] })
+        return
+      }
+      setArtworkProgress({ processed: p.processed, total: p.total })
+    },
     library_scan_progress: (data) => {
       const p = data as { total: number; scanned: number; current_file?: string; done?: boolean; error?: string }
       if (p.error) {
@@ -946,11 +959,12 @@ function LibraryPanel() {
   }
 
   async function rescanArtwork() {
-    setScanStatus('Henter album covers…')
+    setScanStatus('')
+    setArtworkProgress(null)
+    setIsArtworkScanning(true)
     try {
       await adminApi.rescanArtwork()
-      setScanStatus('Cover-scanning startet')
-    } catch { setScanStatus('Fejl') }
+    } catch { setScanStatus('Fejl ved cover-scanning'); setIsArtworkScanning(false) }
   }
 
   async function createPlaylist() {
@@ -1013,9 +1027,38 @@ function LibraryPanel() {
         >
           <RefreshCw size={16} className={isScanning ? 'spinning' : ''} /> Scan musikmappe
         </button>
-        <button className="btn btn-ghost" style={{ justifyContent: 'flex-start', gap: '10px' }} onClick={rescanArtwork}>
-          <RefreshCw size={16} /> Genindlæs album covers
+        <button
+          className="btn btn-ghost"
+          style={{ justifyContent: 'flex-start', gap: '10px' }}
+          onClick={rescanArtwork}
+          disabled={isArtworkScanning}
+        >
+          <RefreshCw size={16} className={isArtworkScanning ? 'spinning' : ''} /> Genindlæs album covers
         </button>
+        {artworkProgress && artworkProgress.total > 0 && (
+          <div style={{
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '8px',
+            padding: '14px 16px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '8px' }}>
+              <span style={{ fontFamily: 'monospace', fontSize: '1.8rem', fontWeight: 700, color: 'var(--neon-teal)', lineHeight: 1 }}>
+                {artworkProgress.processed}
+              </span>
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)' }}>/ {artworkProgress.total} album</span>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden', height: '8px' }}>
+              <div style={{
+                background: 'linear-gradient(90deg, var(--neon-teal), var(--neon-primary))',
+                height: '100%',
+                width: `${Math.round((artworkProgress.processed / Math.max(1, artworkProgress.total)) * 100)}%`,
+                transition: 'width 0.3s ease',
+                borderRadius: '4px',
+              }} />
+            </div>
+          </div>
+        )}
         <input
           ref={fileInputRef}
           type="file"
