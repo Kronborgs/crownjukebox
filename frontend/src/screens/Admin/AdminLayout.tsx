@@ -907,7 +907,7 @@ function PartyPlaylistTracks({ playlistId, isActive }: { playlistId: string; isA
 function LibraryPanel() {
   const qc = useQueryClient()
   const [scanStatus, setScanStatus] = useState('')
-  const [scanProgress, setScanProgress] = useState<{ scanned: number; total: number } | null>(null)
+  const [scanProgress, setScanProgress] = useState<{ scanned: number; total: number; currentFile: string } | null>(null)
   const { data: playlists = [] } = useQuery({ queryKey: ['admin-playlists'], queryFn: adminApi.playlists })
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [uploadingPartyFiles, setUploadingPartyFiles] = useState(false)
@@ -928,7 +928,7 @@ function LibraryPanel() {
         qc.invalidateQueries({ queryKey: ['admin-jukeboxes'] })
         return
       }
-      setScanProgress({ scanned: p.scanned, total: p.total })
+      setScanProgress({ scanned: p.scanned, total: p.total, currentFile: p.current_file ?? '' })
       setScanStatus('')
     },
   })
@@ -1001,8 +1001,13 @@ function LibraryPanel() {
     <div>
       <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '20px' }}>Musikbibliotek</h2>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '400px' }}>
-        <button className="btn btn-primary" style={{ justifyContent: 'flex-start', gap: '10px' }} onClick={rescan}>
-          <RefreshCw size={16} /> Scan musikmappe
+        <button
+          className="btn btn-primary"
+          style={{ justifyContent: 'flex-start', gap: '10px' }}
+          onClick={rescan}
+          disabled={!!scanProgress || scanStatus === 'Scanner…'}
+        >
+          <RefreshCw size={16} className={scanProgress || scanStatus === 'Scanner…' ? 'spinning' : ''} /> Scan musikmappe
         </button>
         <button className="btn btn-ghost" style={{ justifyContent: 'flex-start', gap: '10px' }} onClick={rescanArtwork}>
           <RefreshCw size={16} /> Genindlæs album covers
@@ -1023,23 +1028,58 @@ function LibraryPanel() {
         >
           <Plus size={16} /> {uploadingPartyFiles ? 'Uploader filer…' : 'Upload filer til SKÅL!'}
         </button>
-        {scanProgress && (
-          <div style={{ marginTop: '8px' }}>
-            <p style={{ color: 'var(--neon-teal)', fontSize: '0.85rem', marginBottom: '6px' }}>
-              Scanner… {scanProgress.scanned} / {scanProgress.total}
-            </p>
-            <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden', height: '6px' }}>
-              <div style={{
-                background: 'var(--neon-primary)',
-                height: '100%',
-                width: `${Math.round((scanProgress.scanned / Math.max(1, scanProgress.total)) * 100)}%`,
-                transition: 'width 0.3s ease',
-              }} />
+        {(scanProgress || scanStatus === 'Scanner…') && (
+          <div style={{
+            marginTop: '8px',
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '8px',
+            padding: '14px 16px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '8px' }}>
+              <span style={{
+                fontFamily: 'monospace',
+                fontSize: '1.8rem',
+                fontWeight: 700,
+                color: 'var(--neon-primary)',
+                lineHeight: 1,
+                transition: 'all 0.2s ease',
+              }}>
+                {scanProgress ? scanProgress.scanned : '…'}
+              </span>
+              {scanProgress && scanProgress.total > 0 && (
+                <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)' }}>
+                  / {scanProgress.total} sange
+                </span>
+              )}
             </div>
+            {scanProgress && scanProgress.total > 0 && (
+              <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden', height: '8px', marginBottom: '8px' }}>
+                <div style={{
+                  background: 'linear-gradient(90deg, var(--neon-primary), var(--neon-teal))',
+                  height: '100%',
+                  width: `${Math.round((scanProgress.scanned / Math.max(1, scanProgress.total)) * 100)}%`,
+                  transition: 'width 0.3s ease',
+                  borderRadius: '4px',
+                }} />
+              </div>
+            )}
+            {scanProgress?.currentFile && (
+              <p style={{
+                fontSize: '0.72rem',
+                color: 'var(--text-dim)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                marginTop: '2px',
+              }}>
+                {scanProgress.currentFile}
+              </p>
+            )}
           </div>
         )}
-        {scanStatus && !scanProgress && (
-          <p style={{ color: 'var(--neon-teal)', fontSize: '0.85rem', marginTop: '8px' }}>{scanStatus}</p>
+        {scanStatus && !scanProgress && scanStatus !== 'Scanner…' && (
+          <p style={{ color: scanStatus.startsWith('Fejl') ? 'var(--neon-amber)' : 'var(--neon-teal)', fontSize: '0.85rem', marginTop: '8px' }}>{scanStatus}</p>
         )}
       </div>
 
