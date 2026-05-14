@@ -57,9 +57,9 @@ export function SearchScreen() {
   }
 
   const hasResults = results && (
-    results.tracks.length > 0 ||
-    results.albums.length > 0 ||
-    results.artists.length > 0
+    (results.tracks?.length ?? 0) > 0 ||
+    (results.albums?.length ?? 0) > 0 ||
+    (results.artists?.length ?? 0) > 0
   )
 
   return (

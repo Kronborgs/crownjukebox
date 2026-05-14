@@ -639,13 +639,13 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 	like := "%" + q + "%"
 
-	var artists []db.Artist
+	artists := make([]db.Artist, 0)
 	_ = s.db.Select(&artists, `SELECT * FROM artists WHERE name LIKE ? LIMIT 10`, like)
 
-	var albums []db.Album
+	albums := make([]db.Album, 0)
 	_ = s.db.Select(&albums, `SELECT * FROM albums WHERE title LIKE ? LIMIT 20`, like)
 
-	var tracks []db.Track
+	tracks := make([]db.Track, 0)
 	_ = s.db.Select(&tracks, `
 		SELECT
 			t.*,
