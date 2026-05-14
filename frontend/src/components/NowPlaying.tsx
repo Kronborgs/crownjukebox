@@ -897,11 +897,6 @@ export function NowPlaying({ state, refreshState }: Props) {
                 >
                   {directStreamUrl ? '⚡ Direkte' : '☁ Cloudflare'}
                 </span>
-                <RetroPushButton
-                  label="Loudness"
-                  active={audioSettings.loudness}
-                  onToggle={() => updateAudioSetting('loudness', !audioSettings.loudness)}
-                />
                 {/* Retro fold toggle button */}
                 <motion.button
                   type="button"
@@ -941,6 +936,11 @@ export function NowPlaying({ state, refreshState }: Props) {
                     ▲
                   </motion.span>
                 </motion.button>
+                <RetroPushButton
+                  label="Loudness"
+                  active={audioSettings.loudness}
+                  onToggle={() => updateAudioSetting('loudness', !audioSettings.loudness)}
+                />
               </div>
             </div>
 
