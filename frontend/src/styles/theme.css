@@ -639,6 +639,60 @@ body {
   text-shadow: 0 0 10px rgba(255, 157, 59, 0.35);
 }
 
+/* Retro keyboard key — same metallic look as retro-push-button but compact */
+.retro-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  padding: 0 10px;
+  min-width: 36px;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #4a4f63 0%, #232738 45%, #0e1018 100%);
+  color: var(--chrome-bright);
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.28),
+    inset 0 -2px 0 rgba(0,0,0,0.4),
+    0 4px 8px rgba(0,0,0,0.4);
+  cursor: pointer;
+  user-select: none;
+  transition: box-shadow 0.08s, transform 0.08s, background 0.08s;
+}
+
+.retro-key:hover {
+  background: linear-gradient(180deg, #5a607a 0%, #2d3348 45%, #141722 100%);
+  border-color: rgba(255,255,255,0.28);
+}
+
+.retro-key:active {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    inset 0 2px 4px rgba(0,0,0,0.6),
+    0 1px 3px rgba(0,0,0,0.4);
+  background: linear-gradient(180deg, #1a1e2a 0%, #0e1018 100%);
+}
+
+.retro-key-wide {
+  min-width: 80px;
+}
+
+.retro-key-del {
+  min-width: 56px;
+  color: rgba(255,140,140,0.85);
+}
+
+.retro-key-close {
+  border-color: rgba(255,255,255,0.14);
+  color: var(--text-dim);
+  background: linear-gradient(180deg, #2e2e3a 0%, #1a1a22 100%);
+}
+
 .retro-push-button {
   display: inline-flex;
   align-items: center;

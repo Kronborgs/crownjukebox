@@ -161,25 +161,21 @@ export function SearchScreen() {
               flexShrink: 0,
             }}
           >
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
-              <button className="btn btn-ghost" style={{ fontSize: '0.8rem', padding: '4px 12px' }} onClick={() => setShowKeyboard(false)}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}>
+              <button
+                className="retro-key retro-key-close"
+                style={{ fontSize: '0.75rem', letterSpacing: '1px', padding: '0 16px' }}
+                onClick={() => setShowKeyboard(false)}
+              >
                 Luk tastatur
               </button>
             </div>
             {KEYBOARD_ROWS.map((row, ri) => (
-              <div key={ri} style={{ display: 'flex', gap: '4px', justifyContent: 'center', marginBottom: '4px' }}>
+              <div key={ri} style={{ display: 'flex', gap: '5px', justifyContent: 'center', marginBottom: '5px' }}>
                 {row.map(key => (
                   <button
                     key={key}
-                    className="btn btn-ghost"
-                    style={{
-                      minWidth: key === ' ' ? '80px' : key === '⌫' ? '60px' : '36px',
-                      height: '42px',
-                      padding: '0',
-                      fontSize: '0.9rem',
-                      fontWeight: 600,
-                      borderRadius: 'var(--radius-sm)',
-                    }}
+                    className={`retro-key${key === ' ' ? ' retro-key-wide' : key === '⌫' ? ' retro-key-del' : ''}`}
                     onMouseDown={e => { e.preventDefault(); onKeyPress(key === ' ' ? ' ' : key) }}
                   >
                     {key === ' ' ? '⎵' : key}
