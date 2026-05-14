@@ -16,29 +16,8 @@ function JukeKey({ label, active, wide, onClick }: { label: string; active: bool
   return (
     <button
       onClick={onClick}
-      style={{
-        minWidth: wide ? '52px' : '34px',
-        height: '36px',
-        padding: '0 6px',
-        fontSize: '0.78rem',
-        fontWeight: 800,
-        fontFamily: '"Courier New", "Lucida Console", monospace',
-        background: active
-          ? 'linear-gradient(160deg, #ff6a22 0%, #cc2200 100%)'
-          : 'linear-gradient(160deg, #ede0a8 0%, #c9a548 100%)',
-        color: active ? '#fff' : '#1a0800',
-        border: active ? '1px solid #990000' : '1px solid #8a6818',
-        borderRadius: '3px',
-        boxShadow: active
-          ? '1px 1px 0 rgba(0,0,0,0.6), inset 0 -1px 0 rgba(0,0,0,0.3)'
-          : '2px 3px 0 #6a4010, inset 0 1px 0 rgba(255,255,255,0.55)',
-        cursor: 'pointer',
-        letterSpacing: '0.5px',
-        transform: active ? 'translateY(2px)' : 'none',
-        transition: 'all 0.07s',
-        flexShrink: 0,
-        userSelect: 'none',
-      }}
+      className={`retro-key${wide ? ' retro-key-wide' : ''}${active ? ' is-active' : ''}`}
+      style={{ height: '34px', minWidth: wide ? '52px' : '34px', padding: '0 6px', fontSize: '0.78rem' }}
     >
       {label}
     </button>
@@ -429,13 +408,13 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
               fontSize: '0.78rem', fontWeight: 800,
               fontFamily: '"Courier New", "Lucida Console", monospace',
               letterSpacing: '3px',
-              background: 'linear-gradient(160deg, #3d2808 0%, #2a1a04 100%)',
-              color: 'rgba(255,210,100,0.85)',
-              border: '1px solid #4a3010',
+              background: 'linear-gradient(180deg, #4a4f63 0%, #232738 45%, #0e1018 100%)',
+              color: 'var(--chrome-bright)',
+              border: '1px solid rgba(255,255,255,0.18)',
               borderRadius: '6px 6px 0 0',
               cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-              boxShadow: '0 -2px 0 rgba(0,0,0,0.3)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -2px 0 rgba(0,0,0,0.4)',
               userSelect: 'none',
             }}
           >
@@ -456,11 +435,11 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
               fontSize: '0.8rem', fontWeight: 800,
               fontFamily: '"Courier New", "Lucida Console", monospace',
               letterSpacing: '2px',
-              background: 'linear-gradient(160deg, #ede0a8 0%, #c9a548 100%)',
-              color: '#1a0800',
-              border: '1px solid #8a6818',
+              background: 'linear-gradient(180deg, #4a4f63 0%, #232738 45%, #0e1018 100%)',
+              color: 'var(--chrome-bright)',
+              border: '1px solid rgba(255,255,255,0.18)',
               borderRadius: '0 0 0 4px',
-              boxShadow: '2px 3px 0 #6a4010, inset 0 1px 0 rgba(255,255,255,0.55)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -2px 0 rgba(0,0,0,0.4), 0 4px 8px rgba(0,0,0,0.4)',
               flexShrink: 0,
               userSelect: 'none' as const,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -518,11 +497,11 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
                 fontSize: '0.8rem', fontWeight: 800,
                 fontFamily: '"Courier New", "Lucida Console", monospace',
                 letterSpacing: '2px',
-                background: 'linear-gradient(160deg, #3d2808 0%, #2a1a04 100%)',
-                color: 'rgba(255,210,100,0.9)',
-                border: '1px solid #4a3010',
+                background: 'linear-gradient(180deg, #4a4f63 0%, #232738 45%, #0e1018 100%)',
+                color: 'var(--chrome-bright)',
+                border: '1px solid rgba(255,255,255,0.18)',
                 borderRadius: '0 0 4px 0',
-                boxShadow: '2px 3px 0 rgba(0,0,0,0.4)',
+                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -2px 0 rgba(0,0,0,0.4), 0 4px 8px rgba(0,0,0,0.4)',
                 cursor: 'pointer',
                 flexShrink: 0,
                 userSelect: 'none',

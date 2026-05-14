@@ -102,33 +102,16 @@ export function KioskLayout() {
             {/* Compact retro nav shown only for search / queue tabs */}
             {activeTab !== 'browse' && (
               <div style={{
-                display: 'flex', gap: '4px', padding: '5px 8px',
-                background: 'linear-gradient(180deg, #1a0e04 0%, #120a02 100%)',
-                borderBottom: '2px solid #4a3010', flexShrink: 0,
+                display: 'flex', gap: '6px', padding: '6px 8px',
+                background: 'var(--surface-mid)',
+                borderBottom: '1px solid rgba(255,255,255,0.08)', flexShrink: 0,
               }}>
                 {tabs.map(tab => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
-                    style={{
-                      flex: 1, padding: '7px 4px',
-                      fontSize: '0.72rem', fontWeight: 800,
-                      fontFamily: '"Courier New", monospace',
-                      letterSpacing: '1px',
-                      background: activeTab === tab.id
-                        ? 'linear-gradient(160deg, #ede0a8 0%, #c9a548 100%)'
-                        : 'linear-gradient(160deg, #3d2808 0%, #2a1a04 100%)',
-                      color: activeTab === tab.id ? '#1a0800' : 'rgba(255,210,100,0.7)',
-                      border: activeTab === tab.id ? '1px solid #8a6818' : '1px solid #4a3010',
-                      borderRadius: '3px',
-                      boxShadow: activeTab === tab.id
-                        ? '1px 2px 0 #6a4010, inset 0 1px 0 rgba(255,255,255,0.5)'
-                        : '1px 1px 0 rgba(0,0,0,0.3)',
-                      cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
-                      transform: activeTab === tab.id ? 'translateY(1px)' : 'none',
-                      transition: 'all 0.07s',
-                    }}
+                    className={`kiosk-pill${activeTab === tab.id ? ' is-active' : ''}`}
+                    style={{ fontSize: '0.72rem', padding: '6px 8px', gap: '5px' }}
                   >
                     {tab.icon}{tab.label}
                   </button>

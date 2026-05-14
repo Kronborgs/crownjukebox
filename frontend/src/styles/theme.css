@@ -681,6 +681,16 @@ body {
   background: linear-gradient(180deg, #1a1e2a 0%, #0e1018 100%);
 }
 
+.retro-key.is-active {
+  background: linear-gradient(160deg, #ff6a22 0%, #cc2200 100%);
+  color: #fff;
+  border-color: #990000;
+  box-shadow:
+    1px 1px 0 rgba(0,0,0,0.6),
+    inset 0 -1px 0 rgba(0,0,0,0.3);
+  transform: translateY(2px);
+}
+
 .retro-key-wide {
   min-width: 80px;
 }
