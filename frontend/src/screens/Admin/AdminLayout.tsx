@@ -908,6 +908,7 @@ function LibraryPanel() {
   const qc = useQueryClient()
   const [scanStatus, setScanStatus] = useState('')
   const [scanProgress, setScanProgress] = useState<{ scanned: number; total: number; currentFile: string } | null>(null)
+  const [isScanning, setIsScanning] = useState(false)
   const { data: playlists = [] } = useQuery({ queryKey: ['admin-playlists'], queryFn: adminApi.playlists })
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [uploadingPartyFiles, setUploadingPartyFiles] = useState(false)
@@ -919,11 +920,13 @@ function LibraryPanel() {
       if (p.error) {
         setScanStatus(`Fejl under scanning: ${p.error}`)
         setScanProgress(null)
+        setIsScanning(false)
         return
       }
       if (p.done) {
         setScanStatus(`Scanning færdig — ${p.total} filer behandlet`)
         setScanProgress(null)
+        setIsScanning(false)
         qc.invalidateQueries({ queryKey: ['system-metrics'] })
         qc.invalidateQueries({ queryKey: ['admin-jukeboxes'] })
         return
@@ -934,11 +937,12 @@ function LibraryPanel() {
   })
 
   async function rescan() {
-    setScanStatus('Scanner…')
+    setScanStatus('')
     setScanProgress(null)
+    setIsScanning(true)
     try {
       await adminApi.rescan()
-    } catch { setScanStatus('Fejl ved scanning') }
+    } catch { setScanStatus('Fejl ved scanning'); setIsScanning(false) }
   }
 
   async function rescanArtwork() {
@@ -1005,9 +1009,9 @@ function LibraryPanel() {
           className="btn btn-primary"
           style={{ justifyContent: 'flex-start', gap: '10px' }}
           onClick={rescan}
-          disabled={!!scanProgress || scanStatus === 'Scanner…'}
+          disabled={isScanning}
         >
-          <RefreshCw size={16} className={scanProgress || scanStatus === 'Scanner…' ? 'spinning' : ''} /> Scan musikmappe
+          <RefreshCw size={16} className={isScanning ? 'spinning' : ''} /> Scan musikmappe
         </button>
         <button className="btn btn-ghost" style={{ justifyContent: 'flex-start', gap: '10px' }} onClick={rescanArtwork}>
           <RefreshCw size={16} /> Genindlæs album covers
@@ -1028,7 +1032,7 @@ function LibraryPanel() {
         >
           <Plus size={16} /> {uploadingPartyFiles ? 'Uploader filer…' : 'Upload filer til SKÅL!'}
         </button>
-        {(scanProgress || scanStatus === 'Scanner…') && (
+        {scanProgress && (
           <div style={{
             marginTop: '8px',
             background: 'rgba(255,255,255,0.04)',
@@ -1078,7 +1082,7 @@ function LibraryPanel() {
             )}
           </div>
         )}
-        {scanStatus && !scanProgress && scanStatus !== 'Scanner…' && (
+        {scanStatus && !scanProgress && (
           <p style={{ color: scanStatus.startsWith('Fejl') ? 'var(--neon-amber)' : 'var(--neon-teal)', fontSize: '0.85rem', marginTop: '8px' }}>{scanStatus}</p>
         )}
       </div>
