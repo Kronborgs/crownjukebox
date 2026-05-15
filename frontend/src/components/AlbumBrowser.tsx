@@ -100,12 +100,20 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
   // exactly one row regardless of screen width.
   const albumGridRef = useRef<HTMLDivElement | null>(null)
   const albumGridColsRef = useRef(5) // sensible default; overwritten by ResizeObserver
+  // Page refs — used by navigateRef so page-turn logic reads fresh values without
+  // recreating the keyboard-event effect (which has an empty dep array).
+  const pageRef = useRef(1)
+  const totalPagesRef = useRef(1)
+  const filteredAlbumsLengthRef = useRef(0)
   selectedAlbumRef.current = selectedAlbum
   tracksRef.current = tracks as Track[]
   visibleAlbumsRef.current = visibleAlbums
   letterFilterRef.current = letterFilter
   focusedAlbumIdxRef.current = focusedAlbumIdx
   focusedTrackIdxRef.current = focusedTrackIdx
+  pageRef.current = safePage
+  totalPagesRef.current = totalPages
+  filteredAlbumsLengthRef.current = filteredAlbums.length
 
   function showToast(msg: string, ok = true) {
     setToast({ msg, ok })
@@ -171,9 +179,30 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
       else if (dir === 'up')    setFocusedTrackIdx(i => Math.max(0, i <= 0 ? 0 : i - 1))
       else if (dir === 'enter') { if (ftIdx >= 0 && ftIdx < tks.length) handleTrackClickRef.current?.(tks[ftIdx]) }
     } else {
-      if      (dir === 'right') setFocusedAlbumIdx(i => Math.min(vas.length - 1, i < 0 ? 0 : i + 1))
-      else if (dir === 'left')  setFocusedAlbumIdx(i => Math.max(0, i <= 0 ? 0 : i - 1))
-      else if (dir === 'down')  setFocusedAlbumIdx(i => Math.min(vas.length - 1, i < 0 ? 0 : i + COLS))
+      if (dir === 'right') {
+        if (faIdx < 0) {
+          setFocusedAlbumIdx(0)
+        } else if (faIdx >= vas.length - 1) {
+          // Last item on this page → advance to next page (wraps from last to first)
+          const nextPage = pageRef.current >= totalPagesRef.current ? 1 : pageRef.current + 1
+          setPage(nextPage)
+          setFocusedAlbumIdx(0)
+        } else {
+          setFocusedAlbumIdx(faIdx + 1)
+        }
+      } else if (dir === 'left') {
+        if (faIdx < 0) {
+          setFocusedAlbumIdx(0)
+        } else if (faIdx === 0) {
+          // First item on this page → go to previous page (wraps from first to last)
+          const prevPage = pageRef.current <= 1 ? totalPagesRef.current : pageRef.current - 1
+          const prevCount = Math.min(PAGE_SIZE, filteredAlbumsLengthRef.current - (prevPage - 1) * PAGE_SIZE)
+          setPage(prevPage)
+          setFocusedAlbumIdx(Math.max(0, prevCount - 1))
+        } else {
+          setFocusedAlbumIdx(faIdx - 1)
+        }
+      } else if (dir === 'down')  setFocusedAlbumIdx(i => Math.min(vas.length - 1, i < 0 ? 0 : i + COLS))
       else if (dir === 'up')    setFocusedAlbumIdx(i => Math.max(0, i < COLS ? 0 : i - COLS))
       else if (dir === 'enter') { if (faIdx >= 0 && faIdx < vas.length) setSelectedAlbum(vas[faIdx]) }
     }
