@@ -496,24 +496,19 @@ export function NowPlaying({ state, refreshState }: Props) {
   //   • No legitimate track ends within 1.5 s of just starting playback.
   const fadeCompletedAtRef = useRef<number>(0)
 
-  // Called by useAutoDJ when crossfade finishes.
-  // Player A has already been synced to Player B's src+position in the hook.
-  // We sync React's audioSrc state to that src so the audioSrc effect won't
-  // reload Player A when track?.id later changes via refreshState.
+  // Called by useAutoDJ when crossfade (deck swap) finishes.
+  // useAutoDJ has already swapped playerARef ↔ playerBRef and gainA ↔ gainB refs.
+  // audioRef.current now points at the element playing Song 2 (no src change needed).
+  // We just sync React's audioSrc state so the audioSrc effect won't reload the
+  // audio element when track?.id changes via refreshState later.
   const onFadeComplete = useCallback((finishedTrackId: string, _nextTrackId: string, nextSrc: string) => {
-    // Signal the next canplay event to skip any resumePositionRef seek.
-    // After a crossfade, Player A is already positioned correctly by runFadeLoop;
-    // a stale resumePositionRef (e.g. set by active_player_changed during the
-    // track transition SSE) would otherwise override that position and cause a jump.
-    crossfadeHandoverRef.current = true
     resumePositionRef.current = null
-    // Record the completion timestamp so onEnded can ignore Song A's natural
-    // 'ended' event that fires within ~500 ms of the crossfade completing.
+    // Record timestamp so onEnded ignores any stale events in the handover window.
     fadeCompletedAtRef.current = performance.now()
 
-    // Sync React state — same URL Player A was just set to in runFadeLoop.
-    // When the audioSrc effect later fires (due to track?.id change), it will compute
-    // the same URL and call setAudioSrc with an identical value → React bails out → no reload.
+    // Sync React's audioSrc state to the new primary's URL. Because the deck swap
+    // left Song 2's element untouched (no .src change), React's virtual-DOM diff will
+    // produce the same string → no DOM mutation → no browser reload.
     if (nextSrc) setAudioSrc(nextSrc)
     playbackApi.trackEnded(finishedTrackId)
       .catch(() => {})
@@ -565,13 +560,21 @@ export function NowPlaying({ state, refreshState }: Props) {
   // directStreamUrl is included so audioSrc updates when settings load (async race fix).
   // Gates: only load audio when this device holds the active-player role AND is not
   // casting (Chromecast plays the stream directly — no local playback needed).
+  //
+  // IMPORTANT — imperative src management:
+  // We set audio.src imperatively here instead of via JSX src={audioSrc}.
+  // React controlling src= would call audio.src = newValue on every render where
+  // audioSrc changes, triggering the browser's media-load algorithm and resetting
+  // playback. By skipping the assignment when a crossfade just completed (1500 ms
+  // window), we guarantee the actively-playing element is never interrupted.
   useEffect(() => {
     setNeedsInteraction(false)
+    const audio = audioRef.current
     if (!isActivePlayer || !track?.id || isCasting) {
       // Explicitly pause before clearing src so the position-update interval stops
       // immediately. Without this, the browser may buffer-play briefly and keep
       // reporting positions even after losing the active-player role.
-      audioRef.current?.pause()
+      if (audio) { audio.pause(); audio.src = '' }
       setAudioSrc(null)
       return
     }
@@ -588,7 +591,20 @@ export function NowPlaying({ state, refreshState }: Props) {
         // Not a valid URL — fall back to relative path (same origin)
       }
     }
+    // Skip reloading the audio element when a deck-swap crossfade just finished.
+    // The active element is already playing the correct track; overwriting its src
+    // would restart it from 0. The 3000 ms window matches the checkTime cooldown
+    // and safely covers the async refreshState() round-trip that updates track.id.
+    if (performance.now() - fadeCompletedAtRef.current < 3000) {
+      // Still sync the React state so later effects see the correct URL.
+      setAudioSrc(resolvedSrc)
+      return
+    }
     setAudioSrc(resolvedSrc)
+    if (audio) {
+      audio.src = resolvedSrc
+      audio.load()
+    }
   }, [track?.id, audioKey, directStreamUrl, isActivePlayer, isCasting]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Sync play/pause from server state
@@ -713,9 +729,10 @@ export function NowPlaying({ state, refreshState }: Props) {
       }
     }
     const onCanPlay = () => {
-      // After a crossfade handover, Player A's src was changed by runFadeLoop and
-      // currentTime was already set correctly. Skip any resume-position seek here
-      // to avoid overriding that with a stale value (e.g. Song 1's last position).
+      // crossfadeHandoverRef is set to true during a crossfade deck swap to prevent
+      // a stale resumePositionRef seek from overriding the correct playback position.
+      // With the deck-swap architecture no canplay fires on the primary during handover,
+      // but the guard is kept as belt-and-suspenders for any edge case.
       if (crossfadeHandoverRef.current) {
         crossfadeHandoverRef.current = false
         return
@@ -783,7 +800,10 @@ export function NowPlaying({ state, refreshState }: Props) {
       {/* Hidden audio element — only rendered for non-guest sessions (Fase 1) */}
       {!isGuest && (
         <>
-          <audio ref={audioRef} src={audioSrc ?? undefined} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }} />
+          {/* src is managed imperatively in the audioSrc effect — NOT via this JSX attribute.
+               Setting src= declaratively causes React to reload the element on every
+               audioSrc state change, which interrupts Auto DJ crossfade deck swaps. */}
+          <audio ref={audioRef} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }} />
           {/* Player B — used by Auto DJ crossfade; src managed entirely by useAutoDJ */}
           <audio ref={playerBRef} preload="auto" crossOrigin="anonymous" style={{ display: 'none' }} />
         </>

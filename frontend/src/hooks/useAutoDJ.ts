@@ -176,45 +176,47 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
     if (t < 1) {
       fadeRafRef.current = requestAnimationFrame(runFadeLoop)
     } else {
-      // Fade complete — transfer Player B's playback to Player A for seamless continuity.
-      // Capture ids and B's current position BEFORE modifying anything.
-      const playerB = playerBRef.current
-      const playerA = playerARef.current
+      // ── Deck swap ─────────────────────────────────────────────────────────────
+      // Player B is already playing Song 2 continuously at gain 1. Instead of
+      // copying audio into Player A (which triggers a browser media-reload),
+      // we swap which element is the "active" deck:
+      //
+      //   • playerARef.current  ← old playerB (playing Song 2, gain currently 1)
+      //   • playerBRef.current  ← old playerA (silence, becomes standby)
+      //   • crossfadeGainARef   ← old cfGainB (routes the new primary)
+      //   • crossfadeGainBRef   ← old cfGainA (routes the new standby, stays at 0)
+      //
+      // The Web Audio graph connections (MediaElementSourceNode → GainNode) are
+      // PERMANENT and unchanged. Only the ref pointers are swapped so that all
+      // downstream logic (onEnded, audioSrc effect, checkTime, startFade) follows
+      // the correct element and gain node without any .src changes or reloads.
       const finished = finishedTrackIdRef.current
       const next     = nextTrackIdRef.current
-      const nextTime = playerB?.currentTime ?? 0
+      const nextSrc  = next ? buildStreamUrl(next, directStreamUrlRef) : ''
 
-      // IMPORTANT: Use the canonical relative URL (same format the audioSrc effect
-      // computes from track.id) so that when React later renders <audio src={audioSrc}>
-      // the src content-attribute doesn't change.  If we used playerB.src here
-      // (the browser-resolved absolute URL) React would diff "absolute" vs "relative",
-      // see two different strings, and call audio.src = relativeUrl — which triggers
-      // the HTML media-element load algorithm even though the resolved URL is identical.
-      // That spurious reload resets playback to 0 and may fire ended/error, causing
-      // the queue to advance to Song C immediately after Song B just started.
-      const nextSrc = next ? buildStreamUrl(next, directStreamUrlRef) : ''
-
-      if (playerA && nextSrc) {
-        // Hand off: Player A takes over Player B's track at the same position.
-        playerA.src = nextSrc
-        playerA.currentTime = nextTime
-        playerA.play().catch(() => {})
-      } else if (playerA) {
-        // No next-track source (shouldn't happen, but safe fallback).
-        playerA.pause()
-        playerA.src = ''
-      }
-
-      // Silence and clear Player B
-      if (crossfadeGainARef.current) crossfadeGainARef.current.gain.value = 1
-      if (crossfadeGainBRef.current) crossfadeGainBRef.current.gain.value = 0
+      // Gains are already at their post-fade values (gainA=0, gainB=1 from equal-power).
+      // Reset comp gain — we're back to a single active source.
       if (crossfadeCompGainRef.current) crossfadeCompGainRef.current.gain.value = 1
-      if (playerB) {
-        playerB.pause()
-        playerB.src = ''
-        playerB.playbackRate = 1
+
+      // Silence + clear the old primary (Song 1) — no longer needed.
+      const oldPrimary = playerARef.current
+      if (oldPrimary) {
+        oldPrimary.pause()
+        oldPrimary.src = ''
+        oldPrimary.playbackRate = 1
       }
-      if (playerA) playerA.playbackRate = 1
+      // Song 2 (old Player B) keeps playing — do NOT touch it.
+      if (playerBRef.current) playerBRef.current.playbackRate = 1
+
+      // Swap player refs.
+      ;(playerARef as React.MutableRefObject<HTMLAudioElement | null>).current = playerBRef.current
+      ;(playerBRef as React.MutableRefObject<HTMLAudioElement | null>).current = oldPrimary
+
+      // Swap gain node refs to maintain invariant: crossfadeGainARef routes playerARef.
+      const tmpGain = crossfadeGainARef.current
+      ;(crossfadeGainARef as React.MutableRefObject<GainNode | null>).current = crossfadeGainBRef.current
+      ;(crossfadeGainBRef as React.MutableRefObject<GainNode | null>).current = tmpGain
+      // After swap: gainA (new primary) = 1 ✓   gainB (new standby) = 0 ✓
 
       isFadingRef.current = false
       fadeLoadingRef.current = false
@@ -229,7 +231,7 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
         onFadeComplete(finished, next, nextSrc)
       }
     }
-  }, [playerARef, crossfadeGainARef, crossfadeGainBRef, crossfadeCompGainRef, onFadeComplete])
+  }, [playerARef, playerBRef, crossfadeGainARef, crossfadeGainBRef, crossfadeCompGainRef, directStreamUrlRef, onFadeComplete])
 
   // Start the crossfade toward the given next track.
   // Returns true if the fade was started, false if it was aborted (e.g. Player B 404).
