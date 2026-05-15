@@ -1054,7 +1054,9 @@ function LibraryPanel() {
   return (
     <div>
       <h2 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '20px' }}>Musikbibliotek</h2>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxWidth: '400px' }}>
+      <div style={{ display: 'flex', gap: '40px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        {/* ── Venstre: normale handlinger ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', minWidth: '300px', maxWidth: '400px' }}>
         <button
           className="btn btn-primary"
           style={{ justifyContent: 'flex-start', gap: '10px' }}
@@ -1063,25 +1065,6 @@ function LibraryPanel() {
         >
           <RefreshCw size={16} className={isScanning ? 'spinning' : ''} /> Scan musikmappe
         </button>
-        {/* ── Reset library ── */}
-        {!resetConfirm ? (
-          <button
-            className="btn btn-ghost"
-            style={{ justifyContent: 'flex-start', gap: '10px', color: 'var(--neon-red, #ff4444)', borderColor: 'rgba(255,68,68,0.3)' }}
-            onClick={() => setResetConfirm(true)}
-            disabled={isScanning || isResetting}
-          >
-            <Trash2 size={16} /> Nulstil bibliotek (slet & scann igen)
-          </button>
-        ) : (
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '10px 14px', borderRadius: '8px', border: '1px solid rgba(255,68,68,0.5)', background: 'rgba(255,68,68,0.08)' }}>
-            <span style={{ flex: 1, fontSize: '0.85rem', color: 'var(--neon-amber, #ffaa00)' }}>⚠ Sletter alle numre, albums og mappe-playlister. Kan ikke fortrydes.</span>
-            <button className="btn btn-ghost" style={{ fontSize: '0.8rem', color: 'var(--neon-red, #ff4444)' }} onClick={resetLibrary} disabled={isResetting}>
-              {isResetting ? 'Nulstiller…' : 'Ja, nulstil'}
-            </button>
-            <button className="btn btn-ghost" style={{ fontSize: '0.8rem' }} onClick={() => setResetConfirm(false)}>Annuller</button>
-          </div>
-        )}
         <button
           className="btn btn-ghost"
           style={{ justifyContent: 'flex-start', gap: '10px' }}
@@ -1183,7 +1166,41 @@ function LibraryPanel() {
         {scanStatus && !scanProgress && (
           <p style={{ color: scanStatus.startsWith('Fejl') ? 'var(--neon-amber)' : 'var(--neon-teal)', fontSize: '0.85rem', marginTop: '8px' }}>{scanStatus}</p>
         )}
-      </div>
+        </div>{/* end left column */}
+
+        {/* ── Højre: farezone ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', minWidth: '260px', maxWidth: '380px' }}>
+          <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'rgba(255,68,68,0.7)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '4px' }}>
+            ⚠ Farezone
+          </p>
+          {!resetConfirm ? (
+            <button
+              className="btn btn-ghost"
+              style={{ justifyContent: 'flex-start', gap: '10px', color: 'var(--neon-red, #ff4444)', borderColor: 'rgba(255,68,68,0.3)' }}
+              onClick={() => setResetConfirm(true)}
+              disabled={isScanning || isResetting}
+            >
+              <Trash2 size={16} /> Nulstil bibliotek (slet &amp; scann igen)
+            </button>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '12px 14px', borderRadius: '8px', border: '1px solid rgba(255,68,68,0.5)', background: 'rgba(255,68,68,0.08)' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--neon-amber, #ffaa00)' }}>Sletter alle numre, albums og mappe-playlister. Kan ikke fortrydes.</span>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="btn btn-ghost" style={{ fontSize: '0.8rem', color: 'var(--neon-red, #ff4444)' }} onClick={resetLibrary} disabled={isResetting}>
+                  {isResetting ? 'Nulstiller…' : 'Ja, nulstil'}
+                </button>
+                <button className="btn btn-ghost" style={{ fontSize: '0.8rem' }} onClick={() => setResetConfirm(false)}>Annuller</button>
+              </div>
+            </div>
+          )}
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '4px' }}>
+            Brug denne inden scanning hvis du vil starte fra bunden. SKÅL!-playlister bevares.
+          </p>
+        </div>
+      </div>{/* end two-column row */}
+
+      {/* ── Broken files ── */}
+      <BrokenFilesPanel />
 
       {/* Playlist management */}
       <div style={{ marginTop: '32px' }}>
@@ -1245,6 +1262,110 @@ function LibraryPanel() {
             <Plus size={16} />
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Broken Files panel (embedded inside LibraryPanel) ───────
+
+function BrokenFilesPanel() {
+  const qc = useQueryClient()
+  const { data: files = [], isLoading, refetch } = useQuery({
+    queryKey: ['admin-broken-files'],
+    queryFn:  adminApi.brokenFiles,
+  })
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [confirmAll, setConfirmAll] = useState(false)
+  const [deletingAll, setDeletingAll] = useState(false)
+
+  if (isLoading) return null
+  if (files.length === 0) return (
+    <div style={{ marginTop: '28px', marginBottom: '8px' }}>
+      <p style={{ fontSize: '0.8rem', color: 'var(--neon-teal)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+        ✓ Ingen ødelagte filer fundet (alle numre har varighed)
+      </p>
+    </div>
+  )
+
+  async function deleteOne(id: string) {
+    setDeleting(id)
+    try {
+      await adminApi.deleteTrack(id)
+      qc.invalidateQueries({ queryKey: ['admin-broken-files'] })
+      qc.invalidateQueries({ queryKey: ['system-metrics'] })
+    } finally { setDeleting(null) }
+  }
+
+  async function deleteAll() {
+    setConfirmAll(false)
+    setDeletingAll(true)
+    for (const f of files as Track[]) {
+      try { await adminApi.deleteTrack(f.id) } catch { /* continue */ }
+    }
+    await qc.invalidateQueries({ queryKey: ['admin-broken-files'] })
+    await qc.invalidateQueries({ queryKey: ['system-metrics'] })
+    setDeletingAll(false)
+  }
+
+  return (
+    <div style={{ marginTop: '28px', marginBottom: '28px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+        <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--neon-amber, #ffaa00)', margin: 0 }}>
+          ⚠ Fejlfiler — {(files as Track[]).length} numre uden varighed
+        </h3>
+        <button className="btn btn-ghost" style={{ fontSize: '0.8rem' }} onClick={() => refetch()}>
+          <RefreshCw size={13} /> Opdater
+        </button>
+        {!confirmAll ? (
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: '0.8rem', color: 'var(--neon-red, #ff4444)', marginLeft: 'auto' }}
+            onClick={() => setConfirmAll(true)}
+            disabled={deletingAll}
+          >
+            <Trash2 size={13} /> Fjern alle fra bibliotek
+          </button>
+        ) : (
+          <div style={{ display: 'flex', gap: '6px', marginLeft: 'auto' }}>
+            <button className="btn btn-ghost" style={{ fontSize: '0.8rem', color: 'var(--neon-red, #ff4444)' }} onClick={deleteAll} disabled={deletingAll}>
+              {deletingAll ? 'Fjerner…' : 'Ja, fjern alle'}
+            </button>
+            <button className="btn btn-ghost" style={{ fontSize: '0.8rem' }} onClick={() => setConfirmAll(false)}>Annuller</button>
+          </div>
+        )}
+      </div>
+      <p style={{ fontSize: '0.78rem', color: 'var(--text-dim)', marginBottom: '10px' }}>
+        Disse filer kunne ikke læses korrekt (mangler varighed). Fjern dem fra biblioteket — filerne på disken berøres ikke.
+        Scan igen efter du har rettet eller slettet filerne.
+      </p>
+      <div style={{ maxHeight: '320px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }}>
+        {(files as Track[]).map(track => (
+          <div key={track.id} style={{
+            display: 'flex', alignItems: 'center', gap: '10px',
+            padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.05)',
+          }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {track.title}
+              </p>
+              <p style={{ fontSize: '0.72rem', color: 'var(--text-dim)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {track.artist} — {track.album}
+              </p>
+              <p style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.25)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: 'monospace' }}>
+                {track.file_path}
+              </p>
+            </div>
+            <button
+              className="btn btn-ghost"
+              style={{ flexShrink: 0, padding: '4px 8px', fontSize: '0.75rem', color: 'var(--neon-red, #ff4444)' }}
+              onClick={() => deleteOne(track.id)}
+              disabled={deleting === track.id}
+            >
+              {deleting === track.id ? '…' : <Trash2 size={13} />}
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   )

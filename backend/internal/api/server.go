@@ -277,6 +277,8 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/admin/rescan-artwork", s.handleRescanArtwork)
 		r.Post("/api/admin/rescan-missing-artwork", s.handleRescanMissingArtwork)
 		r.Post("/api/admin/library/reset", s.handleResetLibrary)
+		r.Get("/api/admin/library/broken-files", s.handleListBrokenFiles)
+		r.Delete("/api/admin/library/tracks/{id}", s.handleDeleteTrack)
 		r.Get("/api/admin/missing-artwork", s.handleAdminMissingArtwork)
 		r.Get("/api/admin/keyboard-bindings", s.handleGetKeyboardBindings)
 		r.Put("/api/admin/keyboard-bindings", s.handleUpdateKeyboardBindings)
@@ -592,7 +594,7 @@ func (s *Server) handleGetAlbumTracks(w http.ResponseWriter, r *http.Request) {
 	if err := s.db.Select(&tracks, `
 		SELECT
 			t.id, t.album_id, t.artist_id, t.title,
-			t.track_number, t.disc_number, t.duration,
+			t.track_number, t.disc_number, t.duration, t.bpm,
 			t.file_path, t.source_type, t.source_id, t.stream_url,
 			t.created_at, t.updated_at,
 			COALESCE(ar.name, '') AS artist,
@@ -615,7 +617,7 @@ func (s *Server) handleGetTrack(w http.ResponseWriter, r *http.Request) {
 	if err := s.db.Get(&track, `
 		SELECT
 			t.id, t.album_id, t.artist_id, t.title,
-			t.track_number, t.disc_number, t.duration,
+			t.track_number, t.disc_number, t.duration, t.bpm,
 			t.file_path, t.source_type, t.source_id, t.stream_url,
 			t.created_at, t.updated_at,
 			COALESCE(ar.name, '') AS artist,
@@ -2225,6 +2227,59 @@ func (s *Server) TriggerBackgroundScan() bool {
 	return true
 }
 
+// handleListBrokenFiles returns local tracks whose duration is 0 (unreadable or
+// untagged files that the scanner could not extract timing information from).
+func (s *Server) handleListBrokenFiles(w http.ResponseWriter, r *http.Request) {
+	var tracks []db.Track
+	err := s.db.Select(&tracks, `
+		SELECT
+			t.id, t.album_id, t.artist_id, t.title,
+			t.track_number, t.disc_number, t.duration, t.bpm,
+			t.file_path, t.source_type, t.source_id, t.stream_url,
+			t.created_at, t.updated_at,
+			COALESCE(ar.name, '') AS artist,
+			COALESCE(al.title, '') AS album,
+			COALESCE(t.cover_art_id, al.cover_art_id) AS cover_art_id
+		FROM tracks t
+		LEFT JOIN artists ar ON ar.id = t.artist_id
+		LEFT JOIN albums al ON al.id = t.album_id
+		WHERE t.source_type = 'local' AND t.duration = 0
+		ORDER BY t.file_path ASC
+		LIMIT 1000`)
+	if err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	if tracks == nil {
+		tracks = []db.Track{}
+	}
+	jsonOK(w, tracks)
+}
+
+// handleDeleteTrack removes a local track from the database (not from disk).
+// After deletion orphan albums and artists are cleaned up automatically.
+func (s *Server) handleDeleteTrack(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var track db.Track
+	if err := s.db.Get(&track, `SELECT * FROM tracks WHERE id = ? AND source_type = 'local'`, id); err != nil {
+		jsonError(w, "track ikke fundet", http.StatusNotFound)
+		return
+	}
+	albumID := track.AlbumID
+	artistID := track.ArtistID
+
+	s.db.Exec(`DELETE FROM playlist_tracks WHERE track_id = ?`, id)
+	s.db.Exec(`DELETE FROM tracks WHERE id = ?`, id)
+	// Remove album if now empty
+	s.db.Exec(`DELETE FROM albums WHERE id = ? AND (SELECT COUNT(*) FROM tracks WHERE album_id = ?) = 0`, albumID, albumID)
+	// Remove artist if now empty
+	s.db.Exec(`DELETE FROM artists WHERE id = ? AND (SELECT COUNT(*) FROM tracks WHERE artist_id = ?) = 0`, artistID, artistID)
+
+	log.Printf("[delete-track] removed track %s (%s)", id, track.FilePath)
+	jsonOK(w, map[string]string{"status": "deleted"})
+}
+
 // handleResetLibrary wipes all auto-scanned tracks, albums, orphan artists and
 // folder-based playlists so that the next scan starts from a completely clean slate.
 // Manual playlists (SKÅL!, source_type='local') are preserved.
@@ -2491,7 +2546,7 @@ func (s *Server) handleGetPlaylistTracks(w http.ResponseWriter, r *http.Request)
 	_ = s.db.Select(&tracks, `
 		SELECT
 			t.id, t.album_id, t.artist_id, t.title,
-			t.track_number, t.disc_number, t.duration,
+			t.track_number, t.disc_number, t.duration, t.bpm,
 			t.file_path, t.source_type, t.source_id, t.stream_url,
 			t.created_at, t.updated_at,
 			COALESCE(ar.name, '') AS artist,
@@ -2765,7 +2820,7 @@ func (s *Server) handleListPartyUploads(w http.ResponseWriter, r *http.Request) 
 	if err := s.db.Select(&tracks, `
 		SELECT
 			t.id, t.album_id, t.artist_id, t.title,
-			t.track_number, t.disc_number, t.duration,
+			t.track_number, t.disc_number, t.duration, t.bpm,
 			t.file_path, t.source_type, t.source_id, t.stream_url,
 			t.cover_art_id, t.created_at, t.updated_at,
 			COALESCE(ar.name, '') AS artist,

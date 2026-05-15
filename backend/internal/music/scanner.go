@@ -337,6 +337,11 @@ func extractMetadata(filePath, originalFilename string, m tag.Metadata) Metadata
 		}
 	}
 
+	// Duration — dhowden/tag does not expose a Duration() method.
+	// Read from format-specific binary headers (FLAC STREAMINFO, MPEG Xing/Info
+	// frame, M4A mvhd atom) or the TLEN/LENGTH embedded tag.
+	meta.Duration = getDurationSecs(filePath, m)
+
 	return meta
 }
 
