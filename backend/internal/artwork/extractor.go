@@ -110,7 +110,14 @@ func (e *Extractor) ExtractForAlbum(album *db.Album) error {
 		return nil // no tracks yet
 	}
 
-	albumDir := filepath.Dir(firstTrack.FilePath)
+	trackDir := filepath.Dir(firstTrack.FilePath)
+
+	// Candidate directories: track dir itself, and one level up (handles CD1/CD2 subfolders).
+	artDirs := []string{trackDir}
+	parent := filepath.Dir(trackDir)
+	if parent != trackDir {
+		artDirs = append(artDirs, parent)
+	}
 
 	// 1. Try embedded art from each track file
 	var tracks []db.Track
@@ -123,29 +130,33 @@ func (e *Extractor) ExtractForAlbum(album *db.Album) error {
 		}
 	}
 
-	// 2. Try folder-level image files — first check well-known names
-	for _, candidate := range candidateFilenames {
-		candidatePath := filepath.Join(albumDir, candidate)
-		data, err := os.ReadFile(candidatePath)
-		if err == nil && len(data) > 0 {
-			mimeType := mimeTypeFromExt(filepath.Ext(candidate))
-			return e.saveArtwork(album, "", "folder_file", candidatePath, data, mimeType)
+	// 2. Try folder-level image files in track dir and parent (for multi-disc albums).
+	for _, dir := range artDirs {
+		for _, candidate := range candidateFilenames {
+			candidatePath := filepath.Join(dir, candidate)
+			data, err := os.ReadFile(candidatePath)
+			if err == nil && len(data) > 0 {
+				mimeType := mimeTypeFromExt(filepath.Ext(candidate))
+				return e.saveArtwork(album, "", "folder_file", candidatePath, data, mimeType)
+			}
 		}
 	}
 
-	// 2b. Fallback: pick ANY image file in the album folder (e.g. "100 Danske Hits.jpg")
-	if entries, err := os.ReadDir(albumDir); err == nil {
-		for _, entry := range entries {
-			if entry.IsDir() {
-				continue
-			}
-			ext := strings.ToLower(filepath.Ext(entry.Name()))
-			if ext == ".jpg" || ext == ".jpeg" || ext == ".png" {
-				candidatePath := filepath.Join(albumDir, entry.Name())
-				data, err := os.ReadFile(candidatePath)
-				if err == nil && len(data) > 0 {
-					mimeType := mimeTypeFromExt(ext)
-					return e.saveArtwork(album, "", "folder_file", candidatePath, data, mimeType)
+	// 2b. Fallback: pick ANY image file in any of the candidate dirs.
+	for _, dir := range artDirs {
+		if entries, err := os.ReadDir(dir); err == nil {
+			for _, entry := range entries {
+				if entry.IsDir() {
+					continue
+				}
+				ext := strings.ToLower(filepath.Ext(entry.Name()))
+				if ext == ".jpg" || ext == ".jpeg" || ext == ".png" {
+					candidatePath := filepath.Join(dir, entry.Name())
+					data, err := os.ReadFile(candidatePath)
+					if err == nil && len(data) > 0 {
+						mimeType := mimeTypeFromExt(ext)
+						return e.saveArtwork(album, "", "folder_file", candidatePath, data, mimeType)
+					}
 				}
 			}
 		}

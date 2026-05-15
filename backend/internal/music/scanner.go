@@ -123,6 +123,10 @@ func (s *Scanner) Scan(progress chan<- ScanProgress) error {
 		log.Printf("[scanner] removed %d empty album(s)", n)
 	}
 
+	// Build/sync one playlist per top-level subdirectory so users can browse
+	// their music by category (e.g. "Aeldre", "Yngre") and use them for autoplay.
+	s.buildFolderPlaylists()
+
 	if progress != nil {
 		progress <- ScanProgress{Total: total, Scanned: total, Done: true}
 	}
@@ -263,39 +267,42 @@ func extractMetadata(filePath, originalFilename string, m tag.Metadata) Metadata
 		Album:       "Unknown Album",
 	}
 
-	if m == nil {
-		return meta
+	if m != nil {
+		if v := m.Title(); v != "" {
+			meta.Title = v
+		}
+		if v := m.Artist(); v != "" {
+			meta.Artist = v
+			meta.AlbumArtist = v // default album artist to track artist
+		}
+		if v := m.AlbumArtist(); v != "" {
+			meta.AlbumArtist = v
+			meta.HasExplicitAlbumArtist = true
+		}
+		if v := m.Album(); v != "" {
+			meta.Album = v
+		}
+		if v := m.Year(); v != 0 {
+			meta.Year = v
+		}
+		if v := m.Genre(); v != "" {
+			meta.Genre = v
+		}
+
+		n, _ := m.Track()
+		meta.TrackNumber = n
+
+		d, _ := m.Disc()
+		if d == 0 {
+			d = 1
+		}
+		meta.DiscNumber = d
 	}
 
-	if v := m.Title(); v != "" {
-		meta.Title = v
-	}
-	if v := m.Artist(); v != "" {
-		meta.Artist = v
-		meta.AlbumArtist = v // default album artist to track artist
-	}
-	if v := m.AlbumArtist(); v != "" {
-		meta.AlbumArtist = v
-		meta.HasExplicitAlbumArtist = true
-	}
-	if v := m.Album(); v != "" {
-		meta.Album = v
-	}
-	if v := m.Year(); v != 0 {
-		meta.Year = v
-	}
-	if v := m.Genre(); v != "" {
-		meta.Genre = v
-	}
-
-	n, _ := m.Track()
-	meta.TrackNumber = n
-
-	d, _ := m.Disc()
-	if d == 0 {
-		d = 1
-	}
-	meta.DiscNumber = d
+	// Fill in missing metadata from the file's directory hierarchy.
+	// This handles untagged files or files tagged with only partial information,
+	// common in ripped collections where folder names carry "Artist - Album" info.
+	inferFromPath(&meta, filePath)
 
 	// Extract BPM from raw tags.
 	// Key variants covered:
@@ -304,25 +311,27 @@ func extractMetadata(filePath, originalFilename string, m tag.Metadata) Metadata
 	//   BPM / bpm  — Vorbis Comments (FLAC, OGG, Opus)
 	//   TEMPO/tempo — alternative Vorbis field used by some taggers
 	//   tmpo       — iTunes MP4/M4A atom (stored as int16 by dhowden/tag)
-	if raw := m.Raw(); raw != nil {
-		for _, key := range []string{"TBPM", "TBP", "BPM", "bpm", "TEMPO", "tempo", "Tempo", "tmpo", "TMPO"} {
-			if v, ok := raw[key]; ok {
-				var bpmStr string
-				switch val := v.(type) {
-				case int:
-					bpmStr = strconv.Itoa(val)
-				case int16:
-					bpmStr = strconv.Itoa(int(val))
-				case int32:
-					bpmStr = strconv.Itoa(int(val))
-				case int64:
-					bpmStr = strconv.FormatInt(val, 10)
-				default:
-					bpmStr = strings.TrimSpace(strings.Split(fmt.Sprintf("%v", val), ".")[0])
-				}
-				if n, err := strconv.Atoi(bpmStr); err == nil && n > 0 && n < 300 {
-					meta.BPM = n
-					break
+	if m != nil {
+		if raw := m.Raw(); raw != nil {
+			for _, key := range []string{"TBPM", "TBP", "BPM", "bpm", "TEMPO", "tempo", "Tempo", "tmpo", "TMPO"} {
+				if v, ok := raw[key]; ok {
+					var bpmStr string
+					switch val := v.(type) {
+					case int:
+						bpmStr = strconv.Itoa(val)
+					case int16:
+						bpmStr = strconv.Itoa(int(val))
+					case int32:
+						bpmStr = strconv.Itoa(int(val))
+					case int64:
+						bpmStr = strconv.FormatInt(val, 10)
+					default:
+						bpmStr = strings.TrimSpace(strings.Split(fmt.Sprintf("%v", val), ".")[0])
+					}
+					if n, err := strconv.Atoi(bpmStr); err == nil && n > 0 && n < 300 {
+						meta.BPM = n
+						break
+					}
 				}
 			}
 		}
@@ -364,18 +373,16 @@ func (s *Scanner) upsertAlbum(artistID string, meta Metadata) (string, error) {
 		return existing.ID, nil
 	}
 
-	// Fallback: find an existing album with the same title (and year if known).
-	// This handles compilations where each track has a different AlbumArtist tag
-	// (e.g. rippers that copy the track artist into AlbumArtist). Using year as
-	// a secondary key reduces false merges between same-titled albums by different
-	// artists released in different years (e.g. "Greatest Hits" 1982 vs 1996).
+	// Fallback: find an existing album with the same title AND year.
+	// Only applied when we have a year — this handles compilations where each
+	// track has a different AlbumArtist tag. Without a year the match is too
+	// ambiguous: "Greatest Hits" by Guns N' Roses must not merge with
+	// "Greatest Hits" by ABBA just because both lack a year tag.
 	if meta.Year > 0 {
 		err = s.db.Get(&existing, `SELECT * FROM albums WHERE title = ? AND year = ? LIMIT 1`, meta.Album, meta.Year)
-	} else {
-		err = s.db.Get(&existing, `SELECT * FROM albums WHERE title = ? LIMIT 1`, meta.Album)
-	}
-	if err == nil {
-		return existing.ID, nil
+		if err == nil {
+			return existing.ID, nil
+		}
 	}
 
 	id := uuid.NewString()
@@ -415,4 +422,181 @@ func (s *Scanner) upsertTrack(albumID, artistID, filePath string, meta Metadata)
 		return fmt.Errorf("upsert track %q: %w", meta.Title, err)
 	}
 	return nil
+}
+
+// ─── Path-based metadata inference ──────────────────────────────────────────
+
+// inferFromPath fills in missing Album, Artist, TrackNumber, and DiscNumber
+// from the file's directory hierarchy when embedded tags are absent or generic.
+//
+// Supported folder structures (at any depth below the music root):
+//
+//	…/Artist - Album Title/track.mp3
+//	…/Artist - Album Title/CD1/track.mp3
+//	…/Category/Artist - Album Title/Disc 2/track.mp3
+//	…/Album Title/track.mp3
+func inferFromPath(meta *Metadata, filePath string) {
+	dir := filepath.Dir(filePath)
+	folderName := filepath.Base(dir)
+
+	// Detect and strip a disc subfolder (CD1, Disc 2, Disk 1, …).
+	if n := parseDiscFolder(folderName); n > 0 {
+		if meta.DiscNumber <= 1 {
+			meta.DiscNumber = n
+		}
+		dir = filepath.Dir(dir)
+		folderName = filepath.Base(dir)
+	}
+
+	// Fill in Album (and optionally Artist) from the album folder name.
+	if meta.Album == "Unknown Album" || meta.Album == "" {
+		artist, album := splitArtistAlbumFolder(folderName)
+		if album != "" && album != "." {
+			meta.Album = album
+		}
+		if artist != "" && (meta.AlbumArtist == "Unknown Artist" || meta.AlbumArtist == "") {
+			meta.AlbumArtist = artist
+			if meta.Artist == "Unknown Artist" || meta.Artist == "" {
+				meta.Artist = artist
+			}
+		}
+	}
+
+	// Infer track number from a leading numeric prefix on the filename,
+	// e.g. "01 Welcome To The Jungle.mp3" or "03 - Paradise City.mp3".
+	if meta.TrackNumber == 0 {
+		meta.TrackNumber = parseTrackNumberFromFilename(filepath.Base(filePath))
+	}
+}
+
+// parseDiscFolder returns n > 0 if the folder name looks like a disc/CD
+// subfolder (e.g. "CD1", "CD 2", "Disc 1", "disk2"), otherwise 0.
+func parseDiscFolder(name string) int {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	for _, prefix := range []string{"cd ", "cd", "disc ", "disc", "disk ", "disk"} {
+		if strings.HasPrefix(lower, prefix) {
+			rest := strings.TrimSpace(lower[len(prefix):])
+			if n, err := strconv.Atoi(rest); err == nil && n > 0 && n <= 20 {
+				return n
+			}
+		}
+	}
+	return 0
+}
+
+// splitArtistAlbumFolder splits a folder name of the form "Artist - Album Title"
+// into (artist, album). Returns ("", name) when no " - " separator is present.
+func splitArtistAlbumFolder(name string) (artist, album string) {
+	if idx := strings.Index(name, " - "); idx > 0 {
+		return strings.TrimSpace(name[:idx]), strings.TrimSpace(name[idx+3:])
+	}
+	return "", name
+}
+
+// parseTrackNumberFromFilename extracts a leading numeric track number from a
+// filename (without extension), e.g. "01 Song.mp3" → 1, "05 - Title.mp3" → 5.
+// Returns 0 if no unambiguous leading number is found.
+func parseTrackNumberFromFilename(filename string) int {
+	name := strings.TrimSuffix(filename, filepath.Ext(filename))
+	end := 0
+	for end < len(name) && name[end] >= '0' && name[end] <= '9' {
+		end++
+	}
+	// Accept 1–3 digit track numbers; reject bare "1999" year-prefixed filenames
+	if end >= 1 && end <= 3 {
+		if n, err := strconv.Atoi(name[:end]); err == nil && n > 0 && n < 500 {
+			return n
+		}
+	}
+	return 0
+}
+
+// ─── Folder-based playlist building ─────────────────────────────────────────
+
+// buildFolderPlaylists creates or syncs one playlist per direct subdirectory
+// of the music root. Each playlist contains all local tracks whose file path
+// lives inside that subdirectory, sorted by path (which naturally groups by
+// album and, when filenames carry track numbers, preserves track order).
+//
+// Playlists are identified by source_type='folder' and source_id=<dirPath> so
+// repeated scans update existing playlists without creating duplicates.
+func (s *Scanner) buildFolderPlaylists() {
+	entries, err := os.ReadDir(s.musicDir)
+	if err != nil {
+		log.Printf("[scanner] read music dir for folder playlists: %v", err)
+		return
+	}
+
+	// Fetch all local tracks ordered by path for fast in-Go prefix matching.
+	type trackRow struct {
+		ID       string `db:"id"`
+		FilePath string `db:"file_path"`
+	}
+	var allTracks []trackRow
+	if err := s.db.Select(&allTracks, `
+		SELECT id, file_path FROM tracks
+		WHERE source_type = 'local'
+		ORDER BY file_path ASC`); err != nil {
+		log.Printf("[scanner] fetch tracks for folder playlists: %v", err)
+		return
+	}
+
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		dirPath := filepath.Join(s.musicDir, entry.Name())
+		prefix := dirPath + string(os.PathSeparator)
+		playlistName := entry.Name()
+
+		// Collect all track IDs whose path lives inside this subtree.
+		var trackIDs []string
+		for _, t := range allTracks {
+			if strings.HasPrefix(t.FilePath, prefix) {
+				trackIDs = append(trackIDs, t.ID)
+			}
+		}
+		if len(trackIDs) == 0 {
+			continue
+		}
+
+		// Find or create the folder playlist.
+		var playlistID string
+		err := s.db.Get(&playlistID, `
+			SELECT id FROM playlists
+			WHERE source_type = 'folder' AND source_id = ?`, dirPath)
+		if err != nil {
+			playlistID = uuid.NewString()
+			if _, err := s.db.Exec(`
+				INSERT INTO playlists (id, name, source_type, source_id, is_party_playlist, created_at)
+				VALUES (?, ?, 'folder', ?, 0, CURRENT_TIMESTAMP)`,
+				playlistID, playlistName, dirPath); err != nil {
+				log.Printf("[scanner] create folder playlist %q: %v", playlistName, err)
+				continue
+			}
+			log.Printf("[scanner] created folder playlist %q with %d tracks", playlistName, len(trackIDs))
+		} else {
+			// Keep name in sync in case the folder was renamed.
+			_, _ = s.db.Exec(`UPDATE playlists SET name = ? WHERE id = ?`, playlistName, playlistID)
+		}
+
+		// Rebuild playlist_tracks in a transaction so partial updates are avoided.
+		tx, err := s.db.Beginx()
+		if err != nil {
+			log.Printf("[scanner] begin tx for folder playlist %q: %v", playlistName, err)
+			continue
+		}
+		_, _ = tx.Exec(`DELETE FROM playlist_tracks WHERE playlist_id = ?`, playlistID)
+		for pos, tid := range trackIDs {
+			_, _ = tx.Exec(`
+				INSERT OR IGNORE INTO playlist_tracks (playlist_id, track_id, position, is_intro)
+				VALUES (?, ?, ?, 0)`, playlistID, tid, pos+1)
+		}
+		if err := tx.Commit(); err != nil {
+			log.Printf("[scanner] commit folder playlist %q: %v", playlistName, err)
+			_ = tx.Rollback()
+			continue
+		}
+		log.Printf("[scanner] synced folder playlist %q (%d tracks)", playlistName, len(trackIDs))
+	}
 }
