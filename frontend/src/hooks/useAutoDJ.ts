@@ -123,6 +123,11 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
   const finishedTrackIdRef = useRef<string | null>(null)
   // startFade loading guard: prevents concurrent startFade calls during async preload.
   const fadeLoadingRef = useRef(false)
+  // Timestamp of the most recent fade completion (performance.now()).
+  // Shared between runFadeLoop and the checkTime RAF so the polling loop knows
+  // to back off for a short window after a crossfade, preventing the stale
+  // effect instance from re-triggering a fade against the just-started Song B.
+  const fadeCompletedAtRef = useRef(0)
 
   // React state for UI re-renders (isFading + isBpmMatch indicators in NowPlaying)
   const [isFadingState, setIsFadingState] = useState(false)
@@ -206,6 +211,7 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
 
       isFadingRef.current = false
       fadeLoadingRef.current = false
+      fadeCompletedAtRef.current = performance.now() // cooldown for checkTime
       setIsFadingState(false)
       setIsBpmMatchState(false)
       fadeRafRef.current = undefined
@@ -299,10 +305,18 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
     let fetchedForTrackId: string | null = null
     let scheduledNextId: string | null = null
     let scheduledNextBpm: number = 0
+    const FADE_COOLDOWN_MS = 3000
+
     const checkTime = async () => {
       const playerA = playerARef.current
       if (!playerA || cancelled) return
       if (isFadingRef.current) return // Already in a fade
+
+      // Cooldown after a completed fade: the effect still runs with the OLD
+      // currentTrackId for a few frames until React re-renders with the new track.
+      // During this window Player A is playing Song B near its start (currentTime
+      // ≈ crossfadeSeconds) so remaining is small and would trigger another fade.
+      if (performance.now() - fadeCompletedAtRef.current < FADE_COOLDOWN_MS) return
 
       const duration = playerA.duration
       const current  = playerA.currentTime
