@@ -448,17 +448,19 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
             </div>
           )}
 
-          {/* CENTER: keyboard box */}
-          <div style={{
-            flex: 1,
-            background: 'linear-gradient(180deg, #2d1a06 0%, #1a0e04 100%)',
-            border: '2px solid #6a4820',
-            borderBottom: '3px solid #9a7040',
-            borderRadius: onSearchTab ? '0' : '6px 6px 8px 8px',
-            padding: '8px 10px 10px',
-            boxShadow: 'inset 0 -4px 12px rgba(0,0,0,0.55)',
-            display: 'flex', flexDirection: 'column', gap: '5px',
-          }}>
+          {/* CENTER: keyboard box — brushed aluminum panel with corner screws */}
+          <div
+            className="brushed-aluminum"
+            style={{
+              flex: 1,
+              borderRadius: onSearchTab ? '0' : '6px 6px 8px 8px',
+              padding: '14px 10px 14px',
+              display: 'flex', flexDirection: 'column', gap: '5px',
+            }}
+          >
+            {/* Corner screws (top-right + bottom-left via spans; top-left + bottom-right via CSS ::before/::after) */}
+            <span className="screw screw-tr" />
+            <span className="screw screw-bl" />
             {/* Alle + 0-9 centered */}
             <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
               <JukeKey label="Alle" active={letterFilter === 'Alle'} wide onClick={() => setLetterFilter('Alle')} />
