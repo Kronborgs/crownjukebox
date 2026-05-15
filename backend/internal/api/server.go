@@ -57,6 +57,7 @@ type Server struct {
 	scanMu      sync.RWMutex
 	libraryScan *libraryScanInfo
 	artworkScan *artworkScanInfo
+	bpmScan     *bpmScanInfo
 }
 
 type libraryScanInfo struct {
@@ -66,6 +67,11 @@ type libraryScanInfo struct {
 }
 
 type artworkScanInfo struct {
+	Total     int `json:"total"`
+	Processed int `json:"processed"`
+}
+
+type bpmScanInfo struct {
 	Total     int `json:"total"`
 	Processed int `json:"processed"`
 }
@@ -276,6 +282,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/admin/rescan", s.handleRescan)
 		r.Post("/api/admin/rescan-artwork", s.handleRescanArtwork)
 		r.Post("/api/admin/rescan-missing-artwork", s.handleRescanMissingArtwork)
+		r.Post("/api/admin/analyze-bpm", s.handleAnalyzeBPM)
 		r.Post("/api/admin/library/reset", s.handleResetLibrary)
 		r.Get("/api/admin/library/broken-files", s.handleListBrokenFiles)
 		r.Delete("/api/admin/library/tracks/{id}", s.handleDeleteTrack)
@@ -2425,10 +2432,48 @@ func (s *Server) handleAdminMissingArtwork(w http.ResponseWriter, r *http.Reques
 	s.handleMissingCovers(w, r)
 }
 
+// handleAnalyzeBPM starts a background job that computes BPM for every local
+// track that currently has bpm = 0. Results are written back to the database
+// and broadcast via SSE (event: bpm_scan_progress).
+func (s *Server) handleAnalyzeBPM(w http.ResponseWriter, r *http.Request) {
+	s.scanMu.Lock()
+	if s.bpmScan != nil {
+		s.scanMu.Unlock()
+		jsonError(w, "BPM-analyse kører allerede — vent til den er færdig", http.StatusConflict)
+		return
+	}
+	s.bpmScan = &bpmScanInfo{}
+	s.scanMu.Unlock()
+
+	analyzer := music.NewBPMAnalyzer(s.db)
+	progress := make(chan music.BPMProgress, 10)
+
+	go func() {
+		if err := analyzer.AnalyzeMissing(progress); err != nil {
+			log.Printf("[bpm-scan] error: %v", err)
+		}
+	}()
+	go func() {
+		for p := range progress {
+			s.scanMu.Lock()
+			if p.Done || p.Error != "" {
+				s.bpmScan = nil
+			} else {
+				s.bpmScan = &bpmScanInfo{Total: p.Total, Processed: p.Processed}
+			}
+			s.scanMu.Unlock()
+			s.hub.Broadcast("bpm_scan_progress", p)
+		}
+	}()
+
+	jsonOK(w, map[string]string{"status": "bpm scan started"})
+}
+
 func (s *Server) handleGetScanStatus(w http.ResponseWriter, r *http.Request) {
 	s.scanMu.RLock()
 	lib := s.libraryScan
 	art := s.artworkScan
+	bpm := s.bpmScan
 	s.scanMu.RUnlock()
 
 	jsonOK(w, map[string]any{
@@ -2436,6 +2481,8 @@ func (s *Server) handleGetScanStatus(w http.ResponseWriter, r *http.Request) {
 		"library_progress": lib,
 		"artwork_scanning": art != nil,
 		"artwork_progress": art,
+		"bpm_scanning":     bpm != nil,
+		"bpm_progress":     bpm,
 	})
 }
 

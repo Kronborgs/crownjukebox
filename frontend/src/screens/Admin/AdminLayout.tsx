@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminApi, User, Track, Playlist, KeyboardBinding, setCurrentRoomId, JukeboxSession } from '@/api/client'
 import { useSession } from '@/hooks/useSession'
 import { useSSE } from '@/hooks/useSSE'
-import { Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio, LayoutDashboard, Mail, PartyPopper, Upload, Star, ChevronUp, ChevronDown, LogOut, Monitor, Smartphone, WifiOff, AlertTriangle } from 'lucide-react'
+import { Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio, LayoutDashboard, Mail, PartyPopper, Upload, Star, ChevronUp, ChevronDown, LogOut, Monitor, Smartphone, WifiOff, AlertTriangle, Zap } from 'lucide-react'
 
 type AdminTab = 'dashboard' | 'users' | 'jukeboxes' | 'settings' | 'library' | 'smtp' | 'youtube' | 'skaal'
 
@@ -911,6 +911,8 @@ function LibraryPanel() {
   const [isScanning, setIsScanning] = useState(false)
   const [isArtworkScanning, setIsArtworkScanning] = useState(false)
   const [artworkProgress, setArtworkProgress] = useState<{ processed: number; total: number } | null>(null)
+  const [isBPMScanning, setIsBPMScanning] = useState(false)
+  const [bpmProgress, setBpmProgress] = useState<{ processed: number; total: number } | null>(null)
   const [isResetting, setIsResetting] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
   const { data: playlists = [] } = useQuery({ queryKey: ['admin-playlists'], queryFn: adminApi.skaalPlaylists })
@@ -933,6 +935,12 @@ function LibraryPanel() {
           setArtworkProgress({ processed: s.artwork_progress.processed, total: s.artwork_progress.total })
         }
       }
+      if (s.bpm_scanning) {
+        setIsBPMScanning(true)
+        if (s.bpm_progress) {
+          setBpmProgress({ processed: s.bpm_progress.processed, total: s.bpm_progress.total })
+        }
+      }
     }).catch(() => {})
   }, [])
 
@@ -947,6 +955,17 @@ function LibraryPanel() {
         return
       }
       setArtworkProgress({ processed: p.processed, total: p.total })
+    },
+    bpm_scan_progress: (data) => {
+      const p = data as { total: number; processed: number; done?: boolean; error?: string }
+      if (p.done || p.error) {
+        setScanStatus(p.error ? `BPM-fejl: ${p.error}` : `BPM-analyse færdig — ${p.total} numre behandlet`)
+        setBpmProgress(null)
+        setIsBPMScanning(false)
+        qc.invalidateQueries({ queryKey: ['system-metrics'] })
+        return
+      }
+      setBpmProgress({ processed: p.processed, total: p.total })
     },
     library_scan_progress: (data) => {
       const p = data as { total: number; scanned: number; current_file?: string; done?: boolean; error?: string }
@@ -1001,6 +1020,15 @@ function LibraryPanel() {
     try {
       await adminApi.rescanArtwork()
     } catch { setScanStatus('Fejl ved cover-scanning'); setIsArtworkScanning(false) }
+  }
+
+  async function analyzeBPM() {
+    setScanStatus('')
+    setBpmProgress(null)
+    setIsBPMScanning(true)
+    try {
+      await adminApi.analyzeBPM()
+    } catch { setScanStatus('Fejl ved BPM-analyse'); setIsBPMScanning(false) }
   }
 
   async function createPlaylist() {
@@ -1094,6 +1122,38 @@ function LibraryPanel() {
                 background: 'linear-gradient(90deg, var(--neon-teal), var(--neon-primary))',
                 height: '100%',
                 width: `${Math.round((artworkProgress.processed / Math.max(1, artworkProgress.total)) * 100)}%`,
+                transition: 'width 0.3s ease',
+                borderRadius: '4px',
+              }} />
+            </div>
+          </div>
+        )}
+        <button
+          className="btn btn-ghost"
+          style={{ justifyContent: 'flex-start', gap: '10px' }}
+          onClick={analyzeBPM}
+          disabled={isBPMScanning}
+        >
+          <Zap size={16} className={isBPMScanning ? 'spinning' : ''} /> {isBPMScanning ? 'Analyserer BPM…' : 'Analyser BPM på alle numre'}
+        </button>
+        {bpmProgress && bpmProgress.total > 0 && (
+          <div style={{
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '8px',
+            padding: '14px 16px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '8px' }}>
+              <span style={{ fontFamily: 'monospace', fontSize: '1.8rem', fontWeight: 700, color: '#f0e060', lineHeight: 1 }}>
+                {bpmProgress.processed}
+              </span>
+              <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)' }}>/ {bpmProgress.total} numre</span>
+            </div>
+            <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden', height: '8px' }}>
+              <div style={{
+                background: 'linear-gradient(90deg, #f0e060, #ffaa00)',
+                height: '100%',
+                width: `${Math.round((bpmProgress.processed / Math.max(1, bpmProgress.total)) * 100)}%`,
                 transition: 'width 0.3s ease',
                 borderRadius: '4px',
               }} />

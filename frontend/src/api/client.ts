@@ -480,10 +480,11 @@ export const adminApi = {
   updateSettings: (data: Setting) => put<void>('/api/settings', data),
 
   // Scanning
-  scanStatus:           () => get<{ library_scanning: boolean; library_progress: { total: number; scanned: number; current_file: string } | null; artwork_scanning: boolean; artwork_progress: { total: number; processed: number } | null }>('/api/admin/scan-status'),
+  scanStatus:           () => get<{ library_scanning: boolean; library_progress: { total: number; scanned: number; current_file: string } | null; artwork_scanning: boolean; artwork_progress: { total: number; processed: number } | null; bpm_scanning: boolean; bpm_progress: { total: number; processed: number } | null }>('/api/admin/scan-status'),
   rescan:               () => post('/api/admin/rescan'),
   rescanArtwork:        () => post('/api/admin/rescan-artwork'),
   rescanMissingArtwork: () => post('/api/admin/rescan-missing-artwork'),
+  analyzeBPM:           () => post('/api/admin/analyze-bpm'),
   resetLibrary:         () => post<{ status: string; message: string }>('/api/admin/library/reset'),
   brokenFiles:          () => getList<Track>('/api/admin/library/broken-files'),
   deleteTrack:          (id: string) => del(`/api/admin/library/tracks/${id}`),

@@ -12,6 +12,7 @@ export type SSEEventType =
   | 'settings_changed'
   | 'library_scan_progress'
   | 'artwork_scan_progress'
+  | 'bpm_scan_progress'
   | 'artwork_updated'
   | 'missing_artwork_found'
   | 'active_player_changed'
@@ -56,7 +57,7 @@ export function useSSE(
       'now_playing_changed', 'queue_changed', 'playback_state_changed',
       'party_started', 'party_ended', 'user_access_revoked', 'user_access_expired',
       'settings_changed', 'library_scan_progress', 'artwork_scan_progress',
-      'artwork_updated', 'missing_artwork_found',
+      'bpm_scan_progress', 'artwork_updated', 'missing_artwork_found',
       'active_player_changed', 'audio_state_changed',
     ]
     for (const type of knownTypes) {
