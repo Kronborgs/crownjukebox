@@ -484,6 +484,7 @@ export const adminApi = {
   rescan:               () => post('/api/admin/rescan'),
   rescanArtwork:        () => post('/api/admin/rescan-artwork'),
   rescanMissingArtwork: () => post('/api/admin/rescan-missing-artwork'),
+  resetLibrary:         () => post<{ status: string; message: string }>('/api/admin/library/reset'),
   missingArtwork:       () => getList<Album>('/api/admin/missing-artwork'),
 
   // Keyboard bindings

@@ -276,6 +276,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/admin/rescan", s.handleRescan)
 		r.Post("/api/admin/rescan-artwork", s.handleRescanArtwork)
 		r.Post("/api/admin/rescan-missing-artwork", s.handleRescanMissingArtwork)
+		r.Post("/api/admin/library/reset", s.handleResetLibrary)
 		r.Get("/api/admin/missing-artwork", s.handleAdminMissingArtwork)
 		r.Get("/api/admin/keyboard-bindings", s.handleGetKeyboardBindings)
 		r.Put("/api/admin/keyboard-bindings", s.handleUpdateKeyboardBindings)
@@ -2222,6 +2223,73 @@ func (s *Server) TriggerBackgroundScan() bool {
 		}
 	}()
 	return true
+}
+
+// handleResetLibrary wipes all auto-scanned tracks, albums, orphan artists and
+// folder-based playlists so that the next scan starts from a completely clean slate.
+// Manual playlists (SKÅL!, source_type='local') are preserved.
+func (s *Server) handleResetLibrary(w http.ResponseWriter, r *http.Request) {
+	// Refuse if a scan is already running
+	s.scanMu.RLock()
+	scanning := s.libraryScan != nil
+	s.scanMu.RUnlock()
+	if scanning {
+		jsonError(w, "scanning er i gang — vent til den er færdig", http.StatusConflict)
+		return
+	}
+
+	tx, err := s.db.Beginx()
+	if err != nil {
+		jsonError(w, "db fejl", http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	// 1. Delete folder-generated playlists (and their tracks via CASCADE)
+	if _, err := tx.Exec(`DELETE FROM playlists WHERE source_type = 'folder'`); err != nil {
+		jsonError(w, "kunne ikke slette mappe-playlister", http.StatusInternalServerError)
+		return
+	}
+
+	// 2. Remove all local/subsonic tracks from manual playlists so they don't dangle
+	if _, err := tx.Exec(`
+		DELETE FROM playlist_tracks
+		WHERE track_id IN (
+			SELECT id FROM tracks WHERE source_type IN ('local','subsonic')
+		)`); err != nil {
+		jsonError(w, "kunne ikke rydde playlist_tracks", http.StatusInternalServerError)
+		return
+	}
+
+	// 3. Delete all local/subsonic tracks
+	if _, err := tx.Exec(`DELETE FROM tracks WHERE source_type IN ('local','subsonic')`); err != nil {
+		jsonError(w, "kunne ikke slette numre", http.StatusInternalServerError)
+		return
+	}
+
+	// 4. Delete albums that have no remaining tracks
+	if _, err := tx.Exec(`
+		DELETE FROM albums
+		WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks WHERE album_id IS NOT NULL)`); err != nil {
+		jsonError(w, "kunne ikke slette albums", http.StatusInternalServerError)
+		return
+	}
+
+	// 5. Delete artists that have no remaining tracks
+	if _, err := tx.Exec(`
+		DELETE FROM artists
+		WHERE id NOT IN (SELECT DISTINCT artist_id FROM tracks WHERE artist_id IS NOT NULL)`); err != nil {
+		jsonError(w, "kunne ikke slette kunstnere", http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		jsonError(w, "commit fejl", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("[reset-library] bibliotek nulstillet af admin")
+	jsonOK(w, map[string]string{"status": "ok", "message": "Bibliotek nulstillet — klar til ny scanning"})
 }
 
 func (s *Server) handleRescanArtwork(w http.ResponseWriter, r *http.Request) {

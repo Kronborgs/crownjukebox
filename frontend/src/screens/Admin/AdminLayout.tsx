@@ -911,6 +911,8 @@ function LibraryPanel() {
   const [isScanning, setIsScanning] = useState(false)
   const [isArtworkScanning, setIsArtworkScanning] = useState(false)
   const [artworkProgress, setArtworkProgress] = useState<{ processed: number; total: number } | null>(null)
+  const [isResetting, setIsResetting] = useState(false)
+  const [resetConfirm, setResetConfirm] = useState(false)
   const { data: playlists = [] } = useQuery({ queryKey: ['admin-playlists'], queryFn: adminApi.playlists })
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [uploadingPartyFiles, setUploadingPartyFiles] = useState(false)
@@ -974,6 +976,22 @@ function LibraryPanel() {
     try {
       await adminApi.rescan()
     } catch { setScanStatus('Fejl ved scanning'); setIsScanning(false) }
+  }
+
+  async function resetLibrary() {
+    setResetConfirm(false)
+    setIsResetting(true)
+    setScanStatus('')
+    try {
+      const res = await adminApi.resetLibrary()
+      setScanStatus(res.message)
+      qc.invalidateQueries({ queryKey: ['system-metrics'] })
+      qc.invalidateQueries({ queryKey: ['admin-playlists'] })
+    } catch (err: unknown) {
+      setScanStatus(err instanceof Error ? err.message : 'Nulstilling fejlede')
+    } finally {
+      setIsResetting(false)
+    }
   }
 
   async function rescanArtwork() {
@@ -1045,6 +1063,25 @@ function LibraryPanel() {
         >
           <RefreshCw size={16} className={isScanning ? 'spinning' : ''} /> Scan musikmappe
         </button>
+        {/* ── Reset library ── */}
+        {!resetConfirm ? (
+          <button
+            className="btn btn-ghost"
+            style={{ justifyContent: 'flex-start', gap: '10px', color: 'var(--neon-red, #ff4444)', borderColor: 'rgba(255,68,68,0.3)' }}
+            onClick={() => setResetConfirm(true)}
+            disabled={isScanning || isResetting}
+          >
+            <Trash2 size={16} /> Nulstil bibliotek (slet & scann igen)
+          </button>
+        ) : (
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '10px 14px', borderRadius: '8px', border: '1px solid rgba(255,68,68,0.5)', background: 'rgba(255,68,68,0.08)' }}>
+            <span style={{ flex: 1, fontSize: '0.85rem', color: 'var(--neon-amber, #ffaa00)' }}>⚠ Sletter alle numre, albums og mappe-playlister. Kan ikke fortrydes.</span>
+            <button className="btn btn-ghost" style={{ fontSize: '0.8rem', color: 'var(--neon-red, #ff4444)' }} onClick={resetLibrary} disabled={isResetting}>
+              {isResetting ? 'Nulstiller…' : 'Ja, nulstil'}
+            </button>
+            <button className="btn btn-ghost" style={{ fontSize: '0.8rem' }} onClick={() => setResetConfirm(false)}>Annuller</button>
+          </div>
+        )}
         <button
           className="btn btn-ghost"
           style={{ justifyContent: 'flex-start', gap: '10px' }}
