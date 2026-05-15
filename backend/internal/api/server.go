@@ -2794,11 +2794,19 @@ func (s *Server) handleSystemMetrics(w http.ResponseWriter, r *http.Request) {
 	allocMB := float64(m.Alloc) / 1024 / 1024
 	sysMB := float64(m.Sys) / 1024 / 1024
 
-	// Get database stats
+	// Get database stats — only count content that is actually usable in the jukebox:
+	// • local and subsonic tracks (not party_upload or other internal types)
+	// • albums and artists that have at least one such track
 	var trackCount, albumCount, artistCount, userCount, roomCount int
-	_ = s.db.Get(&trackCount, `SELECT COUNT(*) FROM tracks`)
-	_ = s.db.Get(&albumCount, `SELECT COUNT(*) FROM albums`)
-	_ = s.db.Get(&artistCount, `SELECT COUNT(*) FROM artists`)
+	_ = s.db.Get(&trackCount, `
+		SELECT COUNT(*) FROM tracks
+		WHERE source_type IN ('local', 'subsonic')`)
+	_ = s.db.Get(&albumCount, `
+		SELECT COUNT(DISTINCT album_id) FROM tracks
+		WHERE source_type IN ('local', 'subsonic')`)
+	_ = s.db.Get(&artistCount, `
+		SELECT COUNT(DISTINCT artist_id) FROM tracks
+		WHERE source_type IN ('local', 'subsonic')`)
 	_ = s.db.Get(&userCount, `SELECT COUNT(*) FROM users`)
 	_ = s.db.Get(&roomCount, `SELECT COUNT(*) FROM rooms`)
 
