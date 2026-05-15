@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { playbackApi, partyApi, PlaybackState } from '@/api/client'
 import { useSSE } from './useSSE'
@@ -14,10 +14,14 @@ export function usePlayback(canPlay = true) {
   const [state, setState] = useState<PlaybackState | null>(null)
   const tickRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
 
-  async function refreshState() {
+  // Stable reference — does not depend on any reactive value, so it never needs
+  // to be recreated.  An unstable refreshState would cascade through onFadeComplete
+  // → runFadeLoop → startFade → checkTime causing the checkTime effect to restart
+  // on every render (60 fps when the position RAF is running).
+  const refreshState = useCallback(async () => {
     const next = await playbackApi.state()
     setState(next)
-  }
+  }, [])
 
   // Initial fetch — if party mode is stuck from a previous session (page reload / re-login),
   // end it automatically so the jukebox is usable. Audio doesn't survive page load anyway.

@@ -177,15 +177,25 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
       fadeRafRef.current = requestAnimationFrame(runFadeLoop)
     } else {
       // Fade complete — transfer Player B's playback to Player A for seamless continuity.
-      // Capturing B's state BEFORE modifying anything.
+      // Capture ids and B's current position BEFORE modifying anything.
       const playerB = playerBRef.current
       const playerA = playerARef.current
-      const nextSrc  = playerB?.src ?? ''
+      const finished = finishedTrackIdRef.current
+      const next     = nextTrackIdRef.current
       const nextTime = playerB?.currentTime ?? 0
+
+      // IMPORTANT: Use the canonical relative URL (same format the audioSrc effect
+      // computes from track.id) so that when React later renders <audio src={audioSrc}>
+      // the src content-attribute doesn't change.  If we used playerB.src here
+      // (the browser-resolved absolute URL) React would diff "absolute" vs "relative",
+      // see two different strings, and call audio.src = relativeUrl — which triggers
+      // the HTML media-element load algorithm even though the resolved URL is identical.
+      // That spurious reload resets playback to 0 and may fire ended/error, causing
+      // the queue to advance to Song C immediately after Song B just started.
+      const nextSrc = next ? buildStreamUrl(next, directStreamUrlRef) : ''
 
       if (playerA && nextSrc) {
         // Hand off: Player A takes over Player B's track at the same position.
-        // Setting src while already-loaded causes a seek, not a full reload from 0.
         playerA.src = nextSrc
         playerA.currentTime = nextTime
         playerA.play().catch(() => {})
@@ -205,9 +215,6 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
         playerB.playbackRate = 1
       }
       if (playerA) playerA.playbackRate = 1
-
-      const finished = finishedTrackIdRef.current
-      const next = nextTrackIdRef.current
 
       isFadingRef.current = false
       fadeLoadingRef.current = false

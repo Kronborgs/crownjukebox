@@ -691,6 +691,10 @@ export function NowPlaying({ state, refreshState }: Props) {
       // Audio failed to load (e.g. file missing on server — 404).
       // Treat it the same as track-ended so the queue advances automatically.
       if (autoDJRef.current?.isBusy()) return
+      // Ignore spurious errors in the 1500 ms window after a crossfade completes.
+      // The crossfade handover changes Player A's src; any transient network hiccup
+      // during the brief reload window must not advance the queue to Song C.
+      if (performance.now() - fadeCompletedAtRef.current < 1500) return
       // Guard: only handle one error per track. The key bump below remounts the
       // audio element which immediately retries the same bad URL — without this
       // guard that creates a tight loop of 404s until refreshState returns.
