@@ -287,6 +287,16 @@ func (m *Manager) Skip(ctx context.Context, userID string, wasSkipped bool) erro
 // TrackEnded is called when the client reports the current track finished naturally.
 func (m *Manager) TrackEnded(ctx context.Context, trackID, userID string) error {
 	m.mu.Lock()
+
+	// Idempotency guard: only advance the queue when the reported track is still the
+	// current one. Stale or duplicate trackEnded calls (e.g. a crossfade's old element
+	// firing after the queue already advanced) must not skip an extra song.
+	if trackID != "" && trackID != m.currentTrackID {
+		log.Printf("[playback] room=%s ignoring stale trackEnded: reported=%s current=%s", m.roomID, trackID, m.currentTrackID)
+		m.mu.Unlock()
+		return nil
+	}
+
 	wasParty := m.isPartyMode && m.partyTrackID == trackID
 
 	// Safety valve: if party mode is stuck (is_party_mode=true but the track that
