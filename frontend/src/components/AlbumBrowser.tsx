@@ -17,10 +17,34 @@ function JukeKey({ label, active, wide, onClick }: { label: string; active: bool
     <button
       onClick={onClick}
       className={`retro-key${wide ? ' retro-key-wide' : ''}${active ? ' is-active' : ''}`}
-      style={{ height: '34px', minWidth: wide ? '52px' : '34px', padding: '0 6px', fontSize: '0.78rem' }}
+      style={{ flex: 1, height: '38px', minWidth: wide ? '56px' : '26px', padding: '0 4px', fontSize: '0.78rem' }}
     >
       {label}
     </button>
+  )
+}
+
+// D-pad base button style at module level to avoid object recreation each render
+const _dpadBtn = {
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
+  width: '30px', height: '30px', padding: 0,
+  background: 'linear-gradient(180deg, #4a4f63 0%, #232738 45%, #0e1018 100%)',
+  color: 'var(--chrome-bright)',
+  border: '1px solid rgba(255,255,255,0.22)',
+  borderRadius: '6px',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -2px 0 rgba(0,0,0,0.4), 0 3px 6px rgba(0,0,0,0.4)',
+  cursor: 'pointer', fontSize: '0.75rem', userSelect: 'none',
+} as const
+
+function DPad({ onNavigate }: { onNavigate: (dir: 'up' | 'down' | 'left' | 'right' | 'enter') => void }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateAreas: '".\ up\ ." "left\ enter\ right" ".\ down\ ."', gridTemplateColumns: 'repeat(3, 30px)', gridTemplateRows: 'repeat(3, 30px)', gap: '3px', flexShrink: 0 }}>
+      <button style={{ ..._dpadBtn, gridArea: 'up' }}    onClick={() => onNavigate('up')}>▲</button>
+      <button style={{ ..._dpadBtn, gridArea: 'left' }}  onClick={() => onNavigate('left')}>◄</button>
+      <button style={{ ..._dpadBtn, gridArea: 'enter', background: 'linear-gradient(180deg, #2a1060 0%, #100520 100%)', borderColor: 'rgba(191,0,255,0.5)', color: 'var(--neon-primary)' }} onClick={() => onNavigate('enter')}>●</button>
+      <button style={{ ..._dpadBtn, gridArea: 'right' }} onClick={() => onNavigate('right')}>►</button>
+      <button style={{ ..._dpadBtn, gridArea: 'down' }}  onClick={() => onNavigate('down')}>▼</button>
+    </div>
   )
 }
 
@@ -122,34 +146,49 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
 
   handleTrackClickRef.current = handleTrackClick
 
+  // Stable navigate function shared by keyboard handler and D-pad buttons.
+  // Re-assigned each render so it always reads the latest refs.
+  const navigateRef = useRef<((dir: 'up' | 'down' | 'left' | 'right' | 'enter') => void) | null>(null)
+  navigateRef.current = (dir) => {
+    const album = selectedAlbumRef.current
+    const tks   = tracksRef.current
+    const vas   = visibleAlbumsRef.current
+    const ftIdx = focusedTrackIdxRef.current
+    const faIdx = focusedAlbumIdxRef.current
+    const COLS  = 4
+    if (album) {
+      if      (dir === 'down')  setFocusedTrackIdx(i => Math.min(tks.length - 1, i < 0 ? 0 : i + 1))
+      else if (dir === 'up')    setFocusedTrackIdx(i => Math.max(0, i <= 0 ? 0 : i - 1))
+      else if (dir === 'enter') { if (ftIdx >= 0 && ftIdx < tks.length) handleTrackClickRef.current?.(tks[ftIdx]) }
+    } else {
+      if      (dir === 'right') setFocusedAlbumIdx(i => Math.min(vas.length - 1, i < 0 ? 0 : i + 1))
+      else if (dir === 'left')  setFocusedAlbumIdx(i => Math.max(0, i <= 0 ? 0 : i - 1))
+      else if (dir === 'down')  setFocusedAlbumIdx(i => Math.min(vas.length - 1, i < 0 ? 0 : i + COLS))
+      else if (dir === 'up')    setFocusedAlbumIdx(i => Math.max(0, i < COLS ? 0 : i - COLS))
+      else if (dir === 'enter') { if (faIdx >= 0 && faIdx < vas.length) setSelectedAlbum(vas[faIdx]) }
+    }
+  }
+
   // ── Keyboard navigation (pil-taster, Enter, Home, PageUp/Down) ─────────────
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const tgt = e.target as HTMLElement
       if (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.tagName === 'SELECT') return
-      const album = selectedAlbumRef.current
-      const tks   = tracksRef.current
-      const vas   = visibleAlbumsRef.current
-      const ftIdx = focusedTrackIdxRef.current
-      const faIdx = focusedAlbumIdxRef.current
-      if (album) {
-        // ── Track list navigation ──
-        if      (e.key === 'ArrowDown')              { e.preventDefault(); setFocusedTrackIdx(i => Math.min(tks.length - 1, i < 0 ? 0 : i + 1)) }
-        else if (e.key === 'ArrowUp')                { e.preventDefault(); setFocusedTrackIdx(i => Math.max(0, i <= 0 ? 0 : i - 1)) }
-        else if (e.key === 'Enter')                  { e.preventDefault(); if (ftIdx >= 0 && ftIdx < tks.length) handleTrackClickRef.current?.(tks[ftIdx]) }
-        else if (e.key === 'Escape' || e.key === 'Home') { e.preventDefault(); setSelectedAlbum(null) }
-      } else {
-        // ── Album grid navigation ──
-        const COLS = 4
-        if      (e.key === 'ArrowRight')  { e.preventDefault(); setFocusedAlbumIdx(i => Math.min(vas.length - 1, i < 0 ? 0 : i + 1)) }
-        else if (e.key === 'ArrowLeft')   { e.preventDefault(); setFocusedAlbumIdx(i => Math.max(0, i <= 0 ? 0 : i - 1)) }
-        else if (e.key === 'ArrowDown')   { e.preventDefault(); setFocusedAlbumIdx(i => Math.min(vas.length - 1, i < 0 ? 0 : i + COLS)) }
-        else if (e.key === 'ArrowUp')     { e.preventDefault(); setFocusedAlbumIdx(i => Math.max(0, i < COLS ? 0 : i - COLS)) }
-        else if (e.key === 'Enter')       { e.preventDefault(); if (faIdx >= 0 && faIdx < vas.length) setSelectedAlbum(vas[faIdx]) }
-        else if (e.key === 'Home')        { e.preventDefault(); setLetterFilter('Alle'); setFocusedAlbumIdx(-1) }
-        else if (e.key === 'PageDown')    { e.preventDefault(); const i = ALL_FILTERS.indexOf(letterFilterRef.current); setLetterFilter(ALL_FILTERS[Math.min(ALL_FILTERS.length - 1, i + 1)]) }
-        else if (e.key === 'PageUp')      { e.preventDefault(); const i = ALL_FILTERS.indexOf(letterFilterRef.current); setLetterFilter(ALL_FILTERS[Math.max(0, i - 1)]) }
+      const keyDirs: Record<string, 'up' | 'down' | 'left' | 'right' | 'enter'> = {
+        ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'enter',
+      }
+      const dir = keyDirs[e.key]
+      if (dir) { e.preventDefault(); navigateRef.current?.(dir); return }
+      if (e.key === 'Escape' || e.key === 'Home') {
+        e.preventDefault()
+        if (selectedAlbumRef.current) setSelectedAlbum(null)
+        else { setLetterFilter('Alle'); setFocusedAlbumIdx(-1) }
+        return
+      }
+      if (!selectedAlbumRef.current) {
+        if (e.key === 'PageDown') { e.preventDefault(); const i = ALL_FILTERS.indexOf(letterFilterRef.current); setLetterFilter(ALL_FILTERS[Math.min(ALL_FILTERS.length - 1, i + 1)]) }
+        if (e.key === 'PageUp')   { e.preventDefault(); const i = ALL_FILTERS.indexOf(letterFilterRef.current); setLetterFilter(ALL_FILTERS[Math.max(0, i - 1)]) }
       }
     }
     document.addEventListener('keydown', onKey)
@@ -461,30 +500,34 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
             {/* Corner screws (top-right + bottom-left via spans; top-left + bottom-right via CSS ::before/::after) */}
             <span className="screw screw-tr" />
             <span className="screw screw-bl" />
-            {/* Alle + 0-9 centered */}
-            <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
+            {/* Alle + 0-9 — stretch to fill panel width */}
+            <div style={{ display: 'flex', gap: '5px' }}>
               <JukeKey label="Alle" active={letterFilter === 'Alle'} wide onClick={() => setLetterFilter('Alle')} />
               {DIGITS.map(d => (
                 <JukeKey key={d} label={d} active={letterFilter === d} onClick={() => setLetterFilter(d)} />
               ))}
             </div>
             {/* A–K */}
-            <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', gap: '5px' }}>
               {ALPHA_ROW1.map(l => (
                 <JukeKey key={l} label={l} active={letterFilter === l} onClick={() => setLetterFilter(l)} />
               ))}
             </div>
             {/* L–V */}
-            <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
+            <div style={{ display: 'flex', gap: '5px' }}>
               {ALPHA_ROW2.map(l => (
                 <JukeKey key={l} label={l} active={letterFilter === l} onClick={() => setLetterFilter(l)} />
               ))}
             </div>
-            {/* W–Å */}
-            <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
-              {ALPHA_ROW3.map(l => (
-                <JukeKey key={l} label={l} active={letterFilter === l} onClick={() => setLetterFilter(l)} />
-              ))}
+            {/* W–Å + D-pad navigator */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div style={{ display: 'flex', gap: '5px' }}>
+                {ALPHA_ROW3.map(l => (
+                  <JukeKey key={l} label={l} active={letterFilter === l} onClick={() => setLetterFilter(l)} />
+                ))}
+              </div>
+              <div style={{ flex: 1 }} />
+              <DPad onNavigate={dir => navigateRef.current?.(dir)} />
             </div>
           </div>
 
