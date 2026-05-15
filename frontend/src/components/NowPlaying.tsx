@@ -537,10 +537,6 @@ export function NowPlaying({ state, refreshState }: Props) {
   autoDJRef.current = { isFading: autoDJ.isFading, isBusy: autoDJ.isBusy }
 
   useEffect(() => {
-    const audio = audioRef.current
-    if (audio) {
-      audio.volume = Math.min(Math.max(audioSettings.volume / 100, 0), 1)
-    }
     if (bassFilterRef.current) {
       bassFilterRef.current.gain.value = audioSettings.bass + (audioSettings.loudness ? 4 : 0)
     }
@@ -548,7 +544,14 @@ export function NowPlaying({ state, refreshState }: Props) {
       trebleFilterRef.current.gain.value = audioSettings.treble + (audioSettings.loudness ? 3 : 0)
     }
     if (gainNodeRef.current) {
-      gainNodeRef.current.gain.value = audioSettings.loudness ? 1.12 : 1
+      // Master volume lives here — NOT on the individual HTMLAudioElement.
+      // Setting audio.volume on the element only affects Player A; Player B is
+      // always created with volume=1, so it would play at full level during the
+      // crossfade and after the deck swap regardless of the master setting.
+      // By routing volume through the shared gain node both players (and their
+      // crossfade gains) are scaled together, so the master knob always works.
+      const vol = Math.min(Math.max(audioSettings.volume / 100, 0), 1)
+      gainNodeRef.current.gain.value = vol * (audioSettings.loudness ? 1.12 : 1)
     }
     if (pannerNodeRef.current) {
       pannerNodeRef.current.pan.value = Math.min(Math.max(audioSettings.balance / 10, -1), 1)
