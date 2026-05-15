@@ -50,10 +50,13 @@ func (m *Manager) GetQueue(ctx context.Context) ([]db.QueueItemRich, error) {
 
 // AddTrack appends a track to the end of the queue.
 func (m *Manager) AddTrack(ctx context.Context, trackID, userID string) (*db.QueueItem, error) {
-	// Validate track exists
+	// Validate track exists and is not a SKÅL-only upload
 	var track db.Track
-	if err := m.db.GetContext(ctx, &track, `SELECT id FROM tracks WHERE id = ?`, trackID); err != nil {
+	if err := m.db.GetContext(ctx, &track, `SELECT id, source_type FROM tracks WHERE id = ?`, trackID); err != nil {
 		return nil, fmt.Errorf("track not found: %s", trackID)
+	}
+	if track.SourceType == "party_upload" {
+		return nil, fmt.Errorf("SKÅL-numre kan kun afspilles via SKÅL-knappen")
 	}
 
 	// Prevent duplicates: a track can only appear once in the queue at a time (non-autoplay only)

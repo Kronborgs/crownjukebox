@@ -2230,7 +2230,12 @@ func (s *Server) TriggerBackgroundScan() bool {
 
 // handleListBrokenFiles returns local tracks whose duration is 0 (unreadable or
 // untagged files that the scanner could not extract timing information from).
+// Tracks in the SKÅL uploads directory are always excluded — they have their own panel.
 func (s *Server) handleListBrokenFiles(w http.ResponseWriter, r *http.Request) {
+	uploadsDir := config.GlobalPartyUploadsDir(s.cfg.DBPath)
+	if !strings.HasSuffix(uploadsDir, "/") {
+		uploadsDir += "/"
+	}
 	var tracks []db.Track
 	err := s.db.Select(&tracks, `
 		SELECT
@@ -2245,8 +2250,9 @@ func (s *Server) handleListBrokenFiles(w http.ResponseWriter, r *http.Request) {
 		LEFT JOIN artists ar ON ar.id = t.artist_id
 		LEFT JOIN albums al ON al.id = t.album_id
 		WHERE t.source_type = 'local' AND t.duration = 0
+		  AND t.file_path NOT LIKE ?
 		ORDER BY t.file_path ASC
-		LIMIT 1000`)
+		LIMIT 1000`, uploadsDir+"%")
 	if err != nil {
 		jsonError(w, "db error", http.StatusInternalServerError)
 		return
@@ -2257,13 +2263,13 @@ func (s *Server) handleListBrokenFiles(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, tracks)
 }
 
-// handleDeleteTrack removes a local track from the database (not from disk).
+// handleDeleteTrack removes a local or SKÅL-upload track from the database (not from disk).
 // Clears all FK references first so SQLite FK constraints are not violated.
 func (s *Server) handleDeleteTrack(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
 	var track db.Track
-	if err := s.db.Get(&track, `SELECT * FROM tracks WHERE id = ? AND source_type = 'local'`, id); err != nil {
+	if err := s.db.Get(&track, `SELECT * FROM tracks WHERE id = ? AND source_type IN ('local','party_upload')`, id); err != nil {
 		jsonError(w, "track ikke fundet", http.StatusNotFound)
 		return
 	}
@@ -2954,17 +2960,18 @@ func (s *Server) handleSystemMetrics(w http.ResponseWriter, r *http.Request) {
 
 	// Get database stats — only count content that is actually usable in the jukebox:
 	// • local and subsonic tracks (not party_upload or other internal types)
+	// • only tracks with a known duration (duration > 0) — broken/unreadable files excluded
 	// • albums and artists that have at least one such track
 	var trackCount, albumCount, artistCount, userCount, roomCount int
 	_ = s.db.Get(&trackCount, `
 		SELECT COUNT(*) FROM tracks
-		WHERE source_type IN ('local', 'subsonic')`)
+		WHERE source_type IN ('local', 'subsonic') AND duration > 0`)
 	_ = s.db.Get(&albumCount, `
 		SELECT COUNT(DISTINCT album_id) FROM tracks
-		WHERE source_type IN ('local', 'subsonic')`)
+		WHERE source_type IN ('local', 'subsonic') AND duration > 0`)
 	_ = s.db.Get(&artistCount, `
 		SELECT COUNT(DISTINCT artist_id) FROM tracks
-		WHERE source_type IN ('local', 'subsonic')`)
+		WHERE source_type IN ('local', 'subsonic') AND duration > 0`)
 	_ = s.db.Get(&userCount, `SELECT COUNT(*) FROM users`)
 	_ = s.db.Get(&roomCount, `SELECT COUNT(*) FROM rooms`)
 

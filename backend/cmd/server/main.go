@@ -49,6 +49,25 @@ func main() {
 		log.Fatalf("Migration failed: %v", err)
 	}
 
+	// One-time idempotent fix: any tracks inside the party-uploads directory that
+	// were incorrectly indexed as source_type='local' (e.g. uploaded before the
+	// IndexPartyFile marker was in place) get corrected to 'party_upload' so they
+	// are excluded from the regular library browser, queue, and broken-file stats.
+	{
+		uploadsDir := config.GlobalPartyUploadsDir(cfg.DBPath)
+		if !strings.HasSuffix(uploadsDir, "/") {
+			uploadsDir += "/"
+		}
+		if res, err := database.Exec(
+			`UPDATE tracks SET source_type = 'party_upload' WHERE source_type = 'local' AND file_path LIKE ?`,
+			uploadsDir+"%",
+		); err != nil {
+			log.Printf("[startup] source_type fix warning: %v", err)
+		} else if n, _ := res.RowsAffected(); n > 0 {
+			log.Printf("[startup] corrected source_type for %d SKÅL upload track(s) in %s", n, uploadsDir)
+		}
+	}
+
 	// ─── Seed admin user ──────────────────────────────────
 	if err := seedAdmin(database, cfg); err != nil {
 		log.Printf("[seed] admin seed warning: %v", err)
