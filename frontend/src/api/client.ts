@@ -495,6 +495,7 @@ export const adminApi = {
 
   // Playlists
   playlists:          () => getList<Playlist>('/api/admin/playlists'),
+  skaalPlaylists:     () => getList<Playlist>('/api/admin/playlists/skaal'),
   createPlaylist:     (name: string, isParty = false) =>
     post<Playlist>('/api/admin/playlists', { name, is_party_playlist: isParty }),
   updatePlaylist:     (id: string, isPartyPlaylist: boolean) =>

@@ -285,6 +285,7 @@ func (s *Server) Router() http.Handler {
 
 		// Party playlist management
 		r.Get("/api/admin/playlists", s.handleListPlaylists)
+		r.Get("/api/admin/playlists/skaal", s.handleListSkaalPlaylists)
 		r.Post("/api/admin/playlists", s.handleCreatePlaylist)
 		r.Patch("/api/admin/playlists/{id}", s.handleUpdatePlaylist)
 		r.Delete("/api/admin/playlists/{id}", s.handleDeletePlaylist)
@@ -2257,7 +2258,7 @@ func (s *Server) handleListBrokenFiles(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleDeleteTrack removes a local track from the database (not from disk).
-// After deletion orphan albums and artists are cleaned up automatically.
+// Clears all FK references first so SQLite FK constraints are not violated.
 func (s *Server) handleDeleteTrack(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 
@@ -2269,7 +2270,12 @@ func (s *Server) handleDeleteTrack(w http.ResponseWriter, r *http.Request) {
 	albumID := track.AlbumID
 	artistID := track.ArtistID
 
+	// Clear all FK references before deleting the track row
 	s.db.Exec(`DELETE FROM playlist_tracks WHERE track_id = ?`, id)
+	s.db.Exec(`DELETE FROM queue_items WHERE track_id = ?`, id)
+	s.db.Exec(`DELETE FROM playback_history WHERE track_id = ?`, id)
+	s.db.Exec(`UPDATE playback_state SET current_track_id = NULL WHERE current_track_id = ?`, id)
+	s.db.Exec(`UPDATE playback_state SET party_track_id = NULL WHERE party_track_id = ?`, id)
 	s.db.Exec(`DELETE FROM tracks WHERE id = ?`, id)
 	// Remove album if now empty
 	s.db.Exec(`DELETE FROM albums WHERE id = ? AND (SELECT COUNT(*) FROM tracks WHERE album_id = ?) = 0`, albumID, albumID)
@@ -2306,7 +2312,25 @@ func (s *Server) handleResetLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Remove all local/subsonic tracks from manual playlists so they don't dangle
+	// 2. Clear FK references that point at local/subsonic tracks
+	if _, err := tx.Exec(`
+		DELETE FROM queue_items
+		WHERE track_id IN (SELECT id FROM tracks WHERE source_type IN ('local','subsonic'))`); err != nil {
+		jsonError(w, "kunne ikke rydde kø", http.StatusInternalServerError)
+		return
+	}
+	if _, err := tx.Exec(`
+		DELETE FROM playback_history
+		WHERE track_id IN (SELECT id FROM tracks WHERE source_type IN ('local','subsonic'))`); err != nil {
+		jsonError(w, "kunne ikke rydde historik", http.StatusInternalServerError)
+		return
+	}
+	tx.Exec(`UPDATE playback_state SET current_track_id = NULL
+		WHERE current_track_id IN (SELECT id FROM tracks WHERE source_type IN ('local','subsonic'))`)
+	tx.Exec(`UPDATE playback_state SET party_track_id = NULL
+		WHERE party_track_id IN (SELECT id FROM tracks WHERE source_type IN ('local','subsonic'))`)
+
+	// 3. Remove all local/subsonic tracks from manual playlists
 	if _, err := tx.Exec(`
 		DELETE FROM playlist_tracks
 		WHERE track_id IN (
@@ -2316,13 +2340,13 @@ func (s *Server) handleResetLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Delete all local/subsonic tracks
+	// 4. Delete all local/subsonic tracks
 	if _, err := tx.Exec(`DELETE FROM tracks WHERE source_type IN ('local','subsonic')`); err != nil {
 		jsonError(w, "kunne ikke slette numre", http.StatusInternalServerError)
 		return
 	}
 
-	// 4. Delete albums that have no remaining tracks
+	// 5. Delete albums that have no remaining tracks
 	if _, err := tx.Exec(`
 		DELETE FROM albums
 		WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks WHERE album_id IS NOT NULL)`); err != nil {
@@ -2330,7 +2354,7 @@ func (s *Server) handleResetLibrary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 5. Delete artists that have no remaining tracks
+	// 6. Delete artists that have no remaining tracks
 	if _, err := tx.Exec(`
 		DELETE FROM artists
 		WHERE id NOT IN (SELECT DISTINCT artist_id FROM tracks WHERE artist_id IS NOT NULL)`); err != nil {
@@ -2439,6 +2463,17 @@ func (s *Server) handleUpdateKeyboardBindings(w http.ResponseWriter, r *http.Req
 func (s *Server) handleListPlaylists(w http.ResponseWriter, r *http.Request) {
 	var playlists []db.Playlist
 	_ = s.db.Select(&playlists, `SELECT * FROM playlists ORDER BY name`)
+	jsonOK(w, playlists)
+}
+
+// handleListSkaalPlaylists returns only user-created (source_type='local') playlists.
+// Folder-generated playlists (source_type='folder') are intentionally excluded.
+func (s *Server) handleListSkaalPlaylists(w http.ResponseWriter, r *http.Request) {
+	var playlists []db.Playlist
+	_ = s.db.Select(&playlists, `SELECT * FROM playlists WHERE source_type = 'local' ORDER BY name`)
+	if playlists == nil {
+		playlists = []db.Playlist{}
+	}
 	jsonOK(w, playlists)
 }
 

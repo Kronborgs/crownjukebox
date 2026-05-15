@@ -913,7 +913,7 @@ function LibraryPanel() {
   const [artworkProgress, setArtworkProgress] = useState<{ processed: number; total: number } | null>(null)
   const [isResetting, setIsResetting] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
-  const { data: playlists = [] } = useQuery({ queryKey: ['admin-playlists'], queryFn: adminApi.playlists })
+  const { data: playlists = [] } = useQuery({ queryKey: ['admin-playlists'], queryFn: adminApi.skaalPlaylists })
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [uploadingPartyFiles, setUploadingPartyFiles] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -1007,12 +1007,14 @@ function LibraryPanel() {
     if (!newPlaylistName.trim()) return
     await adminApi.createPlaylist(newPlaylistName.trim())
     qc.invalidateQueries({ queryKey: ['admin-playlists'] })
+    qc.invalidateQueries({ queryKey: ['skaal-playlists'] })
     setNewPlaylistName('')
   }
 
   async function setPartyPlaylist(id: string, isParty: boolean) {
     await adminApi.updatePlaylist(id, isParty)
     qc.invalidateQueries({ queryKey: ['admin-playlists'] })
+    qc.invalidateQueries({ queryKey: ['skaal-playlists'] })
   }
 
   async function deletePlaylist(id: string, name: string) {
@@ -1023,6 +1025,7 @@ function LibraryPanel() {
       await adminApi.deletePlaylist(id)
       console.log('[deletePlaylist] Playlist slettet, opdaterer liste')
       await qc.invalidateQueries({ queryKey: ['admin-playlists'] })
+      await qc.invalidateQueries({ queryKey: ['skaal-playlists'] })
       setScanStatus(`Playlisten "${name}" er slettet`)
     } catch (err: unknown) {
       console.error('[deletePlaylist] Fejl:', err)
@@ -2000,7 +2003,7 @@ function SkaalPanel() {
 
   const { data: playlists = [] } = useQuery({
     queryKey: ['skaal-playlists'],
-    queryFn: adminApi.playlists,
+    queryFn: adminApi.skaalPlaylists,
   })
 
   const { data: uploadedTracks = [] } = useQuery({
@@ -2023,6 +2026,7 @@ function SkaalPanel() {
     mutationFn: (name: string) => adminApi.createPlaylist(name, false),
     onSuccess: (pl) => {
       qc.invalidateQueries({ queryKey: ['skaal-playlists'] })
+      qc.invalidateQueries({ queryKey: ['admin-playlists'] })
       setSelectedPlaylist(pl)
       setShowCreate(false)
       setCreateName('')
@@ -2033,13 +2037,17 @@ function SkaalPanel() {
     mutationFn: (id: string) => adminApi.deletePlaylist(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['skaal-playlists'] })
+      qc.invalidateQueries({ queryKey: ['admin-playlists'] })
       setSelectedPlaylist(null)
     },
   })
 
   const setDefault = useMutation({
     mutationFn: (id: string) => adminApi.updatePlaylist(id, true),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['skaal-playlists'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['skaal-playlists'] })
+      qc.invalidateQueries({ queryKey: ['admin-playlists'] })
+    },
   })
 
   const addTrack = useMutation({
