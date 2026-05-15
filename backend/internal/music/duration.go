@@ -176,7 +176,7 @@ func mp3Duration(f *os.File, fileSize int64) int {
 		return 0
 	}
 
-	ver := (frameHdr >> 19) & 3  // 3=MPEG1, 2=MPEG2, 0=MPEG2.5
+	ver := (frameHdr >> 19) & 3 // 3=MPEG1, 2=MPEG2, 0=MPEG2.5
 	bri := (frameHdr >> 12) & 0xF
 	sri := (frameHdr >> 10) & 3
 	chm := (frameHdr >> 6) & 3 // 3=mono

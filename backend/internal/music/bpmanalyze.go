@@ -138,11 +138,11 @@ func estimateBPMFromAudio(filePath string) int {
 	// Decode via ffmpeg. Pipe raw PCM to stdout.
 	cmd := exec.Command("ffmpeg",
 		"-i", filePath,
-		"-t", "45",     // only first 45 s — enough for reliable beat detection
-		"-f", "s16le",  // signed 16-bit little-endian raw PCM
-		"-ar", "8000",  // 8 kHz sample rate
-		"-ac", "1",     // mono
-		"-",            // write to stdout
+		"-t", "45", // only first 45 s — enough for reliable beat detection
+		"-f", "s16le", // signed 16-bit little-endian raw PCM
+		"-ar", "8000", // 8 kHz sample rate
+		"-ac", "1", // mono
+		"-", // write to stdout
 	)
 	cmd.Stderr = io.Discard
 	data, err := cmd.Output()
