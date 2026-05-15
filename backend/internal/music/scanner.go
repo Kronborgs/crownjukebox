@@ -297,12 +297,30 @@ func extractMetadata(filePath, originalFilename string, m tag.Metadata) Metadata
 	}
 	meta.DiscNumber = d
 
-	// Extract BPM from raw tags: TBPM (ID3v2/MP3), BPM/bpm (Vorbis/FLAC/OGG)
+	// Extract BPM from raw tags.
+	// Key variants covered:
+	//   TBPM       — ID3v2.3/2.4 (MP3)
+	//   TBP        — ID3v2.2 (older MP3)
+	//   BPM / bpm  — Vorbis Comments (FLAC, OGG, Opus)
+	//   TEMPO/tempo — alternative Vorbis field used by some taggers
+	//   tmpo       — iTunes MP4/M4A atom (stored as int16 by dhowden/tag)
 	if raw := m.Raw(); raw != nil {
-		for _, key := range []string{"TBPM", "BPM", "bpm"} {
+		for _, key := range []string{"TBPM", "TBP", "BPM", "bpm", "TEMPO", "tempo", "Tempo", "tmpo", "TMPO"} {
 			if v, ok := raw[key]; ok {
-				s := strings.TrimSpace(strings.Split(fmt.Sprintf("%v", v), ".")[0])
-				if n, err := strconv.Atoi(s); err == nil && n > 0 && n < 300 {
+				var bpmStr string
+				switch val := v.(type) {
+				case int:
+					bpmStr = strconv.Itoa(val)
+				case int16:
+					bpmStr = strconv.Itoa(int(val))
+				case int32:
+					bpmStr = strconv.Itoa(int(val))
+				case int64:
+					bpmStr = strconv.FormatInt(val, 10)
+				default:
+					bpmStr = strings.TrimSpace(strings.Split(fmt.Sprintf("%v", val), ".")[0])
+				}
+				if n, err := strconv.Atoi(bpmStr); err == nil && n > 0 && n < 300 {
 					meta.BPM = n
 					break
 				}

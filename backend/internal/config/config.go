@@ -41,6 +41,10 @@ type Config struct {
 	AllowGuestSearch      bool
 	AllowGuestQueueAdd    bool
 	AllowGuestPartyButton bool
+
+	// Auto-scan: interval in minutes to automatically re-scan the music directory.
+	// 0 disables periodic auto-scan (manual rescan via admin UI still works).
+	AutoScanIntervalMins int
 }
 
 // Load reads configuration from environment variables with sensible defaults.
@@ -69,6 +73,8 @@ func Load() *Config {
 		AllowGuestSearch:      getEnvBool("ALLOW_GUEST_SEARCH", true),
 		AllowGuestQueueAdd:    getEnvBool("ALLOW_GUEST_QUEUE_ADD", true),
 		AllowGuestPartyButton: getEnvBool("ALLOW_GUEST_PARTY_BUTTON", false),
+
+		AutoScanIntervalMins: getEnvInt("SCAN_INTERVAL_MINUTES", 10),
 	}
 }
 

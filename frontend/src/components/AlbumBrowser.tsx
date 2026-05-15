@@ -12,22 +12,22 @@ const ALPHA_ROW3 = ['W','X','Y','Z','Æ','Ø','Å']
 const ALL_FILTERS = ['Alle', ...DIGITS, ...ALPHA_ROW1, ...ALPHA_ROW2, ...ALPHA_ROW3]
 const PAGE_SIZE = 24
 
-function JukeKey({ label, active, wide, onClick }: { label: string; active: boolean; wide?: boolean; onClick: () => void }) {
+function JukeKey({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
     <button
       onClick={onClick}
-      className={`retro-key${wide ? ' retro-key-wide' : ''}${active ? ' is-active' : ''}`}
-      style={{ flex: 1, height: '38px', minWidth: wide ? '56px' : '26px', padding: '0 4px', fontSize: '0.78rem' }}
+      className={`retro-key${active ? ' is-active' : ''}`}
+      style={{ width: '100%', height: '38px', minWidth: '26px', padding: '0 4px', fontSize: '0.78rem' }}
     >
       {label}
     </button>
   )
 }
 
-// D-pad base button style at module level to avoid object recreation each render
+// D-pad base button style
 const _dpadBtn = {
   display: 'flex', alignItems: 'center', justifyContent: 'center',
-  width: '30px', height: '30px', padding: 0,
+  height: '38px', padding: 0,
   background: 'linear-gradient(180deg, #4a4f63 0%, #232738 45%, #0e1018 100%)',
   color: 'var(--chrome-bright)',
   border: '1px solid rgba(255,255,255,0.22)',
@@ -35,18 +35,6 @@ const _dpadBtn = {
   boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.28), inset 0 -2px 0 rgba(0,0,0,0.4), 0 3px 6px rgba(0,0,0,0.4)',
   cursor: 'pointer', fontSize: '0.75rem', userSelect: 'none',
 } as const
-
-function DPad({ onNavigate }: { onNavigate: (dir: 'up' | 'down' | 'left' | 'right' | 'enter') => void }) {
-  return (
-    <div style={{ display: 'grid', gridTemplateAreas: '".\ up\ ." "left\ enter\ right" ".\ down\ ."', gridTemplateColumns: 'repeat(3, 30px)', gridTemplateRows: 'repeat(3, 30px)', gap: '3px', flexShrink: 0 }}>
-      <button style={{ ..._dpadBtn, gridArea: 'up' }}    onClick={() => onNavigate('up')}>▲</button>
-      <button style={{ ..._dpadBtn, gridArea: 'left' }}  onClick={() => onNavigate('left')}>◄</button>
-      <button style={{ ..._dpadBtn, gridArea: 'enter', background: 'linear-gradient(180deg, #2a1060 0%, #100520 100%)', borderColor: 'rgba(191,0,255,0.5)', color: 'var(--neon-primary)' }} onClick={() => onNavigate('enter')}>●</button>
-      <button style={{ ..._dpadBtn, gridArea: 'right' }} onClick={() => onNavigate('right')}>►</button>
-      <button style={{ ..._dpadBtn, gridArea: 'down' }}  onClick={() => onNavigate('down')}>▼</button>
-    </div>
-  )
-}
 
 function formatTime(secs: number) {
   const m = Math.floor(secs / 60)
@@ -500,34 +488,53 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
             {/* Corner screws (top-right + bottom-left via spans; top-left + bottom-right via CSS ::before/::after) */}
             <span className="screw screw-tr" />
             <span className="screw screw-bl" />
-            {/* Alle + 0-9 — stretch to fill panel width */}
-            <div style={{ display: 'flex', gap: '5px' }}>
-              <JukeKey label="Alle" active={letterFilter === 'Alle'} wide onClick={() => setLetterFilter('Alle')} />
+            {/*
+              Single CSS grid — all 4 rows share the same column template:
+                repeat(11, 1fr)  →  11 equal-width key columns
+                96px             →  D-pad column (3 × 30px buttons + 2 × 3px gap)
+              Because all rows use the same column template every key is
+              identical in width, regardless of which row it's in.
+              Row 4 (W–Å) has only 7 keys; 4 invisible spacer divs + 1 empty
+              D-pad cell fill the remaining columns so the grid is consistent.
+            */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(11, 1fr) 96px',
+              gap: '5px',
+            }}>
+              {/* ── Row 1: Alle + 0–9  |  ▲ ── */}
+              <JukeKey label="Alle" active={letterFilter === 'Alle'} onClick={() => setLetterFilter('Alle')} />
               {DIGITS.map(d => (
                 <JukeKey key={d} label={d} active={letterFilter === d} onClick={() => setLetterFilter(d)} />
               ))}
-            </div>
-            {/* A–K */}
-            <div style={{ display: 'flex', gap: '5px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <button style={{ ..._dpadBtn, width: '30px' }} onClick={() => navigateRef.current?.('up')}>▲</button>
+              </div>
+
+              {/* ── Row 2: A–K  |  ◄ ● ► ── */}
               {ALPHA_ROW1.map(l => (
                 <JukeKey key={l} label={l} active={letterFilter === l} onClick={() => setLetterFilter(l)} />
               ))}
-            </div>
-            {/* L–V */}
-            <div style={{ display: 'flex', gap: '5px' }}>
+              <div style={{ display: 'flex', gap: '3px' }}>
+                <button style={{ ..._dpadBtn, flex: 1 }} onClick={() => navigateRef.current?.('left')}>◄</button>
+                <button style={{ ..._dpadBtn, flex: 1, background: 'linear-gradient(180deg, #2a1060 0%, #100520 100%)', borderColor: 'rgba(191,0,255,0.5)', color: 'var(--neon-primary)' }} onClick={() => navigateRef.current?.('enter')}>●</button>
+                <button style={{ ..._dpadBtn, flex: 1 }} onClick={() => navigateRef.current?.('right')}>►</button>
+              </div>
+
+              {/* ── Row 3: L–V  |  ▼ ── */}
               {ALPHA_ROW2.map(l => (
                 <JukeKey key={l} label={l} active={letterFilter === l} onClick={() => setLetterFilter(l)} />
               ))}
-            </div>
-            {/* W–Å + D-pad navigator */}
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <div style={{ display: 'flex', gap: '5px' }}>
-                {ALPHA_ROW3.map(l => (
-                  <JukeKey key={l} label={l} active={letterFilter === l} onClick={() => setLetterFilter(l)} />
-                ))}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <button style={{ ..._dpadBtn, width: '30px' }} onClick={() => navigateRef.current?.('down')}>▼</button>
               </div>
-              <div style={{ flex: 1 }} />
-              <DPad onNavigate={dir => navigateRef.current?.(dir)} />
+
+              {/* ── Row 4: W–Å  (4 invisible spacers + empty D-pad cell keep column widths consistent) ── */}
+              {ALPHA_ROW3.map(l => (
+                <JukeKey key={l} label={l} active={letterFilter === l} onClick={() => setLetterFilter(l)} />
+              ))}
+              <div /><div /><div /><div />{/* cols 8–11: empty */}
+              <div />{/* D-pad col: empty */}
             </div>
           </div>
 

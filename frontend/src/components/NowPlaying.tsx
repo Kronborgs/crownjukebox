@@ -473,11 +473,28 @@ export function NowPlaying({ state, refreshState }: Props) {
   // resumePositionRef seek — the crossfade already positioned Player A correctly.
   const crossfadeHandoverRef = useRef(false)
 
-  // Holds the track-id that was just faded away by a crossfade. When the browser
-  // fires a natural 'ended' event for that track shortly after the fade completes
-  // (because Player A genuinely ran to its end), onEnded must ignore it — otherwise
-  // it bumps audioKey and reloads Player A from 0, jumping sang 2 back to the start.
-  const fadeFinishedTrackRef = useRef<string | null>(null)
+  // Guards against re-entering the onError handler while we're already
+  // handling a 404 / stream failure. Without this the browser retries the same
+  // 404 URL every time the audio element is remounted (key bump), flooding the
+  // console with dozens of identical failed requests before refreshState returns.
+  const errorHandlingRef = useRef(false)
+
+  // Records performance.now() when a crossfade completes. Used by onEnded to
+  // suppress the natural 'ended' event that Player A fires ~0.5 s after the
+  // crossfade finishes (Song A was still playing at low gain and may genuinely
+  // reach its end during the buffer window).
+  //
+  // WHY NOT compare track?.id: onFadeComplete calls trackEnded() which triggers
+  // an SSE now_playing_changed event that updates React state (track) to the NEW
+  // track before Song A's 'ended' event fires. The ID comparison then fails
+  // (track.id = Song2, ref = Song1) and onEnded wrongly calls trackEnded(Song2),
+  // advancing the queue a second time and reloading Song3 from 0 — the loud bang.
+  //
+  // A 1500 ms window after crossfade is safe because:
+  //   • The crossfade buffer (checkTime guard: remaining > crossfadeSeconds + 0.5)
+  //     means Song A ends at most ~500 ms after the crossfade completes.
+  //   • No legitimate track ends within 1.5 s of just starting playback.
+  const fadeCompletedAtRef = useRef<number>(0)
 
   // Called by useAutoDJ when crossfade finishes.
   // Player A has already been synced to Player B's src+position in the hook.
@@ -490,8 +507,9 @@ export function NowPlaying({ state, refreshState }: Props) {
     // track transition SSE) would otherwise override that position and cause a jump.
     crossfadeHandoverRef.current = true
     resumePositionRef.current = null
-    // Remember which track was faded out so onEnded can ignore its natural 'ended' event.
-    fadeFinishedTrackRef.current = finishedTrackId
+    // Record the completion timestamp so onEnded can ignore Song A's natural
+    // 'ended' event that fires within ~500 ms of the crossfade completing.
+    fadeCompletedAtRef.current = performance.now()
 
     // Sync React state — same URL Player A was just set to in runFadeLoop.
     // When the audioSrc effect later fires (due to track?.id change), it will compute
@@ -652,14 +670,16 @@ export function NowPlaying({ state, refreshState }: Props) {
       // because isFading (React state) is still false during the async canplay-wait window,
       // which would otherwise let onEnded fire a duplicate trackEnded during crossfade load.
       if (autoDJRef.current?.isBusy()) return
-      // Skip if this 'ended' event is for the track that was just crossfaded away.
-      // After a successful fade, Player A's src is set to sang 2; but the browser
-      // may still fire 'ended' for sang A (it had genuinely reached its end).
-      // Without this guard, onEnded bumps audioKey → audioSrc effect reloads Player A → sang 2 jumps to 0.
-      if (track?.id && track.id === fadeFinishedTrackRef.current) {
-        fadeFinishedTrackRef.current = null
-        return
-      }
+      // Ignore Song A's natural 'ended' event in the 1500 ms window after a crossfade
+      // completes. Song A was still playing at low gain during the crossfade buffer and
+      // may genuinely reach its end ~500 ms after the fade. If we don't suppress it:
+      //   • onEnded calls trackEnded(Song B) — the server advances the queue to Song C
+      //   • refreshState() updates track → Song C, audioSrc effect reloads Player A
+      //   • Song C starts abruptly from 0 with full gain — the loud bang.
+      // A simple ID check (track?.id === fadeFinishedTrackRef) is NOT reliable because
+      // the SSE now_playing_changed event updates track → Song B before 'ended' fires,
+      // making the IDs differ even though the event is stale.
+      if (performance.now() - fadeCompletedAtRef.current < 1500) return
       setAudioKey(k => k + 1)
       if (track?.id) {
         playbackApi.trackEnded(track.id)
@@ -671,11 +691,21 @@ export function NowPlaying({ state, refreshState }: Props) {
       // Audio failed to load (e.g. file missing on server — 404).
       // Treat it the same as track-ended so the queue advances automatically.
       if (autoDJRef.current?.isBusy()) return
+      // Guard: only handle one error per track. The key bump below remounts the
+      // audio element which immediately retries the same bad URL — without this
+      // guard that creates a tight loop of 404s until refreshState returns.
+      if (errorHandlingRef.current) return
+      errorHandlingRef.current = true
       setAudioKey(k => k + 1)
       if (track?.id) {
         playbackApi.trackEnded(track.id)
           .catch(() => {})
-          .finally(() => { refreshState?.().catch(() => {}) })
+          .finally(() => {
+            errorHandlingRef.current = false
+            refreshState?.().catch(() => {})
+          })
+      } else {
+        errorHandlingRef.current = false
       }
     }
     const onCanPlay = () => {

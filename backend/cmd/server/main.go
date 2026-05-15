@@ -92,6 +92,21 @@ func main() {
 	srv := api.NewServer(cfg, database, Version)
 	router := srv.Router()
 
+	// ─── Background: periodic auto-scan ───────────────────
+	// Re-scans the music directory every SCAN_INTERVAL_MINUTES (default 10)
+	// to pick up new files and remove orphaned DB entries automatically.
+	if cfg.AutoScanIntervalMins > 0 {
+		go func() {
+			ticker := time.NewTicker(time.Duration(cfg.AutoScanIntervalMins) * time.Minute)
+			defer ticker.Stop()
+			for range ticker.C {
+				if srv.TriggerBackgroundScan() {
+					log.Printf("[autoscan] periodic scan started (every %d min)", cfg.AutoScanIntervalMins)
+				}
+			}
+		}()
+	}
+
 	// ─── Background: expire user access ───────────────────
 	go func() {
 		ticker := time.NewTicker(60 * time.Second)

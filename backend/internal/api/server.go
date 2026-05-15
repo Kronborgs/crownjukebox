@@ -2191,6 +2191,39 @@ func (s *Server) handleRescan(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, map[string]string{"status": "scan started"})
 }
 
+// TriggerBackgroundScan starts a library scan in the background if one isn't
+// already running. Returns true if a new scan was started, false if skipped.
+// Safe to call from any goroutine (e.g. the periodic auto-scan ticker).
+func (s *Server) TriggerBackgroundScan() bool {
+	s.scanMu.Lock()
+	if s.libraryScan != nil {
+		s.scanMu.Unlock()
+		return false // already running
+	}
+	s.libraryScan = &libraryScanInfo{}
+	s.scanMu.Unlock()
+
+	progress := make(chan music.ScanProgress, 10)
+	go func() {
+		if err := s.scanner.Scan(progress); err != nil {
+			log.Printf("[autoscan] error: %v", err)
+		}
+	}()
+	go func() {
+		for p := range progress {
+			s.scanMu.Lock()
+			if p.Done || p.Error != "" {
+				s.libraryScan = nil
+			} else {
+				s.libraryScan = &libraryScanInfo{Total: p.Total, Scanned: p.Scanned, CurrentFile: p.CurrentFile}
+			}
+			s.scanMu.Unlock()
+			s.hub.Broadcast(events.EventLibraryScanProgress, p)
+		}
+	}()
+	return true
+}
+
 func (s *Server) handleRescanArtwork(w http.ResponseWriter, r *http.Request) {
 	s.scanMu.Lock()
 	s.artworkScan = &artworkScanInfo{}
