@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { libraryApi, Album, Track, queueApi, adminApi } from '@/api/client'
 import { CoverArt } from '@/components/CoverArt'
-import { Plus, ChevronLeft, ChevronRight, Clock, Loader2, AlertCircle, Check } from 'lucide-react'
+import { Plus, ChevronLeft, ChevronRight, Clock, Zap, Loader2, AlertCircle, Check } from 'lucide-react'
 
 const DIGITS     = ['0','1','2','3','4','5','6','7','8','9']
 const ALPHA_ROW1 = ['A','B','C','D','E','F','G','H','I','J','K']
@@ -375,9 +375,17 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
                     <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{track.artist}</p>
                   )}
                 </div>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-dim)', fontSize: '0.8rem', flexShrink: 0 }}>
-                  <Clock size={12} />
-                  {formatTime(track.duration_secs)}
+                <span style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '3px', color: 'var(--text-dim)', fontSize: '0.8rem' }}>
+                    <Clock size={12} />
+                    {formatTime(track.duration_secs)}
+                  </span>
+                  {(track.bpm ?? 0) > 0 && (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '3px', color: 'var(--neon-teal)', fontSize: '0.75rem', opacity: 0.75 }}>
+                      <Zap size={11} />
+                      {track.bpm}
+                    </span>
+                  )}
                 </span>
                 <button
                   onClick={e => { e.stopPropagation(); handleTrackClick(track) }}
