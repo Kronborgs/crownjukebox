@@ -95,6 +95,11 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
   const focusedAlbumIdxRef = useRef(-1)
   const focusedTrackIdxRef = useRef(-1)
   const handleTrackClickRef = useRef<((track: Track) => void) | null>(null)
+  // Dynamically measured column count for the album grid (auto-fill layout).
+  // Updated by ResizeObserver whenever the grid resizes so up/down nav jumps
+  // exactly one row regardless of screen width.
+  const albumGridRef = useRef<HTMLDivElement | null>(null)
+  const albumGridColsRef = useRef(5) // sensible default; overwritten by ResizeObserver
   selectedAlbumRef.current = selectedAlbum
   tracksRef.current = tracks as Track[]
   visibleAlbumsRef.current = visibleAlbums
@@ -134,6 +139,23 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
 
   handleTrackClickRef.current = handleTrackClick
 
+  // Measure actual column count from the album grid whenever it resizes.
+  useEffect(() => {
+    const grid = albumGridRef.current
+    if (!grid) return
+    const measure = () => {
+      // getComputedStyle returns e.g. "210px 210px 210px 210px 210px" for 5 cols
+      const cols = window.getComputedStyle(grid)
+        .getPropertyValue('grid-template-columns')
+        .trim().split(/\s+/).filter(Boolean).length
+      if (cols > 0) albumGridColsRef.current = cols
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(grid)
+    return () => ro.disconnect()
+  }, [])
+
   // Stable navigate function shared by keyboard handler and D-pad buttons.
   // Re-assigned each render so it always reads the latest refs.
   const navigateRef = useRef<((dir: 'up' | 'down' | 'left' | 'right' | 'enter') => void) | null>(null)
@@ -143,7 +165,7 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
     const vas   = visibleAlbumsRef.current
     const ftIdx = focusedTrackIdxRef.current
     const faIdx = focusedAlbumIdxRef.current
-    const COLS  = 4
+    const COLS  = albumGridColsRef.current
     if (album) {
       if      (dir === 'down')  setFocusedTrackIdx(i => Math.min(tks.length - 1, i < 0 ? 0 : i + 1))
       else if (dir === 'up')    setFocusedTrackIdx(i => Math.max(0, i <= 0 ? 0 : i - 1))
@@ -361,7 +383,7 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
             ))}
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(140px, 12vw, 200px), 1fr))', gap: '12px' }}>
+          <div ref={albumGridRef} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(140px, 12vw, 200px), 1fr))', gap: '12px' }}>
             <AnimatePresence>
               {visibleAlbums.map((album, index) => (
                 <motion.div
