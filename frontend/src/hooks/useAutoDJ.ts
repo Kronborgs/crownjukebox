@@ -51,6 +51,12 @@ export interface UseAutoDJOptions {
   playerBRef: React.RefObject<HTMLAudioElement | null>
   crossfadeGainARef: React.RefObject<GainNode | null>
   crossfadeGainBRef: React.RefObject<GainNode | null>
+  /**
+   * Compensation gain node inserted between the crossfade mixer and the EQ chain.
+   * The fade loop sets this to 1/(gainA+gainB) so the summed signal never exceeds
+   * the individual track level — eliminates the "double-loud" pumping effect.
+   */
+  crossfadeCompGainRef: React.RefObject<GainNode | null>
   audioContextRef: React.RefObject<AudioContext | null>
 
   /** The stream URL base (for building Player B URL) */
@@ -98,6 +104,7 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
     playerBRef,
     crossfadeGainARef,
     crossfadeGainBRef,
+    crossfadeCompGainRef,
     audioContextRef,
     directStreamUrlRef,
     currentTrackId,
@@ -140,9 +147,10 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
     }
     if (crossfadeGainARef.current) crossfadeGainARef.current.gain.value = 1
     if (crossfadeGainBRef.current) crossfadeGainBRef.current.gain.value = 0
+    if (crossfadeCompGainRef.current) crossfadeCompGainRef.current.gain.value = 1
     nextTrackIdRef.current = null
     setIsBpmMatchState(false)
-  }, [playerBRef, crossfadeGainARef, crossfadeGainBRef])
+  }, [playerBRef, crossfadeGainARef, crossfadeGainBRef, crossfadeCompGainRef])
 
   // The main RAF fade loop. Runs each animation frame until t >= 1.
   const runFadeLoop = useCallback(() => {
@@ -153,6 +161,12 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
     const { gainA, gainB } = equalPowerGain(t)
     if (crossfadeGainARef.current) crossfadeGainARef.current.gain.value = gainA
     if (crossfadeGainBRef.current) crossfadeGainBRef.current.gain.value = gainB
+    // Loudness compensation: cos(θ)+sin(θ) peaks at √2 at the crossfade midpoint,
+    // making the summed output ~3 dB louder. Dividing by the sum keeps the total
+    // amplitude constant throughout the fade (equals 1 at t=0 and t=1).
+    if (crossfadeCompGainRef.current) {
+      crossfadeCompGainRef.current.gain.value = 1 / (gainA + gainB)
+    }
 
     if (t < 1) {
       fadeRafRef.current = requestAnimationFrame(runFadeLoop)
@@ -179,6 +193,7 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
       // Silence and clear Player B
       if (crossfadeGainARef.current) crossfadeGainARef.current.gain.value = 1
       if (crossfadeGainBRef.current) crossfadeGainBRef.current.gain.value = 0
+      if (crossfadeCompGainRef.current) crossfadeCompGainRef.current.gain.value = 1
       if (playerB) {
         playerB.pause()
         playerB.src = ''
@@ -201,7 +216,7 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
         onFadeComplete(finished, next, nextSrc)
       }
     }
-  }, [playerARef, crossfadeGainARef, crossfadeGainBRef, onFadeComplete])
+  }, [playerARef, crossfadeGainARef, crossfadeGainBRef, crossfadeCompGainRef, onFadeComplete])
 
   // Start the crossfade toward the given next track.
   // Returns true if the fade was started, false if it was aborted (e.g. Player B 404).

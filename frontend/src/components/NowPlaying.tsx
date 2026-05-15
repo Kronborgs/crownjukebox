@@ -89,6 +89,10 @@ export function NowPlaying({ state, refreshState }: Props) {
   const sourceBNodeRef = useRef<MediaElementAudioSourceNode | null>(null)
   const crossfadeGainARef = useRef<GainNode | null>(null)
   const crossfadeGainBRef = useRef<GainNode | null>(null)
+  // Compensation gain node: keeps total loudness constant during crossfade.
+  // Normally 1.0; set to 1/(gainA+gainB) each frame so the overlapping signals
+  // don't sum to more than a single track's level.
+  const crossfadeCompGainRef = useRef<GainNode | null>(null)
   const bassFilterRef = useRef<BiquadFilterNode | null>(null)
   const trebleFilterRef = useRef<BiquadFilterNode | null>(null)
   const gainNodeRef = useRef<GainNode | null>(null)
@@ -416,6 +420,12 @@ export function NowPlaying({ state, refreshState }: Props) {
     cfGainA.gain.value = 1
     cfGainB.gain.value = 0
 
+    // Crossfade loudness compensation: sits between the A/B mixer and the EQ chain.
+    // The fade loop sets this to 1/(gainA+gainB) each frame to cancel the ~3 dB
+    // peak that equal-power crossfade causes when both signals overlap at the midpoint.
+    const cfCompGain = context.createGain()
+    cfCompGain.gain.value = 1
+
     const source  = context.createMediaElementSource(audio)
     const sourceB = context.createMediaElementSource(audioB)
 
@@ -430,12 +440,13 @@ export function NowPlaying({ state, refreshState }: Props) {
     const gain = context.createGain()
     const panner = context.createStereoPanner()
 
-    // Graph: sourceA → cfGainA ─┬─▶ bass → treble → gain → panner → dest
+    // Graph: sourceA → cfGainA ─┬─▶ cfCompGain → bass → treble → gain → panner → dest
     //        sourceB → cfGainB ─┘
     source.connect(cfGainA)
     sourceB.connect(cfGainB)
-    cfGainA.connect(bass)
-    cfGainB.connect(bass)
+    cfGainA.connect(cfCompGain)
+    cfGainB.connect(cfCompGain)
+    cfCompGain.connect(bass)
     bass.connect(treble)
     treble.connect(gain)
     gain.connect(panner)
@@ -446,6 +457,7 @@ export function NowPlaying({ state, refreshState }: Props) {
     sourceBNodeRef.current    = sourceB
     crossfadeGainARef.current = cfGainA
     crossfadeGainBRef.current = cfGainB
+    crossfadeCompGainRef.current = cfCompGain
     bassFilterRef.current     = bass
     trebleFilterRef.current   = treble
     gainNodeRef.current       = gain
@@ -502,6 +514,7 @@ export function NowPlaying({ state, refreshState }: Props) {
     playerBRef,
     crossfadeGainARef,
     crossfadeGainBRef,
+    crossfadeCompGainRef,
     audioContextRef,
     directStreamUrlRef,
     currentTrackId:        track?.id ?? null,
