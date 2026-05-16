@@ -2298,7 +2298,13 @@ func (s *Server) handleRepairBrokenFiles(w http.ResponseWriter, r *http.Request)
 		if d <= 0 {
 			continue
 		}
-		if _, err := s.db.Exec(`UPDATE tracks SET duration = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, d, t.ID); err != nil {
+		// Update duration and grab BPM in the same pass — avoids a separate
+		// BPM scan step for files that were only broken due to totalSamples=0.
+		bpm := music.ComputeBPM(t.FilePath)
+		if _, err := s.db.Exec(
+			`UPDATE tracks SET duration = ?, bpm = CASE WHEN bpm = 0 THEN ? ELSE bpm END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+			d, bpm, t.ID,
+		); err != nil {
 			log.Printf("[repair] update %s: %v", t.ID, err)
 			continue
 		}

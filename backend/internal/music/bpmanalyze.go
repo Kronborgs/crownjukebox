@@ -45,7 +45,6 @@ func (a *BPMAnalyzer) AnalyzeMissing(progress chan<- BPMProgress) error {
 		SELECT id, file_path FROM tracks
 		WHERE bpm = 0
 		  AND source_type IN ('local','party_upload')
-		  AND duration > 0
 		  AND file_path != ''
 		ORDER BY file_path`); err != nil {
 		return fmt.Errorf("query tracks: %w", err)
