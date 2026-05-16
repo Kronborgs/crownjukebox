@@ -913,8 +913,8 @@ function BpmStatsBar({ withBPM, withoutBPM }: { withBPM: number; withoutBPM: num
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
         <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>BPM-data</span>
         <span style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
-          <span style={{ color: 'var(--neon-teal)', fontWeight: 700 }}>{withBPM.toLocaleString()}</span>
-          <span style={{ color: 'var(--text-dim)' }}> / {total.toLocaleString()} numre ({pct}%)</span>
+          <span style={{ color: 'var(--neon-teal)', fontWeight: 700 }}>{withBPM.toLocaleString()} har BPM</span>
+          <span style={{ color: 'var(--text-dim)' }}> / {total.toLocaleString()} numre i alt ({pct}%)</span>
         </span>
       </div>
       <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden', height: '6px' }}>
@@ -922,7 +922,7 @@ function BpmStatsBar({ withBPM, withoutBPM }: { withBPM: number; withoutBPM: num
       </div>
       {withoutBPM > 0 && (
         <p style={{ fontSize: '0.72rem', color: 'var(--neon-amber, #ffaa00)', marginTop: '5px' }}>
-          {withoutBPM.toLocaleString()} numre mangler BPM — brug "Scan manglende" nedenfor
+          {withoutBPM.toLocaleString()} numre har ikke BPM i tags og tonehøjde-analyse fandt intet — brug "Scan manglende" for at prøve igen
         </p>
       )}
     </div>
