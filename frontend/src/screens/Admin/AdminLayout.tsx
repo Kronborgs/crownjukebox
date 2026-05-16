@@ -1510,6 +1510,19 @@ function AlbumFixerPanel() {
             <button className="btn btn-ghost" style={{ fontSize: '0.8rem' }} onClick={load} disabled={loading}>
               <RefreshCw size={13} className={loading ? 'spinning' : ''} /> {loading ? 'Henter…' : 'Opdater liste'}
             </button>
+            <button
+              className="btn btn-ghost"
+              style={{ fontSize: '0.8rem', color: 'var(--neon-teal)' }}
+              onClick={() => setArtistInput(a => {
+                const next = { ...a }
+                groups.forEach(g => { next[g.title] = 'Various Artists' })
+                return next
+              })}
+              disabled={groups.length === 0}
+              title="Udfyld 'Various Artists' på alle album på én gang"
+            >
+              Sæt alle → Various Artists
+            </button>
             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--neon-amber)', cursor: 'pointer' }}>
               <input type="checkbox" checked={writeFiles} onChange={e => setWriteFiles(e.target.checked)} />
               Skriv tags til filer (AlbumArtist)
@@ -1585,6 +1598,14 @@ function AlbumFixerPanel() {
                       fontSize: '0.82rem',
                     }}
                   />
+                  <button
+                    className="btn btn-ghost"
+                    style={{ fontSize: '0.75rem', flexShrink: 0, opacity: 0.7 }}
+                    onClick={() => setArtistInput(a => ({ ...a, [g.title]: 'Various Artists' }))}
+                    title="Sæt til Various Artists"
+                  >
+                    VA
+                  </button>
                   <button
                     className="btn btn-primary"
                     style={{ fontSize: '0.8rem', flexShrink: 0 }}

@@ -80,12 +80,44 @@ type searchResponse struct {
 }
 
 // SearchReleaseGroups searches MusicBrainz for release groups by title.
-// Returns up to 5 results ordered by relevance score.
+// It tries two strategies and merges results:
+//  1. Exact phrase search (quoted) — high precision
+//  2. Tokenised/fuzzy search — better recall for titles with numbers, "Uge X", etc.
+//
+// Returns up to 8 deduplicated results ordered by relevance score.
 func SearchReleaseGroups(title string) ([]ReleaseGroup, error) {
+	exact, err := searchMB(fmt.Sprintf(`releasegroup:"%s"`, title), 5)
+	if err != nil {
+		return nil, err
+	}
+
+	// Always also do a fuzzy pass so we catch near-matches.
+	rateLimit()
+	fuzzy, err2 := searchMB(fmt.Sprintf(`releasegroup:%s`, url.QueryEscape(title)), 5)
+	if err2 == nil {
+		seen := make(map[string]bool, len(exact))
+		for _, r := range exact {
+			seen[r.ID] = true
+		}
+		for _, r := range fuzzy {
+			if !seen[r.ID] {
+				exact = append(exact, r)
+			}
+		}
+	}
+
+	// Cap at 8 results.
+	if len(exact) > 8 {
+		exact = exact[:8]
+	}
+	return exact, nil
+}
+
+func searchMB(query string, limit int) ([]ReleaseGroup, error) {
 	rateLimit()
 
-	q := url.QueryEscape(fmt.Sprintf(`releasegroup:"%s"`, title))
-	reqURL := fmt.Sprintf("%s/release-group?query=%s&limit=5&fmt=json", apiBase, q)
+	q := url.QueryEscape(query)
+	reqURL := fmt.Sprintf("%s/release-group?query=%s&limit=%d&fmt=json", apiBase, q, limit)
 
 	req, err := http.NewRequest("GET", reqURL, nil)
 	if err != nil {
