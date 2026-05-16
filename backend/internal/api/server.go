@@ -285,6 +285,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/admin/analyze-bpm", s.handleAnalyzeBPM)
 		r.Post("/api/admin/library/reset", s.handleResetLibrary)
 		r.Get("/api/admin/library/broken-files", s.handleListBrokenFiles)
+		r.Post("/api/admin/library/broken-files/repair", s.handleRepairBrokenFiles)
 		r.Delete("/api/admin/library/tracks/{id}", s.handleDeleteTrack)
 		r.Get("/api/admin/missing-artwork", s.handleAdminMissingArtwork)
 		r.Get("/api/admin/keyboard-bindings", s.handleGetKeyboardBindings)
@@ -2268,6 +2269,42 @@ func (s *Server) handleListBrokenFiles(w http.ResponseWriter, r *http.Request) {
 		tracks = []db.Track{}
 	}
 	jsonOK(w, tracks)
+}
+
+// handleRepairBrokenFiles re-reads duration for all tracks with duration=0
+// using the updated parser (including ffprobe fallback). Updates the database
+// in-place so no full rescan is needed.
+func (s *Server) handleRepairBrokenFiles(w http.ResponseWriter, r *http.Request) {
+	uploadsDir := config.GlobalPartyUploadsDir(s.cfg.DBPath)
+	if !strings.HasSuffix(uploadsDir, "/") {
+		uploadsDir += "/"
+	}
+	type row struct {
+		ID       string `db:"id"`
+		FilePath string `db:"file_path"`
+	}
+	var broken []row
+	if err := s.db.Select(&broken, `
+		SELECT id, file_path FROM tracks
+		WHERE source_type = 'local' AND duration = 0
+		  AND file_path NOT LIKE ?`, uploadsDir+"%"); err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
+
+	repaired := 0
+	for _, t := range broken {
+		d := music.GetDurationSecs(t.FilePath)
+		if d <= 0 {
+			continue
+		}
+		if _, err := s.db.Exec(`UPDATE tracks SET duration = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, d, t.ID); err != nil {
+			log.Printf("[repair] update %s: %v", t.ID, err)
+			continue
+		}
+		repaired++
+	}
+	jsonOK(w, map[string]int{"repaired": repaired, "total": len(broken)})
 }
 
 // handleDeleteTrack removes a local or SKÅL-upload track from the database (not from disk).

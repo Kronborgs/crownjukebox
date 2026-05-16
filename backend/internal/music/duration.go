@@ -7,6 +7,8 @@ package music
 //     • FLAC  — STREAMINFO metadata block (exact, lossless)
 //     • MP3   — Xing/Info VBR header (exact) → CBR bitrate estimate (fallback)
 //     • M4A   — mvhd / mdhd atom (exact)
+//  3. ffprobe fallback for any format where steps 1-2 returned 0
+//     (handles FLAC files with totalSamples=0 in STREAMINFO, OGG Vorbis, etc.)
 //
 // Returns 0 when duration cannot be determined.
 //
@@ -18,12 +20,19 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 
 	"github.com/dhowden/tag"
 )
+
+// GetDurationSecs is the public variant used by the repair handler —
+// it reads duration without requiring pre-parsed tag metadata.
+func GetDurationSecs(filePath string) int {
+	return getDurationSecs(filePath, nil)
+}
 
 func getDurationSecs(filePath string, m tag.Metadata) int {
 	// 1. Tag-embedded duration (fastest path)
@@ -46,13 +55,41 @@ func getDurationSecs(filePath string, m tag.Metadata) int {
 		fileSize = fi.Size()
 	}
 
+	var d int
 	switch ext {
 	case ".flac":
-		return flacDuration(f)
+		d = flacDuration(f)
 	case ".mp3":
-		return mp3Duration(f, fileSize)
+		d = mp3Duration(f, fileSize)
 	case ".m4a":
-		return m4aDuration(f)
+		d = m4aDuration(f)
+	}
+	if d > 0 {
+		return d
+	}
+	// Fallback: ffprobe handles FLAC with totalSamples=0, OGG Vorbis, and other
+	// formats our binary parsers don't cover.
+	return ffprobeDuration(filePath)
+}
+
+// ffprobeDuration calls ffprobe to read the container duration. Used as a
+// fallback when the format-specific binary parser returns 0.
+func ffprobeDuration(filePath string) int {
+	out, err := exec.Command("ffprobe",
+		"-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "default=noprint_wrappers=1:nokey=1",
+		filePath,
+	).Output()
+	if err != nil {
+		return 0
+	}
+	s := strings.TrimSpace(string(out))
+	if dot := strings.Index(s, "."); dot > 0 {
+		s = s[:dot]
+	}
+	if n, err := strconv.Atoi(s); err == nil && n > 0 {
+		return n
 	}
 	return 0
 }

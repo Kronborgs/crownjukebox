@@ -487,6 +487,7 @@ export const adminApi = {
   analyzeBPM:           () => post('/api/admin/analyze-bpm'),
   resetLibrary:         () => post<{ status: string; message: string }>('/api/admin/library/reset'),
   brokenFiles:          () => getList<Track>('/api/admin/library/broken-files'),
+  repairBrokenFiles:    () => post<{ repaired: number; total: number }>('/api/admin/library/broken-files/repair'),
   deleteTrack:          (id: string) => del(`/api/admin/library/tracks/${id}`),
   missingArtwork:       () => getList<Album>('/api/admin/missing-artwork'),
 

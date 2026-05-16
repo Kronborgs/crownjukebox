@@ -1341,6 +1341,8 @@ function BrokenFilesPanel() {
   const [deleting, setDeleting] = useState<string | null>(null)
   const [confirmAll, setConfirmAll] = useState(false)
   const [deletingAll, setDeletingAll] = useState(false)
+  const [repairing, setRepairing] = useState(false)
+  const [repairResult, setRepairResult] = useState<{ repaired: number; total: number } | null>(null)
 
   if (isLoading) return null
   if (files.length === 0) return (
@@ -1371,15 +1373,41 @@ function BrokenFilesPanel() {
     setDeletingAll(false)
   }
 
+  async function repairAll() {
+    setRepairing(true)
+    setRepairResult(null)
+    try {
+      const result = await adminApi.repairBrokenFiles()
+      setRepairResult(result)
+      await qc.invalidateQueries({ queryKey: ['admin-broken-files'] })
+    } finally {
+      setRepairing(false)
+    }
+  }
+
   return (
     <div style={{ marginTop: '28px', marginBottom: '28px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
         <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--neon-amber, #ffaa00)', margin: 0 }}>
           ⚠ Fejlfiler — {(files as Track[]).length} numre uden varighed
         </h3>
         <button className="btn btn-ghost" style={{ fontSize: '0.8rem' }} onClick={() => refetch()}>
           <RefreshCw size={13} /> Opdater
         </button>
+        <button
+          className="btn btn-ghost"
+          style={{ fontSize: '0.8rem', color: 'var(--neon-teal)' }}
+          onClick={repairAll}
+          disabled={repairing || deletingAll}
+        >
+          <RefreshCw size={13} style={repairing ? { animation: 'spin 1s linear infinite' } : undefined} />
+          {repairing ? 'Reparerer…' : 'Reparer varighed'}
+        </button>
+        {repairResult && (
+          <span style={{ fontSize: '0.78rem', color: 'var(--neon-teal)' }}>
+            ✓ {repairResult.repaired} / {repairResult.total} repareret
+          </span>
+        )}
         {!confirmAll ? (
           <button
             className="btn btn-ghost"
@@ -1399,8 +1427,9 @@ function BrokenFilesPanel() {
         )}
       </div>
       <p style={{ fontSize: '0.78rem', color: 'var(--text-dim)', marginBottom: '10px' }}>
-        Disse filer kunne ikke læses korrekt (mangler varighed). Fjern dem fra biblioteket — filerne på disken berøres ikke.
-        Scan igen efter du har rettet eller slettet filerne.
+        Disse numre mangler varighed — ofte fordi FLAC-filen har <code>totalSamples=0</code> i STREAMINFO-blokken (gyldigt format, men varighed ukendt).
+        Klik <strong>Reparer varighed</strong> for at forsøge at læse varighed via ffprobe uden fuld scanning.
+        Filerne på disken berøres ikke.
       </p>
       <div style={{ maxHeight: '320px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }}>
         {(files as Track[]).map(track => (
