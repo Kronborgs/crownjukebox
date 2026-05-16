@@ -82,7 +82,7 @@ function LEDScrollingText({ text, color, size }: LEDScrollingTextProps) {
 
 // --- Speaker frame animation (Auto DJ idle indicator) ---
 const SPEAKER_TOTAL_FRAMES = 6
-const SPEAKER_FRAME_MS = 130 // ~7.7 fps — gentle, not frantic
+const SPEAKER_FRAME_MS = 210 // ~4.8 fps — slow and relaxed
 
 function SpeakerSprite({ visible }: { visible: boolean }) {
   const [frame, setFrame] = useState(1)
@@ -107,7 +107,7 @@ function SpeakerSprite({ visible }: { visible: boolean }) {
             src={`/speaker/frame_0${frame}_transparent.png`}
             alt=""
             draggable={false}
-            style={{ width: '88px', height: '88px', objectFit: 'contain', filter: 'drop-shadow(0 0 12px rgba(0,255,180,0.35))' }}
+            style={{ width: '140px', height: '140px', objectFit: 'contain', filter: 'drop-shadow(0 0 16px rgba(0,255,180,0.35))' }}
           />
         </motion.div>
       )}
@@ -1145,7 +1145,6 @@ export function NowPlaying({ state, refreshState }: Props) {
                        transition: 'margin-top 0.35s cubic-bezier(0.4,0,0.2,1)' }}
             >
               {/* Speaker animation — visible when Auto DJ is on and dials are collapsed */}
-              <SpeakerSprite visible={audioSettings.autoDjEnabled && !showDials} />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                 <span style={{ color: 'var(--text-dim)', fontSize: '0.72rem', letterSpacing: '2px', textTransform: 'uppercase' }}>Auto DJ</span>
                 <RetroPushButton
@@ -1225,6 +1224,8 @@ export function NowPlaying({ state, refreshState }: Props) {
                   </div>
                 </div>
               )}
+              {/* Speaker animation — at the bottom of Auto DJ section, larger */}
+              <SpeakerSprite visible={audioSettings.autoDjEnabled && !showDials} />
             </motion.div>
           </div>
           )}
