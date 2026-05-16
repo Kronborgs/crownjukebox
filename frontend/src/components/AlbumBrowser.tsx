@@ -380,12 +380,10 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
                     <Clock size={12} />
                     {formatTime(track.duration_secs)}
                   </span>
-                  {(track.bpm ?? 0) > 0 && (
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '3px', color: 'var(--neon-teal)', fontSize: '0.75rem', opacity: 0.75 }}>
-                      <Zap size={11} />
-                      {track.bpm}
-                    </span>
-                  )}
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '3px', color: (track.bpm ?? 0) > 0 ? 'var(--neon-teal)' : 'var(--text-dim)', fontSize: '0.75rem', opacity: 0.75 }}>
+                    <Zap size={11} />
+                    {(track.bpm ?? 0) > 0 ? track.bpm : '—'}
+                  </span>
                 </span>
                 <button
                   onClick={e => { e.stopPropagation(); handleTrackClick(track) }}
