@@ -3,7 +3,13 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { libraryApi, SearchResults, queueApi } from '@/api/client'
 import { CoverArt } from '@/components/CoverArt'
-import { Search as SearchIcon, Plus, X, Check } from 'lucide-react'
+import { Search as SearchIcon, Plus, X, Check, Clock } from 'lucide-react'
+
+function formatTime(secs: number) {
+  const m = Math.floor(secs / 60)
+  const s = Math.floor(secs % 60)
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
 import { MissingSongCTA } from '@/components/MissingSongCTA'
 
 // Simple on-screen keyboard layout for kiosk mode
@@ -119,6 +125,12 @@ export function SearchScreen() {
                   <p style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.title}</p>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{track.artist}</p>
                 </div>
+                {track.duration_secs > 0 && (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '3px', color: 'var(--text-dim)', fontSize: '0.8rem', flexShrink: 0 }}>
+                    <Clock size={12} />
+                    {formatTime(track.duration_secs)}
+                  </span>
+                )}
                 <button className="btn btn-primary btn-icon" style={{ padding: '6px', flexShrink: 0 }} onClick={() => addToQueue(track.id)} disabled={addedTrackId === track.id}>
                   {addedTrackId === track.id ? <Check size={16} /> : <Plus size={16} />}
                 </button>
