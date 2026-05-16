@@ -80,6 +80,41 @@ function LEDScrollingText({ text, color, size }: LEDScrollingTextProps) {
   )
 }
 
+// --- Speaker frame animation (Auto DJ idle indicator) ---
+const SPEAKER_TOTAL_FRAMES = 6
+const SPEAKER_FRAME_MS = 130 // ~7.7 fps — gentle, not frantic
+
+function SpeakerSprite({ visible }: { visible: boolean }) {
+  const [frame, setFrame] = useState(1)
+  useEffect(() => {
+    if (!visible) { setFrame(1); return }
+    const id = setInterval(() => setFrame(f => (f % SPEAKER_TOTAL_FRAMES) + 1), SPEAKER_FRAME_MS)
+    return () => clearInterval(id)
+  }, [visible])
+
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          key="speaker-sprite"
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.8 }}
+          transition={{ duration: 0.55, ease: 'easeInOut' }}
+          style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px', pointerEvents: 'none' }}
+        >
+          <img
+            src={`/speaker/frame_0${frame}_transparent.png`}
+            alt=""
+            draggable={false}
+            style={{ width: '88px', height: '88px', objectFit: 'contain', filter: 'drop-shadow(0 0 12px rgba(0,255,180,0.35))' }}
+          />
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
 export function NowPlaying({ state, refreshState }: Props) {
   const { isAdmin, isGuest, sessionId } = useSession()
   const audioRef = useRef<HTMLAudioElement>(null)
@@ -1088,6 +1123,8 @@ export function NowPlaying({ state, refreshState }: Props) {
               style={{ marginTop: showDials ? '18px' : '0', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '14px',
                        transition: 'margin-top 0.35s cubic-bezier(0.4,0,0.2,1)' }}
             >
+              {/* Speaker animation — visible when Auto DJ is on and dials are collapsed */}
+              <SpeakerSprite visible={audioSettings.autoDjEnabled && !showDials} />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                 <span style={{ color: 'var(--text-dim)', fontSize: '0.72rem', letterSpacing: '2px', textTransform: 'uppercase' }}>Auto DJ</span>
                 <RetroPushButton
