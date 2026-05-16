@@ -913,6 +913,7 @@ function LibraryPanel() {
   const [artworkProgress, setArtworkProgress] = useState<{ processed: number; total: number } | null>(null)
   const [isBPMScanning, setIsBPMScanning] = useState(false)
   const [bpmProgress, setBpmProgress] = useState<{ processed: number; total: number } | null>(null)
+  const [bpmScanMode, setBpmScanMode] = useState<'missing' | 'all'>('missing')
   const [isResetting, setIsResetting] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
   const { data: playlists = [] } = useQuery({ queryKey: ['admin-playlists'], queryFn: adminApi.skaalPlaylists })
@@ -1025,9 +1026,20 @@ function LibraryPanel() {
   async function analyzeBPM() {
     setScanStatus('')
     setBpmProgress(null)
+    setBpmScanMode('missing')
     setIsBPMScanning(true)
     try {
       await adminApi.analyzeBPM()
+    } catch { setScanStatus('Fejl ved BPM-analyse'); setIsBPMScanning(false) }
+  }
+
+  async function analyzeAllBPM() {
+    setScanStatus('')
+    setBpmProgress(null)
+    setBpmScanMode('all')
+    setIsBPMScanning(true)
+    try {
+      await adminApi.analyzeAllBPM()
     } catch { setScanStatus('Fejl ved BPM-analyse'); setIsBPMScanning(false) }
   }
 
@@ -1128,14 +1140,79 @@ function LibraryPanel() {
             </div>
           </div>
         )}
-        <button
-          className="btn btn-ghost"
-          style={{ justifyContent: 'flex-start', gap: '10px' }}
-          onClick={analyzeBPM}
-          disabled={isBPMScanning}
-        >
-          <Zap size={16} className={isBPMScanning ? 'spinning' : ''} /> {isBPMScanning ? 'Analyserer BPM…' : 'Analyser BPM på alle numre'}
-        </button>
+        {/* ── BPM stats ── */}
+        {metrics && (metrics.bpm?.with_bpm > 0 || metrics.bpm?.without_bpm > 0) && (() => {
+          const withBPM = metrics.bpm?.with_bpm ?? 0
+          const withoutBPM = metrics.bpm?.without_bpm ?? 0
+          const total = withBPM + withoutBPM
+          const pct = total > 0 ? Math.round((withBPM / total) * 100) : 0
+          return (
+            <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '12px 14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>BPM-data</span>
+                <span style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+                  <span style={{ color: 'var(--neon-teal)', fontWeight: 700 }}>{withBPM.toLocaleString()}</span>
+                  <span style={{ color: 'var(--text-dim)' }}> / {total.toLocaleString()} numre ({pct}%)</span>
+                </span>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden', height: '6px' }}>
+                <div style={{ background: 'linear-gradient(90deg, var(--neon-teal), #60e0b0)', height: '100%', width: `${pct}%`, transition: 'width 0.4s ease', borderRadius: '4px' }} />
+              </div>
+              {withoutBPM > 0 && (
+                <p style={{ fontSize: '0.72rem', color: 'var(--neon-amber, #ffaa00)', marginTop: '5px' }}>
+                  {withoutBPM.toLocaleString()} numre mangler BPM — brug "Scan manglende" nedenfor
+                </p>
+              )}
+            </div>
+          )
+        })()}
+        {/* ── Disk stats ── */}
+        {metrics && (metrics.disk?.total_bytes ?? 0) > 0 && (() => {
+          const gb = (b: number) => (b / 1024 / 1024 / 1024).toFixed(1)
+          const usedPct = Math.round((metrics.disk.used_bytes / metrics.disk.total_bytes) * 100)
+          const totalHours = Math.round((metrics.database?.total_duration_secs ?? 0) / 3600)
+          return (
+            <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '12px 14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Storage</span>
+                <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                  {gb(metrics.disk.used_bytes)} GB brugt / {gb(metrics.disk.total_bytes)} GB total
+                </span>
+              </div>
+              <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden', height: '6px' }}>
+                <div style={{ background: usedPct > 85 ? 'linear-gradient(90deg, #ff6060, #ff3030)' : 'linear-gradient(90deg, var(--neon-primary), #a040ff)', height: '100%', width: `${usedPct}%`, transition: 'width 0.4s ease', borderRadius: '4px' }} />
+              </div>
+              {totalHours > 0 && (
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '5px' }}>
+                  {totalHours} timers musik i biblioteket
+                </p>
+              )}
+            </div>
+          )
+        })()}
+        {/* ── BPM buttons ── */}
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            className="btn btn-ghost"
+            style={{ flex: 1, justifyContent: 'flex-start', gap: '8px', fontSize: '0.85rem' }}
+            onClick={analyzeBPM}
+            disabled={isBPMScanning}
+            title="Analyser kun numre der mangler BPM"
+          >
+            <Zap size={15} className={isBPMScanning && bpmScanMode === 'missing' ? 'spinning' : ''} />
+            {isBPMScanning && bpmScanMode === 'missing' ? 'Analyserer…' : 'Scan manglende BPM'}
+          </button>
+          <button
+            className="btn btn-ghost"
+            style={{ flex: 1, justifyContent: 'flex-start', gap: '8px', fontSize: '0.85rem' }}
+            onClick={analyzeAllBPM}
+            disabled={isBPMScanning}
+            title="Nulstil og re-analyser BPM for alle numre"
+          >
+            <Zap size={15} className={isBPMScanning && bpmScanMode === 'all' ? 'spinning' : ''} />
+            {isBPMScanning && bpmScanMode === 'all' ? 'Re-analyserer alle…' : 'Genanalyser alle BPM'}
+          </button>
+        </div>
         {bpmProgress && bpmProgress.total > 0 && (
           <div style={{
             background: 'rgba(255,255,255,0.04)',

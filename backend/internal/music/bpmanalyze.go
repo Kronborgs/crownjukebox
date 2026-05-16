@@ -75,6 +75,15 @@ func (a *BPMAnalyzer) AnalyzeMissing(progress chan<- BPMProgress) error {
 	return nil
 }
 
+// AnalyzeAll resets BPM to 0 for all local tracks and then re-analyzes every
+// one of them — useful when you want to refresh BPM data from scratch.
+func (a *BPMAnalyzer) AnalyzeAll(progress chan<- BPMProgress) error {
+	if _, err := a.db.Exec(`UPDATE tracks SET bpm = 0 WHERE source_type IN ('local','party_upload')`); err != nil {
+		return fmt.Errorf("reset bpm: %w", err)
+	}
+	return a.AnalyzeMissing(progress)
+}
+
 // ComputeBPM returns the estimated BPM for the given audio file.
 // It first tries to read a BPM tag via ffprobe; if that returns 0 it falls back
 // to audio analysis using ffmpeg + onset autocorrelation.

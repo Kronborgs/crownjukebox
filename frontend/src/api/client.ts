@@ -223,6 +223,16 @@ export interface SystemMetrics {
     artists: number
     users: number
     rooms: number
+    total_duration_secs: number
+  }
+  bpm: {
+    with_bpm: number
+    without_bpm: number
+  }
+  disk: {
+    total_bytes: number
+    free_bytes: number
+    used_bytes: number
   }
   uptime_seconds: number
 }
@@ -489,6 +499,7 @@ export const adminApi = {
   brokenFiles:          () => getList<Track>('/api/admin/library/broken-files'),
   repairBrokenFiles:    () => post<{ repaired: number; total: number }>('/api/admin/library/broken-files/repair'),
   deleteTrack:          (id: string) => del(`/api/admin/library/tracks/${id}`),
+  analyzeAllBPM:        () => post('/api/admin/analyze-bpm-all'),
   missingArtwork:       () => getList<Album>('/api/admin/missing-artwork'),
 
   // Keyboard bindings

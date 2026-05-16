@@ -283,6 +283,7 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/admin/rescan-artwork", s.handleRescanArtwork)
 		r.Post("/api/admin/rescan-missing-artwork", s.handleRescanMissingArtwork)
 		r.Post("/api/admin/analyze-bpm", s.handleAnalyzeBPM)
+		r.Post("/api/admin/analyze-bpm-all", s.handleAnalyzeBPMAll)
 		r.Post("/api/admin/library/reset", s.handleResetLibrary)
 		r.Get("/api/admin/library/broken-files", s.handleListBrokenFiles)
 		r.Post("/api/admin/library/broken-files/repair", s.handleRepairBrokenFiles)
@@ -2512,6 +2513,41 @@ func (s *Server) handleAnalyzeBPM(w http.ResponseWriter, r *http.Request) {
 	jsonOK(w, map[string]string{"status": "bpm scan started"})
 }
 
+// handleAnalyzeBPMAll resets BPM to 0 for all local tracks and re-analyzes every one.
+func (s *Server) handleAnalyzeBPMAll(w http.ResponseWriter, r *http.Request) {
+	s.scanMu.Lock()
+	if s.bpmScan != nil {
+		s.scanMu.Unlock()
+		jsonError(w, "BPM-analyse kører allerede — vent til den er færdig", http.StatusConflict)
+		return
+	}
+	s.bpmScan = &bpmScanInfo{}
+	s.scanMu.Unlock()
+
+	analyzer := music.NewBPMAnalyzer(s.db)
+	progress := make(chan music.BPMProgress, 10)
+
+	go func() {
+		if err := analyzer.AnalyzeAll(progress); err != nil {
+			log.Printf("[bpm-scan-all] error: %v", err)
+		}
+	}()
+	go func() {
+		for p := range progress {
+			s.scanMu.Lock()
+			if p.Done || p.Error != "" {
+				s.bpmScan = nil
+			} else {
+				s.bpmScan = &bpmScanInfo{Total: p.Total, Processed: p.Processed}
+			}
+			s.scanMu.Unlock()
+			s.hub.Broadcast("bpm_scan_progress", p)
+		}
+	}()
+
+	jsonOK(w, map[string]string{"status": "full bpm rescan started"})
+}
+
 func (s *Server) handleGetScanStatus(w http.ResponseWriter, r *http.Request) {
 	s.scanMu.RLock()
 	lib := s.libraryScan
@@ -3053,6 +3089,8 @@ func (s *Server) handleSystemMetrics(w http.ResponseWriter, r *http.Request) {
 	// • only tracks with a known duration (duration > 0) — broken/unreadable files excluded
 	// • albums and artists that have at least one such track
 	var trackCount, albumCount, artistCount, userCount, roomCount int
+	var bpmWith, bpmWithout int
+	var totalDurationSecs int64
 	_ = s.db.Get(&trackCount, `
 		SELECT COUNT(*) FROM tracks
 		WHERE source_type IN ('local', 'subsonic') AND duration > 0`)
@@ -3064,6 +3102,17 @@ func (s *Server) handleSystemMetrics(w http.ResponseWriter, r *http.Request) {
 		WHERE source_type IN ('local', 'subsonic') AND duration > 0`)
 	_ = s.db.Get(&userCount, `SELECT COUNT(*) FROM users`)
 	_ = s.db.Get(&roomCount, `SELECT COUNT(*) FROM rooms`)
+	_ = s.db.Get(&bpmWith, `
+		SELECT COUNT(*) FROM tracks
+		WHERE source_type IN ('local', 'subsonic') AND duration > 0 AND bpm > 0`)
+	_ = s.db.Get(&bpmWithout, `
+		SELECT COUNT(*) FROM tracks
+		WHERE source_type IN ('local', 'subsonic') AND duration > 0 AND bpm = 0`)
+	_ = s.db.Get(&totalDurationSecs, `
+		SELECT COALESCE(SUM(duration), 0) FROM tracks
+		WHERE source_type IN ('local', 'subsonic') AND duration > 0`)
+
+	disk := getDiskStats(s.cfg.MusicDir)
 
 	jsonOK(w, map[string]any{
 		"memory": map[string]any{
@@ -3077,11 +3126,21 @@ func (s *Server) handleSystemMetrics(w http.ResponseWriter, r *http.Request) {
 			"num_cpu":    runtime.NumCPU(),
 		},
 		"database": map[string]any{
-			"tracks":  trackCount,
-			"albums":  albumCount,
-			"artists": artistCount,
-			"users":   userCount,
-			"rooms":   roomCount,
+			"tracks":               trackCount,
+			"albums":               albumCount,
+			"artists":              artistCount,
+			"users":                userCount,
+			"rooms":                roomCount,
+			"total_duration_secs":  totalDurationSecs,
+		},
+		"bpm": map[string]any{
+			"with_bpm":    bpmWith,
+			"without_bpm": bpmWithout,
+		},
+		"disk": map[string]any{
+			"total_bytes": disk.TotalBytes,
+			"free_bytes":  disk.FreeBytes,
+			"used_bytes":  disk.UsedBytes,
 		},
 		"uptime_seconds": time.Since(s.startTime).Seconds(),
 	})
