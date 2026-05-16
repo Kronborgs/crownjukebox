@@ -116,7 +116,7 @@ function SpeakerSprite({ visible }: { visible: boolean }) {
 }
 
 export function NowPlaying({ state, refreshState }: Props) {
-  const { isAdmin, isGuest, sessionId } = useSession()
+  const { isAdmin, isGuest, sessionId, logout } = useSession()
   const audioRef = useRef<HTMLAudioElement>(null)
   const playerBRef = useRef<HTMLAudioElement>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -658,7 +658,11 @@ export function NowPlaying({ state, refreshState }: Props) {
       }
       audioContextRef.current?.resume().catch(() => {})
       audio.play().catch((err) => {
-        if (err.name === 'NotAllowedError' || err.name === 'NotSupportedError') {
+        // Only NotAllowedError means the browser requires a user gesture.
+        // NotSupportedError / AbortError etc. are network/format errors — do NOT
+        // re-show the interaction overlay for those (that would cause an endless loop
+        // when e.g. an ad-blocker blocks the stream URL).
+        if (err.name === 'NotAllowedError') {
           setNeedsInteraction(true)
         }
       })
@@ -667,7 +671,7 @@ export function NowPlaying({ state, refreshState }: Props) {
       // Also pause Player B if Auto DJ is mid-fade when playback is paused
       playerBRef.current?.pause()
     }
-  }, [state?.is_playing, audioSrc, needsInteraction]) // needsInteraction dep: re-run after user gesture so play() is retried
+  }, [state?.is_playing, audioSrc])
 
   // Report position to server every 5s — ONLY when this device is the active player.
   // Using isActivePlayerRef (not state) so the interval picks up role changes immediately
@@ -812,6 +816,14 @@ export function NowPlaying({ state, refreshState }: Props) {
       {/* Autoplay-policy overlay — shown when browser blocks autoplay */}
       {needsInteraction && (
         <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.88)',
+            display: 'flex', flexDirection: 'column',
+            alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+            gap: '1rem',
+          }}
           onClick={async () => {
             // MUST await resume() before play(). If play() is called while the
             // AudioContext is still suspended, the promise resolves but produces
@@ -825,14 +837,6 @@ export function NowPlaying({ state, refreshState }: Props) {
             const audio = audioRef.current
             if (audio?.src) audio.play().catch(() => {})
           }}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 9999,
-            background: 'rgba(0,0,0,0.88)',
-            display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer',
-            gap: '1rem',
-          }}
         >
           <Play size={64} color="var(--neon-primary)" />
           <p style={{ color: 'var(--neon-primary)', fontSize: '1.4rem', fontWeight: 700 }}>
@@ -841,6 +845,23 @@ export function NowPlaying({ state, refreshState }: Props) {
           <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem' }}>
             Browseren kræver en handling for at starte lyd
           </p>
+          {/* Escape hatch — lets a stuck user log out without needing to dismiss audio first */}
+          <button
+            onClick={e => { e.stopPropagation(); logout() }}
+            style={{
+              marginTop: '2rem',
+              background: 'none',
+              border: '1px solid rgba(255,255,255,0.2)',
+              borderRadius: '999px',
+              color: 'rgba(255,255,255,0.4)',
+              fontSize: '0.8rem',
+              padding: '6px 18px',
+              cursor: 'pointer',
+              letterSpacing: '1px',
+            }}
+          >
+            Log ud
+          </button>
         </div>
       )}
 
@@ -976,7 +997,7 @@ export function NowPlaying({ state, refreshState }: Props) {
                     audioContextRef.current?.resume().catch(() => {})
                     if (audioRef.current && audioSrc) {
                       audioRef.current.play().catch((err) => {
-                        if (err.name === 'NotAllowedError' || err.name === 'NotSupportedError') {
+                        if (err.name === 'NotAllowedError') {
                           setNeedsInteraction(true)
                         }
                       })
