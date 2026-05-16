@@ -1017,12 +1017,19 @@ export function NowPlaying({ state, refreshState }: Props) {
                 <button
                   className="btn btn-ghost btn-icon"
                   onClick={async () => {
-                    autoDJ.cancelFade() // Stop any in-progress crossfade
+                    // When Auto DJ is enabled, use the crossfade instead of a hard cut.
+                    // triggerFade fetches the next queued track and starts the fade.
+                    // Falls back to a normal hard skip if nothing is queued or fade fails.
+                    if (audioSettings.autoDjEnabled) {
+                      const faded = await autoDJ.triggerFade()
+                      if (faded) return
+                    }
+                    autoDJ.cancelFade()
                     await playbackApi.skip()
                     refreshState?.().catch(console.error)
                   }}
                   aria-label="Spring over"
-                  title="Spring over (kun admin)"
+                  title={audioSettings.autoDjEnabled ? 'Spring over (crossfade)' : 'Spring over (kun admin)'}
                   style={{ color: 'var(--neon-accent)' }}
                 >
                   <SkipForward size={24} />

@@ -86,6 +86,13 @@ export interface UseAutoDJResult {
   /** Cancel an in-progress fade (e.g. on manual skip) */
   cancelFade: () => void
   /**
+   * Immediately trigger a crossfade to the next queued track.
+   * Fetches the next track from the queue, then starts the fade.
+   * Returns true if the fade was started, false if nothing to fade to.
+   * Used by the admin skip button when Auto DJ is enabled.
+   */
+  triggerFade: () => Promise<boolean>
+  /**
    * Returns true when Auto DJ is either actively fading OR in the async
    * pre-load phase (waiting for Player B canplay). Use this — not isFading —
    * to guard onEnded/onError handlers, because isFading (React state) lags
@@ -319,6 +326,18 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
     }
   }, [playerARef, playerBRef, audioContextRef, crossfadeGainBRef, directStreamUrlRef, currentTrackId, crossfadeSeconds, runFadeLoop, tempoMatchEnabled, maxTempoAdjustPercent, currentTrackBpm])
 
+  const triggerFade = useCallback(async (): Promise<boolean> => {
+    if (!isActivePlayer || isCasting) return false
+    if (isFadingRef.current || fadeLoadingRef.current) return false
+    try {
+      const nextItem = await queueApi.nextTrack()
+      if (!nextItem) return false
+      return await startFade(nextItem.track_id, nextItem.track_bpm ?? 0)
+    } catch {
+      return false
+    }
+  }, [isActivePlayer, isCasting, startFade])
+
   // Watch Player A's time and trigger the crossfade when close to end.
   useEffect(() => {
     if (!autoDjEnabled || !isActivePlayer || isCasting) return
@@ -419,6 +438,7 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
     isBpmMatch: isBpmMatchState,
     get nextTrackId() { return nextTrackIdRef.current },
     cancelFade,
+    triggerFade,
     isBusy: () => isFadingRef.current || fadeLoadingRef.current,
   }
 }
