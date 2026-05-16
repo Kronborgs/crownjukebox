@@ -42,7 +42,7 @@ function formatTime(secs: number) {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => void; onQueueTab?: () => void } = {}) {
+export function AlbumBrowser({ onSearchTab, onQueueTab, slideshowTick = 0 }: { onSearchTab?: () => void; onQueueTab?: () => void; slideshowTick?: number } = {}) {
   const qc = useQueryClient()
   const [selectedAlbum, setSelectedAlbum] = useState<Album | null>(null)
   const [addedTrackId, setAddedTrackId] = useState<string | null>(null)
@@ -52,6 +52,16 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null)
   const [focusedAlbumIdx, setFocusedAlbumIdx] = useState(-1)
   const [focusedTrackIdx, setFocusedTrackIdx] = useState(-1)
+
+  // Slideshow: advance page when parent sends a new tick (idle kiosk mode)
+  const prevSlideshowTickRef = useRef(0)
+  useEffect(() => {
+    if (!slideshowTick || slideshowTick === prevSlideshowTickRef.current) return
+    prevSlideshowTickRef.current = slideshowTick
+    setSelectedAlbum(null)
+    setFocusedAlbumIdx(-1)
+    setPage(p => (p >= totalPagesRef.current ? 1 : p + 1))
+  }, [slideshowTick]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const { data: settings = {} } = useQuery({ queryKey: ['settings'], queryFn: adminApi.settings })
   const confirmAdd = (settings as Record<string, string>)['queue_confirm_add'] === '1'
@@ -418,8 +428,16 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
             ))}
           </div>
         ) : (
-          <div ref={albumGridRef} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(140px, 12vw, 200px), 1fr))', gap: '12px' }}>
-            <AnimatePresence>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={`${letterFilter}-${safePage}`}
+              ref={albumGridRef}
+              initial={{ opacity: 0, x: 36 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -36 }}
+              transition={{ duration: 0.42, ease: [0.4, 0, 0.2, 1] }}
+              style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(clamp(140px, 12vw, 200px), 1fr))', gap: '12px' }}
+            >
               {visibleAlbums.map((album, index) => (
                 <motion.div
                   key={album.id}
@@ -455,8 +473,8 @@ export function AlbumBrowser({ onSearchTab, onQueueTab }: { onSearchTab?: () => 
                   </div>
                 </motion.div>
               ))}
-            </AnimatePresence>
-          </div>
+            </motion.div>
+          </AnimatePresence>
         )}
       </div>
 

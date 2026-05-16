@@ -50,6 +50,9 @@
   --transition-fast:   150ms ease;
   --transition-normal: 250ms ease;
   --transition-slow:   400ms ease;
+
+  /* BPM-driven animation interval — updated via JS from current track BPM */
+  --beat-ms: 2000ms;
 }
 
 /* ─── Kiosk cabinet scene ───────────────────── */
@@ -77,6 +80,18 @@
   pointer-events: none;
 }
 
+/* Neon rim breathes gently in sync with the music tempo */
+@keyframes neonBreathe {
+  0%, 100% {
+    opacity: 0.68;
+    filter: drop-shadow(0 0 14px rgba(125, 255, 58, 0.12));
+  }
+  50% {
+    opacity: 0.96;
+    filter: drop-shadow(0 0 42px rgba(125, 255, 58, 0.44));
+  }
+}
+
 .kiosk-cabinet-rim {
   position: absolute;
   inset: 2px;
@@ -85,9 +100,8 @@
   background:
     linear-gradient(#1a0735, #1a0735) padding-box,
     conic-gradient(from 10deg, #ff9d3b, #95ff4a, #cb4dff, #ff9d3b) border-box;
-  opacity: 0.92;
-  filter: drop-shadow(0 0 24px rgba(125, 255, 58, 0.22));
   pointer-events: none;
+  animation: neonBreathe var(--beat-ms, 2000ms) ease-in-out infinite;
 }
 
 .kiosk-cabinet {
