@@ -230,9 +230,8 @@ export interface SystemMetrics {
     without_bpm: number
   }
   disk: {
-    total_bytes: number
-    free_bytes: number
-    used_bytes: number
+    size_bytes: number
+    file_count: number
   }
   uptime_seconds: number
 }

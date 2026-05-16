@@ -58,6 +58,12 @@ type Server struct {
 	libraryScan *libraryScanInfo
 	artworkScan *artworkScanInfo
 	bpmScan     *bpmScanInfo
+
+	// music folder size cache — refreshed at most every 5 minutes
+	musicSizeMu    sync.Mutex
+	musicSizeBytes int64
+	musicFileCount int64
+	musicSizeAt    time.Time
 }
 
 type libraryScanInfo struct {
@@ -3075,6 +3081,34 @@ func (s *Server) handleSetPlaylistTrackOrder(w http.ResponseWriter, r *http.Requ
 	jsonOK(w, map[string]string{"status": "reordered"})
 }
 
+var audioExts = map[string]bool{
+	".mp3": true, ".flac": true, ".m4a": true, ".ogg": true,
+	".aac": true, ".wav": true, ".opus": true, ".wma": true,
+}
+
+// cachedMusicSize returns the total bytes and file count of audio files in the music
+// directory. Results are cached for 5 minutes to avoid hammering network mounts.
+func (s *Server) cachedMusicSize() (bytes int64, count int64) {
+	s.musicSizeMu.Lock()
+	defer s.musicSizeMu.Unlock()
+	if time.Since(s.musicSizeAt) < 5*time.Minute {
+		return s.musicSizeBytes, s.musicFileCount
+	}
+	var b, c int64
+	_ = filepath.Walk(s.cfg.MusicDir, func(_ string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		if audioExts[strings.ToLower(filepath.Ext(info.Name()))] {
+			b += info.Size()
+			c++
+		}
+		return nil
+	})
+	s.musicSizeBytes, s.musicFileCount, s.musicSizeAt = b, c, time.Now()
+	return b, c
+}
+
 // handleSystemMetrics returns current system resource usage.
 func (s *Server) handleSystemMetrics(w http.ResponseWriter, r *http.Request) {
 	var m runtime.MemStats
@@ -3112,7 +3146,7 @@ func (s *Server) handleSystemMetrics(w http.ResponseWriter, r *http.Request) {
 		SELECT COALESCE(SUM(duration), 0) FROM tracks
 		WHERE source_type IN ('local', 'subsonic') AND duration > 0`)
 
-	disk := getDiskStats(s.cfg.MusicDir)
+	libBytes, libCount := s.cachedMusicSize()
 
 	jsonOK(w, map[string]any{
 		"memory": map[string]any{
@@ -3138,9 +3172,8 @@ func (s *Server) handleSystemMetrics(w http.ResponseWriter, r *http.Request) {
 			"without_bpm": bpmWithout,
 		},
 		"disk": map[string]any{
-			"total_bytes": disk.TotalBytes,
-			"free_bytes":  disk.FreeBytes,
-			"used_bytes":  disk.UsedBytes,
+			"size_bytes":  libBytes,
+			"file_count":  libCount,
 		},
 		"uptime_seconds": time.Since(s.startTime).Seconds(),
 	})

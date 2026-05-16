@@ -930,20 +930,21 @@ function BpmStatsBar({ withBPM, withoutBPM }: { withBPM: number; withoutBPM: num
 }
 
 // ─── Disk stats bar ───────────────────────────────────────────
-function DiskStatsBar({ usedBytes, totalBytes, totalDurationSecs }: { usedBytes: number; totalBytes: number; totalDurationSecs: number }) {
-  const gb = (b: number) => (b / 1024 / 1024 / 1024).toFixed(1)
-  const usedPct = Math.round((usedBytes / totalBytes) * 100)
+function DiskStatsBar({ sizeBytes, fileCount, totalDurationSecs }: { sizeBytes: number; fileCount: number; totalDurationSecs: number }) {
+  const fmt = (b: number) => {
+    if (b >= 1024 ** 4) return (b / 1024 ** 4).toFixed(1) + ' TB'
+    if (b >= 1024 ** 3) return (b / 1024 ** 3).toFixed(1) + ' GB'
+    return (b / 1024 ** 2).toFixed(0) + ' MB'
+  }
   const totalHours = Math.round(totalDurationSecs / 3600)
   return (
     <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '12px 14px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
-        <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Storage</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Musikmappe</span>
         <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-          {gb(usedBytes)} GB brugt / {gb(totalBytes)} GB total
+          <span style={{ color: 'var(--neon-teal)', fontWeight: 700 }}>{fmt(sizeBytes)}</span>
+          <span style={{ color: 'var(--text-dim)' }}> &mdash; {fileCount.toLocaleString()} lydfiler</span>
         </span>
-      </div>
-      <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden', height: '6px' }}>
-        <div style={{ background: usedPct > 85 ? 'linear-gradient(90deg, #ff6060, #ff3030)' : 'linear-gradient(90deg, var(--neon-primary), #a040ff)', height: '100%', width: `${usedPct}%`, transition: 'width 0.4s ease', borderRadius: '4px' }} />
       </div>
       {totalHours > 0 && (
         <p style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '5px' }}>
@@ -1197,10 +1198,10 @@ function LibraryPanel() {
           <BpmStatsBar withBPM={metrics.bpm.with_bpm} withoutBPM={metrics.bpm.without_bpm} />
         )}
         {/* ── Disk stats ── */}
-        {metrics && metrics.disk.total_bytes > 0 && (
+        {metrics && metrics.disk.size_bytes > 0 && (
           <DiskStatsBar
-            usedBytes={metrics.disk.used_bytes}
-            totalBytes={metrics.disk.total_bytes}
+            sizeBytes={metrics.disk.size_bytes}
+            fileCount={metrics.disk.file_count}
             totalDurationSecs={metrics.database.total_duration_secs}
           />
         )}
