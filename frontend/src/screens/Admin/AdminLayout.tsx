@@ -1161,6 +1161,63 @@ function LibraryPanel() {
         >
           <RefreshCw size={16} className={isScanning ? 'spinning' : ''} /> Scan musikmappe
         </button>
+        {/* ── Scan progress — shown right under the button so it's immediately visible ── */}
+        {scanProgress && (
+          <div style={{
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: '8px',
+            padding: '14px 16px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '8px' }}>
+              <span style={{
+                fontFamily: 'monospace',
+                fontSize: '1.8rem',
+                fontWeight: 700,
+                color: 'var(--neon-primary)',
+                lineHeight: 1,
+                transition: 'all 0.2s ease',
+              }}>
+                {scanProgress.scanned}
+              </span>
+              {scanProgress.total > 0 && (
+                <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)' }}>
+                  / {scanProgress.total} sange
+                </span>
+              )}
+              {scanProgress.total > 0 && (
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginLeft: 'auto' }}>
+                  {Math.round((scanProgress.scanned / scanProgress.total) * 100)}%
+                </span>
+              )}
+            </div>
+            {scanProgress.total > 0 && (
+              <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden', height: '8px', marginBottom: '8px' }}>
+                <div style={{
+                  background: 'linear-gradient(90deg, var(--neon-primary), var(--neon-teal))',
+                  height: '100%',
+                  width: `${Math.round((scanProgress.scanned / Math.max(1, scanProgress.total)) * 100)}%`,
+                  transition: 'width 0.3s ease',
+                  borderRadius: '4px',
+                }} />
+              </div>
+            )}
+            {scanProgress.currentFile && (
+              <p style={{
+                fontSize: '0.72rem',
+                color: 'var(--text-dim)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}>
+                {scanProgress.currentFile}
+              </p>
+            )}
+          </div>
+        )}
+        {scanStatus && !isScanning && (
+          <p style={{ color: scanStatus.startsWith('Fejl') ? 'var(--neon-amber)' : 'var(--neon-teal)', fontSize: '0.85rem' }}>{scanStatus}</p>
+        )}
         <button
           className="btn btn-ghost"
           style={{ justifyContent: 'flex-start', gap: '10px' }}
@@ -1268,59 +1325,6 @@ function LibraryPanel() {
         >
           <Plus size={16} /> {uploadingPartyFiles ? 'Uploader filer…' : 'Upload filer til SKÅL!'}
         </button>
-        {scanProgress && (
-          <div style={{
-            marginTop: '8px',
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: '8px',
-            padding: '14px 16px',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '8px' }}>
-              <span style={{
-                fontFamily: 'monospace',
-                fontSize: '1.8rem',
-                fontWeight: 700,
-                color: 'var(--neon-primary)',
-                lineHeight: 1,
-                transition: 'all 0.2s ease',
-              }}>
-                {scanProgress ? scanProgress.scanned : '…'}
-              </span>
-              {scanProgress && scanProgress.total > 0 && (
-                <span style={{ fontSize: '0.9rem', color: 'var(--text-dim)' }}>
-                  / {scanProgress.total} sange
-                </span>
-              )}
-            </div>
-            {scanProgress && scanProgress.total > 0 && (
-              <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden', height: '8px', marginBottom: '8px' }}>
-                <div style={{
-                  background: 'linear-gradient(90deg, var(--neon-primary), var(--neon-teal))',
-                  height: '100%',
-                  width: `${Math.round((scanProgress.scanned / Math.max(1, scanProgress.total)) * 100)}%`,
-                  transition: 'width 0.3s ease',
-                  borderRadius: '4px',
-                }} />
-              </div>
-            )}
-            {scanProgress?.currentFile && (
-              <p style={{
-                fontSize: '0.72rem',
-                color: 'var(--text-dim)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                marginTop: '2px',
-              }}>
-                {scanProgress.currentFile}
-              </p>
-            )}
-          </div>
-        )}
-        {scanStatus && !scanProgress && (
-          <p style={{ color: scanStatus.startsWith('Fejl') ? 'var(--neon-amber)' : 'var(--neon-teal)', fontSize: '0.85rem', marginTop: '8px' }}>{scanStatus}</p>
-        )}
         </div>{/* end left column */}
 
         {/* ── Højre: farezone ── */}
