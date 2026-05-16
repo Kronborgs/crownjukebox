@@ -142,7 +142,28 @@ func (e *Extractor) ExtractForAlbum(album *db.Album) error {
 		}
 	}
 
-	// 2b. Fallback: pick ANY image file in any of the candidate dirs.
+	// 2b. Prefer any image whose name starts with "front" (e.g. front_cover.jpg).
+	for _, dir := range artDirs {
+		if entries, err := os.ReadDir(dir); err == nil {
+			for _, entry := range entries {
+				if entry.IsDir() {
+					continue
+				}
+				ext := strings.ToLower(filepath.Ext(entry.Name()))
+				if (ext == ".jpg" || ext == ".jpeg" || ext == ".png") &&
+					strings.HasPrefix(strings.ToLower(entry.Name()), "front") {
+					candidatePath := filepath.Join(dir, entry.Name())
+					data, err := os.ReadFile(candidatePath)
+					if err == nil && len(data) > 0 {
+						mimeType := mimeTypeFromExt(ext)
+						return e.saveArtwork(album, "", "folder_file", candidatePath, data, mimeType)
+					}
+				}
+			}
+		}
+	}
+
+	// 2c. Fallback: pick ANY image file in any of the candidate dirs.
 	for _, dir := range artDirs {
 		if entries, err := os.ReadDir(dir); err == nil {
 			for _, entry := range entries {

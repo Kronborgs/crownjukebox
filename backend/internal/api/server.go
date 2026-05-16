@@ -2205,6 +2205,10 @@ func (s *Server) handleRescan(w http.ResponseWriter, r *http.Request) {
 			}
 			s.scanMu.Unlock()
 			s.hub.Broadcast(events.EventLibraryScanProgress, p)
+			// After library scan completes, automatically find artwork for new albums.
+			if p.Done {
+				go s.startMissingArtworkScan()
+			}
 		}
 	}()
 	jsonOK(w, map[string]string{"status": "scan started"})
@@ -2238,9 +2242,46 @@ func (s *Server) TriggerBackgroundScan() bool {
 			}
 			s.scanMu.Unlock()
 			s.hub.Broadcast(events.EventLibraryScanProgress, p)
+			if p.Done {
+				go s.startMissingArtworkScan()
+			}
 		}
 	}()
 	return true
+}
+
+// startMissingArtworkScan finds and caches cover art for albums that currently
+// have no artwork. Safe to call concurrently — skips if a scan is already running.
+func (s *Server) startMissingArtworkScan() {
+	s.scanMu.Lock()
+	if s.artworkScan != nil {
+		s.scanMu.Unlock()
+		return
+	}
+	s.artworkScan = &artworkScanInfo{}
+	s.scanMu.Unlock()
+
+	progress := make(chan artwork.ExtractProgress, 10)
+	go func() {
+		if err := s.artExt.ExtractMissing(progress); err != nil {
+			log.Printf("[auto-artwork] error: %v", err)
+		}
+	}()
+	go func() {
+		for p := range progress {
+			s.scanMu.Lock()
+			if p.Done {
+				s.artworkScan = nil
+			} else {
+				s.artworkScan = &artworkScanInfo{Total: p.Total, Processed: p.Processed}
+			}
+			s.scanMu.Unlock()
+			s.hub.Broadcast(events.EventArtworkScanProgress, p)
+			if p.AlbumID != "" {
+				s.hub.Broadcast(events.EventArtworkUpdated, map[string]any{"album_id": p.AlbumID})
+			}
+		}
+	}()
 }
 
 // handleListBrokenFiles returns local tracks whose duration is 0 (unreadable or

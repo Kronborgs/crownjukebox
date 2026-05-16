@@ -1008,6 +1008,7 @@ function LibraryPanel() {
         qc.invalidateQueries({ queryKey: ['system-metrics'] })
         return
       }
+      setIsArtworkScanning(true)
       setArtworkProgress({ processed: p.processed, total: p.total })
     },
     bpm_scan_progress: (data) => {
@@ -1030,7 +1031,7 @@ function LibraryPanel() {
         return
       }
       if (p.done) {
-        setScanStatus(`Scanning færdig — ${p.total} filer behandlet`)
+        setScanStatus(`Scanning færdig — ${p.total} filer behandlet. Søger album covers...`)
         setScanProgress(null)
         setIsScanning(false)
         qc.invalidateQueries({ queryKey: ['system-metrics'] })
