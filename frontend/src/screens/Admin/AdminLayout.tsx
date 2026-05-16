@@ -904,6 +904,57 @@ function PartyPlaylistTracks({ playlistId, isActive }: { playlistId: string; isA
   )
 }
 
+// ─── BPM stats bar ───────────────────────────────────────────
+function BpmStatsBar({ withBPM, withoutBPM }: { withBPM: number; withoutBPM: number }) {
+  const total = withBPM + withoutBPM
+  const pct = total > 0 ? Math.round((withBPM / total) * 100) : 0
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '12px 14px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>BPM-data</span>
+        <span style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
+          <span style={{ color: 'var(--neon-teal)', fontWeight: 700 }}>{withBPM.toLocaleString()}</span>
+          <span style={{ color: 'var(--text-dim)' }}> / {total.toLocaleString()} numre ({pct}%)</span>
+        </span>
+      </div>
+      <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden', height: '6px' }}>
+        <div style={{ background: 'linear-gradient(90deg, var(--neon-teal), #60e0b0)', height: '100%', width: `${pct}%`, transition: 'width 0.4s ease', borderRadius: '4px' }} />
+      </div>
+      {withoutBPM > 0 && (
+        <p style={{ fontSize: '0.72rem', color: 'var(--neon-amber, #ffaa00)', marginTop: '5px' }}>
+          {withoutBPM.toLocaleString()} numre mangler BPM — brug "Scan manglende" nedenfor
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ─── Disk stats bar ───────────────────────────────────────────
+function DiskStatsBar({ usedBytes, totalBytes, totalDurationSecs }: { usedBytes: number; totalBytes: number; totalDurationSecs: number }) {
+  const gb = (b: number) => (b / 1024 / 1024 / 1024).toFixed(1)
+  const usedPct = Math.round((usedBytes / totalBytes) * 100)
+  const totalHours = Math.round(totalDurationSecs / 3600)
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '12px 14px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Storage</span>
+        <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+          {gb(usedBytes)} GB brugt / {gb(totalBytes)} GB total
+        </span>
+      </div>
+      <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden', height: '6px' }}>
+        <div style={{ background: usedPct > 85 ? 'linear-gradient(90deg, #ff6060, #ff3030)' : 'linear-gradient(90deg, var(--neon-primary), #a040ff)', height: '100%', width: `${usedPct}%`, transition: 'width 0.4s ease', borderRadius: '4px' }} />
+      </div>
+      {totalHours > 0 && (
+        <p style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '5px' }}>
+          {totalHours} timers musik i biblioteket
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ─── Library panel ───────────────────────────────────────────
 function LibraryPanel() {
   const qc = useQueryClient()
   const [scanStatus, setScanStatus] = useState('')
@@ -916,6 +967,7 @@ function LibraryPanel() {
   const [bpmScanMode, setBpmScanMode] = useState<'missing' | 'all'>('missing')
   const [isResetting, setIsResetting] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
+  const { data: metrics } = useQuery({ queryKey: ['system-metrics'], queryFn: adminApi.systemMetrics, refetchInterval: 10000 })
   const { data: playlists = [] } = useQuery({ queryKey: ['admin-playlists'], queryFn: adminApi.skaalPlaylists })
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [uploadingPartyFiles, setUploadingPartyFiles] = useState(false)
@@ -1141,55 +1193,17 @@ function LibraryPanel() {
           </div>
         )}
         {/* ── BPM stats ── */}
-        {metrics && (metrics.bpm?.with_bpm > 0 || metrics.bpm?.without_bpm > 0) && (() => {
-          const withBPM = metrics.bpm?.with_bpm ?? 0
-          const withoutBPM = metrics.bpm?.without_bpm ?? 0
-          const total = withBPM + withoutBPM
-          const pct = total > 0 ? Math.round((withBPM / total) * 100) : 0
-          return (
-            <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '12px 14px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>BPM-data</span>
-                <span style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>
-                  <span style={{ color: 'var(--neon-teal)', fontWeight: 700 }}>{withBPM.toLocaleString()}</span>
-                  <span style={{ color: 'var(--text-dim)' }}> / {total.toLocaleString()} numre ({pct}%)</span>
-                </span>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden', height: '6px' }}>
-                <div style={{ background: 'linear-gradient(90deg, var(--neon-teal), #60e0b0)', height: '100%', width: `${pct}%`, transition: 'width 0.4s ease', borderRadius: '4px' }} />
-              </div>
-              {withoutBPM > 0 && (
-                <p style={{ fontSize: '0.72rem', color: 'var(--neon-amber, #ffaa00)', marginTop: '5px' }}>
-                  {withoutBPM.toLocaleString()} numre mangler BPM — brug "Scan manglende" nedenfor
-                </p>
-              )}
-            </div>
-          )
-        })()}
+        {metrics && metrics.bpm.with_bpm + metrics.bpm.without_bpm > 0 && (
+          <BpmStatsBar withBPM={metrics.bpm.with_bpm} withoutBPM={metrics.bpm.without_bpm} />
+        )}
         {/* ── Disk stats ── */}
-        {metrics && (metrics.disk?.total_bytes ?? 0) > 0 && (() => {
-          const gb = (b: number) => (b / 1024 / 1024 / 1024).toFixed(1)
-          const usedPct = Math.round((metrics.disk.used_bytes / metrics.disk.total_bytes) * 100)
-          const totalHours = Math.round((metrics.database?.total_duration_secs ?? 0) / 3600)
-          return (
-            <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', padding: '12px 14px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '6px' }}>
-                <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.8px' }}>Storage</span>
-                <span style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                  {gb(metrics.disk.used_bytes)} GB brugt / {gb(metrics.disk.total_bytes)} GB total
-                </span>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.08)', borderRadius: '4px', overflow: 'hidden', height: '6px' }}>
-                <div style={{ background: usedPct > 85 ? 'linear-gradient(90deg, #ff6060, #ff3030)' : 'linear-gradient(90deg, var(--neon-primary), #a040ff)', height: '100%', width: `${usedPct}%`, transition: 'width 0.4s ease', borderRadius: '4px' }} />
-              </div>
-              {totalHours > 0 && (
-                <p style={{ fontSize: '0.72rem', color: 'var(--text-dim)', marginTop: '5px' }}>
-                  {totalHours} timers musik i biblioteket
-                </p>
-              )}
-            </div>
-          )
-        })()}
+        {metrics && metrics.disk.total_bytes > 0 && (
+          <DiskStatsBar
+            usedBytes={metrics.disk.used_bytes}
+            totalBytes={metrics.disk.total_bytes}
+            totalDurationSecs={metrics.database.total_duration_secs}
+          />
+        )}
         {/* ── BPM buttons ── */}
         <div style={{ display: 'flex', gap: '8px' }}>
           <button
