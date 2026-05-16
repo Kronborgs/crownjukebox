@@ -406,12 +406,17 @@ func (s *Scanner) upsertTrack(albumID, artistID, filePath string, meta Metadata)
 	var existing db.Track
 	err := s.db.Get(&existing, `SELECT * FROM tracks WHERE file_path = ?`, filePath)
 	if err == nil {
-		// Update metadata in case tags changed
+		// Update metadata in case tags changed.
+		// BPM: prefer the tag value if present; otherwise keep whatever the BPM
+		// analyser already computed — don't overwrite a hard-won value with 0.
 		_, err = s.db.Exec(`
 			UPDATE tracks
-			SET title=?, track_number=?, disc_number=?, duration=?, bpm=?, updated_at=?
+			SET title=?, track_number=?, disc_number=?, duration=?,
+			    bpm = CASE WHEN ? > 0 THEN ? ELSE bpm END,
+			    updated_at=?
 			WHERE id=?`,
-			meta.Title, meta.TrackNumber, meta.DiscNumber, meta.Duration, meta.BPM, time.Now(), existing.ID,
+			meta.Title, meta.TrackNumber, meta.DiscNumber, meta.Duration,
+			meta.BPM, meta.BPM, time.Now(), existing.ID,
 		)
 		return err
 	}
