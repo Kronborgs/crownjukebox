@@ -144,6 +144,8 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
     setIsFadingState(false)
 
     // Stop Player B and reset gains
+    const playerA = playerARef.current
+    if (playerA) playerA.playbackRate = 1 // reset any BPM-match rate applied to outgoing track
     const playerB = playerBRef.current
     if (playerB) {
       playerB.pause()
@@ -155,7 +157,7 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
     if (crossfadeCompGainRef.current) crossfadeCompGainRef.current.gain.value = 1
     nextTrackIdRef.current = null
     setIsBpmMatchState(false)
-  }, [playerBRef, crossfadeGainARef, crossfadeGainBRef, crossfadeCompGainRef])
+  }, [playerARef, playerBRef, crossfadeGainARef, crossfadeGainBRef, crossfadeCompGainRef])
 
   // The main RAF fade loop. Runs each animation frame until t >= 1.
   const runFadeLoop = useCallback(() => {
@@ -279,13 +281,24 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
       playerB.currentTime = 0
       playerB.play().catch(() => {})
 
-      // BPM tempo match: adjust playback rate so the next track aligns with the current BPM.
+      // BPM tempo match: both tracks bend toward a common target tempo.
+      // Target = geometric mean of the two BPMs — minimises the adjustment for both.
+      // Player A (outgoing) speeds up/slows slightly; Player B (incoming) meets it there.
+      // After the fade, runFadeLoop resets both rates to 1.
       let bpmMatch = false
       if (tempoMatchEnabled && currentTrackBpm > 0 && nextBpm > 0) {
-        const ratio = nextBpm / currentTrackBpm
+        const targetBpm = Math.sqrt(currentTrackBpm * nextBpm)
+        const ratioA = targetBpm / currentTrackBpm // outgoing: bend toward target
+        const ratioB = targetBpm / nextBpm         // incoming: bend toward target
         const maxAdj = maxTempoAdjustPercent / 100
-        if (Math.abs(ratio - 1) <= maxAdj) {
-          playerB.playbackRate = ratio
+        if (Math.abs(ratioA - 1) <= maxAdj && Math.abs(ratioB - 1) <= maxAdj) {
+          const playerA = playerARef.current
+          if (playerA) playerA.playbackRate = ratioA
+          playerB.playbackRate = ratioB
+          bpmMatch = true
+        } else if (Math.abs(ratioB - 1) <= maxAdj) {
+          // A's adjustment is too large — only bend the incoming track
+          playerB.playbackRate = ratioB
           bpmMatch = true
         }
       }
@@ -304,7 +317,7 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
       fadeLoadingRef.current = false // Was cancelled while loading — release guard
       return false
     }
-  }, [playerBRef, audioContextRef, crossfadeGainBRef, directStreamUrlRef, currentTrackId, crossfadeSeconds, runFadeLoop, tempoMatchEnabled, maxTempoAdjustPercent, currentTrackBpm])
+  }, [playerARef, playerBRef, audioContextRef, crossfadeGainBRef, directStreamUrlRef, currentTrackId, crossfadeSeconds, runFadeLoop, tempoMatchEnabled, maxTempoAdjustPercent, currentTrackBpm])
 
   // Watch Player A's time and trigger the crossfade when close to end.
   useEffect(() => {
@@ -341,9 +354,12 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
         // Already fetched; if we have a next track, start the fade.
         if (scheduledNextId && !isFadingRef.current) {
           const ok = await startFade(scheduledNextId, scheduledNextBpm)
-          // If the track failed to load (404 etc.) stop retrying it — normal
-          // track-ended will advance the queue to a working track instead.
-          if (!ok) scheduledNextId = null
+          // Always clear scheduledNextId after any attempt. This prevents stale
+          // effect instances (still running with the old currentTrackId after a
+          // deck-swap) from re-triggering a fade for the same track a second time,
+          // which would fire trackEnded twice and cause a double queue-advance.
+          scheduledNextId = null
+          if (!ok) { /* 404 or similar — normal onEnded will handle queue advance */ }
         }
         return
       }
