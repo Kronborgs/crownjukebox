@@ -101,13 +101,13 @@ function SpeakerSprite({ visible }: { visible: boolean }) {
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.8 }}
           transition={{ duration: 0.55, ease: 'easeInOut' }}
-          style={{ display: 'flex', justifyContent: 'center', marginBottom: '12px', pointerEvents: 'none' }}
+          style={{ display: 'flex', justifyContent: 'center', marginTop: '20px', marginBottom: '20px', pointerEvents: 'none' }}
         >
           <img
             src={`/speaker/frame_0${frame}_transparent.png`}
             alt=""
             draggable={false}
-            style={{ width: '140px', height: '140px', objectFit: 'contain', filter: 'drop-shadow(0 0 16px rgba(0,255,180,0.35))' }}
+            style={{ width: '175px', height: '175px', objectFit: 'contain', filter: 'drop-shadow(0 0 16px rgba(0,255,180,0.35))' }}
           />
         </motion.div>
       )}
