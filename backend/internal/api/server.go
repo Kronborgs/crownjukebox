@@ -3475,7 +3475,7 @@ func (s *Server) handleFragmentedAlbums(w http.ResponseWriter, r *http.Request) 
 			COUNT(DISTINCT al.id)                          AS fragment_count,
 			COALESCE(SUM(al.track_count), 0)               AS total_tracks,
 			GROUP_CONCAT(al.id, '|')                       AS album_ids,
-			GROUP_CONCAT(DISTINCT ar.name, ' / ')          AS artists
+			GROUP_CONCAT(DISTINCT ar.name)                 AS artists
 		FROM albums al
 		JOIN artists ar ON ar.id = al.artist_id
 		WHERE al.source_type = 'local'
@@ -3491,7 +3491,7 @@ func (s *Server) handleFragmentedAlbums(w http.ResponseWriter, r *http.Request) 
 	result := make([]FragmentedAlbumGroup, 0, len(rows))
 	for _, r := range rows {
 		ids := strings.Split(r.AlbumIDs, "|")
-		arts := strings.Split(r.Artists, " / ")
+		arts := strings.Split(r.Artists, ",")
 		result = append(result, FragmentedAlbumGroup{
 			Title:         r.Title,
 			FragmentCount: r.FragmentCount,
