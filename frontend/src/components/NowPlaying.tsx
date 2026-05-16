@@ -632,7 +632,7 @@ export function NowPlaying({ state, refreshState }: Props) {
       // Also pause Player B if Auto DJ is mid-fade when playback is paused
       playerBRef.current?.pause()
     }
-  }, [state?.is_playing, audioSrc])
+  }, [state?.is_playing, audioSrc, needsInteraction]) // needsInteraction dep: re-run after user gesture so play() is retried
 
   // Report position to server every 5s — ONLY when this device is the active player.
   // Using isActivePlayerRef (not state) so the interval picks up role changes immediately
@@ -777,9 +777,18 @@ export function NowPlaying({ state, refreshState }: Props) {
       {/* Autoplay-policy overlay — shown when browser blocks autoplay */}
       {needsInteraction && (
         <div
-          onClick={() => {
-            audioContextRef.current?.resume().catch(() => {})
-            audioRef.current?.play().then(() => setNeedsInteraction(false)).catch(() => {})
+          onClick={async () => {
+            // MUST await resume() before play(). If play() is called while the
+            // AudioContext is still suspended, the promise resolves but produces
+            // no audio (the nodes are suspended). Also: always dismiss the overlay
+            // so the user is never left stuck even if play() rejects.
+            const ctx = audioContextRef.current
+            if (ctx && ctx.state === 'suspended') {
+              await ctx.resume().catch(() => {})
+            }
+            setNeedsInteraction(false)
+            const audio = audioRef.current
+            if (audio?.src) audio.play().catch(() => {})
           }}
           style={{
             position: 'fixed', inset: 0, zIndex: 9999,
