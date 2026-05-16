@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { adminApi, User, Track, Playlist, KeyboardBinding, setCurrentRoomId, JukeboxSession } from '@/api/client'
+import { adminApi, User, Track, Playlist, KeyboardBinding, setCurrentRoomId, JukeboxSession, FragmentedAlbumGroup, MBReleaseGroup } from '@/api/client'
 import { useSession } from '@/hooks/useSession'
 import { useSSE } from '@/hooks/useSSE'
 import { Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio, LayoutDashboard, Mail, PartyPopper, Upload, Star, ChevronUp, ChevronDown, LogOut, Monitor, Smartphone, WifiOff, AlertTriangle, Zap } from 'lucide-react'
@@ -1362,6 +1362,9 @@ function LibraryPanel() {
       {/* ── Broken files ── */}
       <BrokenFilesPanel />
 
+      {/* ── Album Fixer ── */}
+      <AlbumFixerPanel />
+
       {/* Playlist management */}
       <div style={{ marginTop: '32px' }}>
         <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '16px', color: 'var(--chrome-bright)' }}>
@@ -1423,6 +1426,184 @@ function LibraryPanel() {
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ─── Album Fixer panel (MusicBrainz) ───────────────────────────
+
+function AlbumFixerPanel() {
+  const qc = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [groups, setGroups] = useState<FragmentedAlbumGroup[]>([])
+  const [loading, setLoading] = useState(false)
+  const [writeFiles, setWriteFiles] = useState(false)
+  const [searching, setSearching] = useState<Record<string, boolean>>({})
+  const [mbResults, setMbResults] = useState<Record<string, MBReleaseGroup[]>>({})
+  const [artistInput, setArtistInput] = useState<Record<string, string>>({})
+  const [merging, setMerging] = useState<Record<string, boolean>>({})
+  const [mergeMsg, setMergeMsg] = useState<Record<string, string>>({})
+
+  async function load() {
+    setLoading(true)
+    try {
+      const data = await adminApi.fragmentedAlbums()
+      setGroups(data)
+      const init: Record<string, string> = {}
+      data.forEach(g => { init[g.title] = '' })
+      setArtistInput(init)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function search(title: string) {
+    setSearching(s => ({ ...s, [title]: true }))
+    try {
+      const results = await adminApi.musicBrainzSearch(title)
+      setMbResults(r => ({ ...r, [title]: results }))
+      if (results.length > 0 && !artistInput[title]) {
+        setArtistInput(a => ({ ...a, [title]: results[0].artist_name }))
+      }
+    } finally {
+      setSearching(s => ({ ...s, [title]: false }))
+    }
+  }
+
+  async function merge(group: FragmentedAlbumGroup) {
+    const artist = artistInput[group.title]?.trim()
+    if (!artist) return
+    setMerging(m => ({ ...m, [group.title]: true }))
+    try {
+      const res = await adminApi.mergeAlbums(group.album_ids, artist, writeFiles)
+      const tagNote = res.tag_errors?.length > 0
+        ? ` (${res.tag_errors.length} filer fejlede)`
+        : res.tags_written ? ' — tags skrevet' : ''
+      setMergeMsg(m => ({ ...m, [group.title]: `✓ Flettet${tagNote}` }))
+      setGroups(g => g.filter(x => x.title !== group.title))
+      qc.invalidateQueries({ queryKey: ['system-metrics'] })
+    } catch {
+      setMergeMsg(m => ({ ...m, [group.title]: '✗ Fejl ved fletning' }))
+    } finally {
+      setMerging(m => ({ ...m, [group.title]: false }))
+    }
+  }
+
+  return (
+    <div style={{ marginTop: '28px', marginBottom: '28px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: open ? '14px' : 0, cursor: 'pointer' }} onClick={() => { setOpen(o => !o); if (!open && groups.length === 0) load() }}>
+        <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--neon-primary)', margin: 0, userSelect: 'none' }}>
+          🎵 Album Fixer
+        </h3>
+        <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>
+          {open ? '▲ skjul' : '▼ find splittede album (MusicBrainz)'}
+        </span>
+      </div>
+
+      {open && (
+        <div>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '12px' }}>
+            Album der er splittet fordi sange har forskellig Artist-tag. Søg på MusicBrainz for at finde det rigtige album-kunstner-navn, og flet dem bagefter.
+          </p>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
+            <button className="btn btn-ghost" style={{ fontSize: '0.8rem' }} onClick={load} disabled={loading}>
+              <RefreshCw size={13} className={loading ? 'spinning' : ''} /> {loading ? 'Henter…' : 'Opdater liste'}
+            </button>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--neon-amber)', cursor: 'pointer' }}>
+              <input type="checkbox" checked={writeFiles} onChange={e => setWriteFiles(e.target.checked)} />
+              Skriv tags til filer (AlbumArtist)
+            </label>
+            {groups.length > 0 && (
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)' }}>{groups.length} splittede album</span>
+            )}
+          </div>
+
+          {groups.length === 0 && !loading && (
+            <p style={{ fontSize: '0.82rem', color: 'var(--neon-teal)' }}>✓ Ingen splittede album fundet.</p>
+          )}
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '500px', overflowY: 'auto' }}>
+            {groups.map(g => (
+              <div key={g.title} style={{
+                background: 'rgba(255,255,255,0.03)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '8px',
+                padding: '12px 14px',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' }}>
+                  <div style={{ flex: 1, minWidth: '180px' }}>
+                    <p style={{ fontSize: '0.9rem', fontWeight: 700, margin: '0 0 2px' }}>{g.title}</p>
+                    <p style={{ fontSize: '0.72rem', color: 'var(--text-dim)', margin: 0 }}>
+                      {g.fragment_count} dele · {g.total_tracks} numre · {g.artists.slice(0, 3).join(', ')}{g.artists.length > 3 ? '…' : ''}
+                    </p>
+                  </div>
+
+                  <button
+                    className="btn btn-ghost"
+                    style={{ fontSize: '0.78rem', flexShrink: 0 }}
+                    onClick={() => search(g.title)}
+                    disabled={searching[g.title]}
+                  >
+                    {searching[g.title] ? <RefreshCw size={12} className="spinning" /> : '🔍'} MusicBrainz
+                  </button>
+                </div>
+
+                {mbResults[g.title] && mbResults[g.title].length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                    {mbResults[g.title].map(r => (
+                      <button
+                        key={r.id}
+                        className="btn btn-ghost"
+                        style={{
+                          fontSize: '0.75rem',
+                          padding: '3px 8px',
+                          borderColor: artistInput[g.title] === r.artist_name ? 'var(--neon-primary)' : undefined,
+                          color: artistInput[g.title] === r.artist_name ? 'var(--neon-primary)' : undefined,
+                        }}
+                        onClick={() => setArtistInput(a => ({ ...a, [g.title]: r.artist_name }))}
+                      >
+                        {r.artist_name || '—'} {r.compilation ? '(kompilation)' : ''} · {r.score}%
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                  <input
+                    type="text"
+                    value={artistInput[g.title] ?? ''}
+                    onChange={e => setArtistInput(a => ({ ...a, [g.title]: e.target.value }))}
+                    placeholder="Album Kunstner (f.eks. Various Artists)"
+                    style={{
+                      flex: 1, minWidth: '180px',
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: '6px',
+                      padding: '5px 10px',
+                      color: 'inherit',
+                      fontSize: '0.82rem',
+                    }}
+                  />
+                  <button
+                    className="btn btn-primary"
+                    style={{ fontSize: '0.8rem', flexShrink: 0 }}
+                    onClick={() => merge(g)}
+                    disabled={merging[g.title] || !artistInput[g.title]?.trim()}
+                  >
+                    {merging[g.title] ? 'Fletter…' : 'Flet'}
+                  </button>
+                  {mergeMsg[g.title] && (
+                    <span style={{ fontSize: '0.78rem', color: mergeMsg[g.title]?.startsWith('✓') ? 'var(--neon-teal)' : 'var(--neon-amber)' }}>
+                      {mergeMsg[g.title]}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

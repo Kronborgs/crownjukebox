@@ -256,6 +256,31 @@ export interface SmtpSavePayload {
   from_name: string
 }
 
+export interface FragmentedAlbumGroup {
+  title: string
+  fragment_count: number
+  total_tracks: number
+  album_ids: string[]
+  artists: string[]
+}
+
+export interface MBReleaseGroup {
+  id: string
+  title: string
+  primary_type: string
+  compilation: boolean
+  artist_name: string
+  score: number
+}
+
+export interface MergeAlbumsResult {
+  status: string
+  winner_id: string
+  merged: number
+  tag_errors: string[]
+  tags_written: boolean
+}
+
 // ─── Room ID helper ───────────────────────────────────────────────
 
 export function getCurrentRoomId(): string {
@@ -564,6 +589,12 @@ export const adminApi = {
   // YouTube API key
   getYouTube: () => get<{ api_key_set: boolean }>('/api/admin/youtube'),
   updateYouTube: (apiKey: string) => put<void>('/api/admin/youtube', { api_key: apiKey }),
+
+  // Album fixer (MusicBrainz)
+  fragmentedAlbums: () => getList<FragmentedAlbumGroup>('/api/admin/fragmented-albums'),
+  musicBrainzSearch: (title: string) => getList<MBReleaseGroup>(`/api/admin/musicbrainz/search?title=${encodeURIComponent(title)}`),
+  mergeAlbums: (albumIds: string[], albumArtist: string, writeFiles: boolean) =>
+    post<MergeAlbumsResult>('/api/admin/merge-albums', { album_ids: albumIds, album_artist: albumArtist, write_files: writeFiles }),
 }
 
 // ─── Rooms ────────────────────────────────────────────────────────

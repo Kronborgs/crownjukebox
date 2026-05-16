@@ -30,6 +30,7 @@ import (
 	"github.com/crownjukebox/crownjukebox/internal/events"
 	"github.com/crownjukebox/crownjukebox/internal/external"
 	"github.com/crownjukebox/crownjukebox/internal/music"
+	"github.com/crownjukebox/crownjukebox/internal/musicbrainz"
 	"github.com/crownjukebox/crownjukebox/internal/rooms"
 )
 
@@ -295,6 +296,10 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/admin/library/broken-files/repair", s.handleRepairBrokenFiles)
 		r.Delete("/api/admin/library/tracks/{id}", s.handleDeleteTrack)
 		r.Get("/api/admin/missing-artwork", s.handleAdminMissingArtwork)
+		// MusicBrainz / album fixer
+		r.Get("/api/admin/fragmented-albums", s.handleFragmentedAlbums)
+		r.Get("/api/admin/musicbrainz/search", s.handleMusicBrainzSearch)
+		r.Post("/api/admin/merge-albums", s.handleMergeAlbums)
 		r.Get("/api/admin/keyboard-bindings", s.handleGetKeyboardBindings)
 		r.Put("/api/admin/keyboard-bindings", s.handleUpdateKeyboardBindings)
 
@@ -3437,4 +3442,205 @@ func sanitizeUsers(users []db.User) []map[string]any {
 		result[i] = userResponse(u)
 	}
 	return result
+}
+
+// ─────────────────────────────────────────────────────────────
+// MusicBrainz / Album Fixer handlers
+// ─────────────────────────────────────────────────────────────
+
+// FragmentedAlbumGroup describes a set of album rows in the DB that all share
+// the same title but were split because individual tracks had different artist tags.
+type FragmentedAlbumGroup struct {
+	Title         string   `json:"title"`
+	FragmentCount int      `json:"fragment_count"`
+	TotalTracks   int      `json:"total_tracks"`
+	AlbumIDs      []string `json:"album_ids"`
+	Artists       []string `json:"artists"`
+}
+
+// handleFragmentedAlbums returns local albums where multiple DB rows share the
+// same title (i.e. they appear fragmented due to inconsistent artist tags).
+func (s *Server) handleFragmentedAlbums(w http.ResponseWriter, r *http.Request) {
+	type row struct {
+		Title         string `db:"title"`
+		FragmentCount int    `db:"fragment_count"`
+		TotalTracks   int    `db:"total_tracks"`
+		AlbumIDs      string `db:"album_ids"`
+		Artists       string `db:"artists"`
+	}
+	var rows []row
+	err := s.db.Select(&rows, `
+		SELECT
+			al.title,
+			COUNT(DISTINCT al.id)                          AS fragment_count,
+			COALESCE(SUM(al.track_count), 0)               AS total_tracks,
+			GROUP_CONCAT(al.id, '|')                       AS album_ids,
+			GROUP_CONCAT(DISTINCT ar.name, ' / ')          AS artists
+		FROM albums al
+		JOIN artists ar ON ar.id = al.artist_id
+		WHERE al.source_type = 'local'
+		GROUP BY al.title
+		HAVING COUNT(DISTINCT al.id) > 1
+		ORDER BY SUM(al.track_count) DESC
+		LIMIT 300`)
+	if err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
+
+	result := make([]FragmentedAlbumGroup, 0, len(rows))
+	for _, r := range rows {
+		ids := strings.Split(r.AlbumIDs, "|")
+		arts := strings.Split(r.Artists, " / ")
+		result = append(result, FragmentedAlbumGroup{
+			Title:         r.Title,
+			FragmentCount: r.FragmentCount,
+			TotalTracks:   r.TotalTracks,
+			AlbumIDs:      ids,
+			Artists:       arts,
+		})
+	}
+	jsonOK(w, result)
+}
+
+// handleMusicBrainzSearch proxies a MusicBrainz release-group search.
+// Query param: title
+func (s *Server) handleMusicBrainzSearch(w http.ResponseWriter, r *http.Request) {
+	title := r.URL.Query().Get("title")
+	if title == "" {
+		jsonError(w, "title is required", http.StatusBadRequest)
+		return
+	}
+
+	results, err := musicbrainz.SearchReleaseGroups(title)
+	if err != nil {
+		log.Printf("[musicbrainz] search %q: %v", title, err)
+		jsonError(w, "MusicBrainz søgning fejlede", http.StatusBadGateway)
+		return
+	}
+
+	type result struct {
+		ID          string `json:"id"`
+		Title       string `json:"title"`
+		PrimaryType string `json:"primary_type"`
+		Compilation bool   `json:"compilation"`
+		ArtistName  string `json:"artist_name"`
+		Score       int    `json:"score"`
+	}
+	out := make([]result, 0, len(results))
+	for _, rg := range results {
+		out = append(out, result{
+			ID:          rg.ID,
+			Title:       rg.Title,
+			PrimaryType: rg.PrimaryType,
+			Compilation: rg.IsCompilation(),
+			ArtistName:  rg.ArtistName(),
+			Score:       rg.Score,
+		})
+	}
+	jsonOK(w, out)
+}
+
+// handleMergeAlbums merges a set of fragmented album rows into one and
+// optionally writes the corrected AlbumArtist tag back to the audio files.
+func (s *Server) handleMergeAlbums(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		AlbumIDs    []string `json:"album_ids"`
+		AlbumArtist string   `json:"album_artist"`
+		WriteFiles  bool     `json:"write_files"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		jsonError(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	if len(req.AlbumIDs) < 2 {
+		jsonError(w, "at least 2 album_ids required", http.StatusBadRequest)
+		return
+	}
+	if req.AlbumArtist == "" {
+		jsonError(w, "album_artist is required", http.StatusBadRequest)
+		return
+	}
+
+	// Upsert the target artist.
+	var artistID string
+	var existing db.Artist
+	if err := s.db.Get(&existing, `SELECT * FROM artists WHERE name = ? LIMIT 1`, req.AlbumArtist); err == nil {
+		artistID = existing.ID
+	} else {
+		artistID = uuid.NewString()
+		if _, err := s.db.Exec(
+			`INSERT INTO artists (id, name, sort_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+			artistID, req.AlbumArtist, req.AlbumArtist, time.Now(), time.Now()); err != nil {
+			jsonError(w, "db error", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Winner is first album ID; all others get merged into it.
+	winner := req.AlbumIDs[0]
+	losers := req.AlbumIDs[1:]
+
+	// Update winner's artist.
+	if _, err := s.db.Exec(
+		`UPDATE albums SET artist_id = ?, album_artist_id = ?, updated_at = ? WHERE id = ?`,
+		artistID, artistID, time.Now(), winner); err != nil {
+		jsonError(w, "db error", http.StatusInternalServerError)
+		return
+	}
+
+	// Collect file paths before moving tracks (needed for tag writing).
+	var filePaths []string
+	if req.WriteFiles {
+		if err := s.db.Select(&filePaths, `SELECT file_path FROM tracks WHERE album_id = ANY(?)`, req.AlbumIDs); err != nil {
+			// Fallback: collect per ID
+			filePaths = nil
+			for _, id := range req.AlbumIDs {
+				var fps []string
+				_ = s.db.Select(&fps, `SELECT file_path FROM tracks WHERE album_id = ?`, id)
+				filePaths = append(filePaths, fps...)
+			}
+		}
+	}
+
+	// Move all tracks from losers to winner.
+	for _, loserID := range losers {
+		if _, err := s.db.Exec(
+			`UPDATE tracks SET album_id = ?, updated_at = ? WHERE album_id = ?`,
+			winner, time.Now(), loserID); err != nil {
+			jsonError(w, "db error", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Delete now-empty loser albums.
+	for _, loserID := range losers {
+		s.db.Exec(`DELETE FROM albums WHERE id = ?`, loserID)
+	}
+
+	// Update winner track_count.
+	s.db.Exec(`
+		UPDATE albums SET track_count = (
+			SELECT COUNT(*) FROM tracks WHERE album_id = ?
+		), updated_at = ? WHERE id = ?`, winner, time.Now(), winner)
+
+	// Write tags if requested (background — we don't block the HTTP response).
+	var tagErrors []string
+	if req.WriteFiles && len(filePaths) > 0 {
+		for _, fp := range filePaths {
+			if err := music.WriteAlbumArtistTag(fp, req.AlbumArtist); err != nil {
+				log.Printf("[merge-albums] tag write %s: %v", fp, err)
+				tagErrors = append(tagErrors, filepath.Base(fp))
+			}
+		}
+	}
+
+	resp := map[string]any{
+		"status":      "merged",
+		"winner_id":   winner,
+		"merged":      len(losers),
+		"tag_errors":  tagErrors,
+		"tags_written": req.WriteFiles && len(tagErrors) == 0,
+	}
+	jsonOK(w, resp)
 }
