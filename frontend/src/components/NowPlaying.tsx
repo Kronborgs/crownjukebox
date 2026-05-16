@@ -1197,6 +1197,7 @@ export function NowPlaying({ state, refreshState }: Props) {
                   <RetroPushButton
                     label="BPM"
                     active={audioSettings.tempoMatchEnabled}
+                    blinking={audioSettings.tempoMatchEnabled && autoDJ.isBpmMatch}
                     onToggle={() => updateAudioSetting('tempoMatchEnabled', !audioSettings.tempoMatchEnabled)}
                   />
                 </div>
