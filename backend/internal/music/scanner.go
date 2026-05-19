@@ -149,6 +149,11 @@ func (s *Scanner) Scan(progress chan<- ScanProgress) error {
 // disk. Only tracks whose path lives under this scanner's music directory are
 // checked, so party uploads and external tracks are left untouched.
 // Returns the number of tracks removed.
+//
+// Safety guard: if more than 10 % of the local library would be deleted in one
+// pass, the deletion is aborted and a warning is logged. This prevents
+// accidental mass-deletion caused by temporary mount issues, Unicode path
+// normalisation differences, or MusicBrainz Picard mid-rename state.
 func (s *Scanner) removeOrphanedTracks() (int, error) {
 	rows, err := s.db.Queryx(`SELECT id, file_path FROM tracks WHERE source_type = 'local'`)
 	if err != nil {
@@ -158,7 +163,9 @@ func (s *Scanner) removeOrphanedTracks() (int, error) {
 
 	musicPrefix := filepath.Clean(s.musicDir) + string(os.PathSeparator)
 
+	var total int
 	var orphanIDs []string
+	var sampleOrphans []string
 	for rows.Next() {
 		var id, fp string
 		if err := rows.Scan(&id, &fp); err != nil {
@@ -169,12 +176,32 @@ func (s *Scanner) removeOrphanedTracks() (int, error) {
 		if cleanFP != filepath.Clean(s.musicDir) && !strings.HasPrefix(cleanFP, musicPrefix) {
 			continue
 		}
+		total++
 		if _, statErr := os.Stat(fp); os.IsNotExist(statErr) {
 			orphanIDs = append(orphanIDs, id)
+			if len(sampleOrphans) < 5 {
+				sampleOrphans = append(sampleOrphans, fp)
+			}
 		}
 	}
 	rows.Close()
 
+	if len(orphanIDs) == 0 {
+		return 0, nil
+	}
+
+	// Safety guard: never silently delete more than 10 % of the local library
+	// in one scan pass. A spike this large almost always indicates a mount
+	// problem, mid-rename state (MusicBrainz Picard), or a path change —
+	// not genuine orphans. Log a warning and skip deletion so the operator
+	// can investigate.
+	if total > 0 && len(orphanIDs)*10 > total {
+		log.Printf("[scanner] WARN: orphan check would delete %d/%d tracks (>10%%) — skipping deletion to prevent data loss. Sample missing paths: %v",
+			len(orphanIDs), total, sampleOrphans)
+		return 0, nil
+	}
+
+	log.Printf("[scanner] deleting %d orphaned track(s). Sample: %v", len(orphanIDs), sampleOrphans)
 	for _, id := range orphanIDs {
 		if _, err := s.db.Exec(`DELETE FROM tracks WHERE id = ?`, id); err != nil {
 			log.Printf("[scanner] delete orphan track %s: %v", id, err)
@@ -393,8 +420,10 @@ func (s *Scanner) upsertAlbum(artistID string, meta Metadata) (string, error) {
 	// track has a different AlbumArtist tag. Without a year the match is too
 	// ambiguous: "Greatest Hits" by Guns N' Roses must not merge with
 	// "Greatest Hits" by ABBA just because both lack a year tag.
+	// Exclude party_upload albums to prevent SKÅL tracks from contaminating
+	// the regular library.
 	if meta.Year > 0 {
-		err = s.db.Get(&existing, `SELECT * FROM albums WHERE title = ? AND year = ? LIMIT 1`, meta.Album, meta.Year)
+		err = s.db.Get(&existing, `SELECT * FROM albums WHERE title = ? AND year = ? AND source_type != 'party_upload' LIMIT 1`, meta.Album, meta.Year)
 		if err == nil {
 			return existing.ID, nil
 		}
@@ -419,17 +448,18 @@ func (s *Scanner) upsertTrack(albumID, artistID, filePath string, meta Metadata)
 		// Update all metadata in case tags changed after retagging (e.g. MusicBrainz Picard).
 		// Critically this includes artist_id and album_id — without updating these the
 		// track would stay linked to the old stale artist/album forever.
-		// BPM: prefer the tag value if present; otherwise keep whatever the BPM
-		// analyser already computed — don't overwrite a hard-won value with 0.
+		// BPM / duration: prefer positive values; never overwrite a hard-won value with 0.
 		_, err = s.db.Exec(`
 			UPDATE tracks
 			SET title=?, artist_id=?, album_id=?,
-			    track_number=?, disc_number=?, duration=?,
+			    track_number=?, disc_number=?,
+			    duration = CASE WHEN ? > 0 THEN ? ELSE duration END,
 			    bpm = CASE WHEN ? > 0 THEN ? ELSE bpm END,
 			    updated_at=?
 			WHERE id=?`,
 			meta.Title, artistID, albumID,
-			meta.TrackNumber, meta.DiscNumber, meta.Duration,
+			meta.TrackNumber, meta.DiscNumber,
+			meta.Duration, meta.Duration,
 			meta.BPM, meta.BPM, time.Now(), existing.ID,
 		)
 		return err
