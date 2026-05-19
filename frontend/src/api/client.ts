@@ -264,6 +264,16 @@ export interface FragmentedAlbumGroup {
   artists: string[]
 }
 
+export interface DiskAnalysisResult {
+  files_on_disk: number
+  by_extension: Record<string, number>
+  tracks_in_db: number
+  orphaned_tracks: number
+  unindexed_files: number
+  sample_orphans: string[]
+  sample_unindexed: string[]
+}
+
 export interface MBReleaseGroup {
   id: string
   title: string
@@ -525,6 +535,8 @@ export const adminApi = {
   deleteTrack:          (id: string) => del(`/api/admin/library/tracks/${id}`),
   analyzeAllBPM:        () => post('/api/admin/analyze-bpm-all'),
   missingArtwork:       () => getList<Album>('/api/admin/missing-artwork'),
+  diskAnalysis:         () => get<DiskAnalysisResult>('/api/admin/library/disk-analysis'),
+  purgeOrphans:         () => post<{ purged: number }>('/api/admin/library/purge-orphans', { confirm: true }),
 
   // Keyboard bindings
   keyboardBindings:       () => getList<KeyboardBinding>('/api/admin/keyboard-bindings'),

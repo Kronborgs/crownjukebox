@@ -97,23 +97,8 @@ func (s *Scanner) Scan(progress chan<- ScanProgress) error {
 		log.Printf("[scanner] update track counts: %v", err)
 	}
 
-	// Remove local tracks whose files no longer exist on disk.
-	// This handles mount-path changes and deleted files — orphaned entries
-	// would otherwise cause 404 stream errors until the next full re-scan.
-	if n, err := s.removeOrphanedTracks(); err != nil {
-		log.Printf("[scanner] orphan cleanup: %v", err)
-	} else if n > 0 {
-		log.Printf("[scanner] removed %d orphaned track(s) with missing files", n)
-		// Re-update album track counts after orphan removal
-		if _, err := s.db.Exec(`
-			UPDATE albums SET track_count = (
-				SELECT COUNT(*) FROM tracks WHERE tracks.album_id = albums.id
-			), updated_at = CURRENT_TIMESTAMP`); err != nil {
-			log.Printf("[scanner] update track counts after orphan removal: %v", err)
-		}
-	}
-
-	// Remove albums that ended up with no tracks (dedup artifacts).
+	// Remove albums that ended up with no tracks (dedup / stale-artist artifacts).
+	// These are always genuinely empty — we never touch files on disk.
 	if res, err := s.db.Exec(`
 		DELETE FROM albums
 		WHERE source_type != 'party_upload'
@@ -123,7 +108,7 @@ func (s *Scanner) Scan(progress chan<- ScanProgress) error {
 		log.Printf("[scanner] removed %d empty album(s)", n)
 	}
 
-	// Remove artists with no albums and no tracks left (stale after retagging).
+	// Remove artists with no albums and no tracks.
 	if res, err := s.db.Exec(`
 		DELETE FROM artists
 		WHERE (SELECT COUNT(*) FROM albums WHERE albums.artist_id = artists.id) = 0
@@ -132,6 +117,11 @@ func (s *Scanner) Scan(progress chan<- ScanProgress) error {
 	} else if n, _ := res.RowsAffected(); n > 0 {
 		log.Printf("[scanner] removed %d empty artist(s)", n)
 	}
+
+	// NOTE: orphaned tracks (DB entries whose file no longer exists on disk) are
+	// intentionally NOT removed here. The scanner only adds / updates — it never
+	// deletes track records automatically. Use the admin "Diskanalyse" panel to
+	// review and manually remove stale entries if desired.
 
 	// Build/sync one playlist per top-level subdirectory so users can browse
 	// their music by category (e.g. "Aeldre", "Yngre") and use them for autoplay.
@@ -207,6 +197,125 @@ func (s *Scanner) removeOrphanedTracks() (int, error) {
 			log.Printf("[scanner] delete orphan track %s: %v", id, err)
 		}
 	}
+	return len(orphanIDs), nil
+}
+
+// DiskAnalysisResult holds the output of DiskAnalysis.
+type DiskAnalysisResult struct {
+	FilesOnDisk     int            `json:"files_on_disk"`
+	ByExtension     map[string]int `json:"by_extension"`
+	TracksInDB      int            `json:"tracks_in_db"`
+	OrphanedTracks  int            `json:"orphaned_tracks"` // in DB but missing on disk
+	UnindexedFiles  int            `json:"unindexed_files"` // on disk but not in DB
+	SampleOrphans   []string       `json:"sample_orphans"`
+	SampleUnindexed []string       `json:"sample_unindexed"`
+}
+
+// DiskAnalysis compares files on disk against local tracks in the database and
+// returns a summary. It never modifies the database or filesystem.
+func (s *Scanner) DiskAnalysis() (*DiskAnalysisResult, error) {
+	// --- Step 1: Walk disk ---
+	diskFiles := make(map[string]bool)
+	byExt := make(map[string]int)
+	err := filepath.WalkDir(s.musicDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(d.Name()))
+		if supportedExtensions[ext] {
+			diskFiles[filepath.Clean(path)] = true
+			byExt[ext]++
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("walk music dir: %w", err)
+	}
+
+	// --- Step 2: Load DB tracks ---
+	type row struct {
+		FilePath string `db:"file_path"`
+	}
+	var dbRows []row
+	if err := s.db.Select(&dbRows, `SELECT file_path FROM tracks WHERE source_type = 'local'`); err != nil {
+		return nil, fmt.Errorf("query tracks: %w", err)
+	}
+
+	// --- Step 3: Find orphans (in DB, missing on disk) ---
+	var sampleOrphans []string
+	orphanCount := 0
+	for _, r := range dbRows {
+		clean := filepath.Clean(r.FilePath)
+		if !diskFiles[clean] {
+			orphanCount++
+			if len(sampleOrphans) < 20 {
+				sampleOrphans = append(sampleOrphans, r.FilePath)
+			}
+		}
+	}
+
+	// --- Step 4: Find unindexed files (on disk, not in DB) ---
+	dbPaths := make(map[string]bool, len(dbRows))
+	for _, r := range dbRows {
+		dbPaths[filepath.Clean(r.FilePath)] = true
+	}
+	var sampleUnindexed []string
+	unindexedCount := 0
+	for p := range diskFiles {
+		if !dbPaths[p] {
+			unindexedCount++
+			if len(sampleUnindexed) < 20 {
+				sampleUnindexed = append(sampleUnindexed, p)
+			}
+		}
+	}
+
+	if sampleOrphans == nil {
+		sampleOrphans = []string{}
+	}
+	if sampleUnindexed == nil {
+		sampleUnindexed = []string{}
+	}
+
+	return &DiskAnalysisResult{
+		FilesOnDisk:     len(diskFiles),
+		ByExtension:     byExt,
+		TracksInDB:      len(dbRows),
+		OrphanedTracks:  orphanCount,
+		UnindexedFiles:  unindexedCount,
+		SampleOrphans:   sampleOrphans,
+		SampleUnindexed: sampleUnindexed,
+	}, nil
+}
+
+// PurgeOrphans removes local tracks from the database whose file no longer
+// exists on disk. This is an explicit manual operation — it is never called
+// automatically during a scan. Returns the number of tracks removed.
+func (s *Scanner) PurgeOrphans() (int, error) {
+	rows, err := s.db.Queryx(`SELECT id, file_path FROM tracks WHERE source_type = 'local'`)
+	if err != nil {
+		return 0, fmt.Errorf("query local tracks: %w", err)
+	}
+	defer rows.Close()
+
+	var orphanIDs []string
+	for rows.Next() {
+		var id, fp string
+		if err := rows.Scan(&id, &fp); err != nil {
+			continue
+		}
+		if _, statErr := os.Stat(fp); os.IsNotExist(statErr) {
+			orphanIDs = append(orphanIDs, id)
+		}
+	}
+	rows.Close()
+
+	for _, id := range orphanIDs {
+		if _, err := s.db.Exec(`DELETE FROM tracks WHERE id = ?`, id); err != nil {
+			log.Printf("[scanner] purge orphan %s: %v", id, err)
+		}
+	}
+	log.Printf("[scanner] purged %d orphaned track(s) via manual admin action", len(orphanIDs))
 	return len(orphanIDs), nil
 }
 

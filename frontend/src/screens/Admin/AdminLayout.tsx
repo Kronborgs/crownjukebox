@@ -1362,6 +1362,9 @@ function LibraryPanel() {
       {/* ── Broken files ── */}
       <BrokenFilesPanel />
 
+      {/* ── Disk analysis ── */}
+      <DiskAnalysisPanel />
+
       {/* ── Album Fixer ── */}
       <AlbumFixerPanel />
 
@@ -1624,6 +1627,147 @@ function AlbumFixerPanel() {
             ))}
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Disk Analysis panel ──────────────────────────────────────
+
+function DiskAnalysisPanel() {
+  const qc = useQueryClient()
+  const { data, isLoading, refetch, isFetching } = useQuery({
+    queryKey: ['admin-disk-analysis'],
+    queryFn: adminApi.diskAnalysis,
+    staleTime: 60_000,
+    enabled: false, // only run when user clicks
+  })
+  const [purgeConfirm, setPurgeConfirm] = useState(false)
+  const [purging, setPurging] = useState(false)
+  const [purgeResult, setPurgeResult] = useState<string | null>(null)
+
+  async function purgeOrphans() {
+    setPurgeConfirm(false)
+    setPurging(true)
+    setPurgeResult(null)
+    try {
+      const res = await adminApi.purgeOrphans()
+      setPurgeResult(`${res.purged} forældreløse poster slettet fra databasen.`)
+      qc.invalidateQueries({ queryKey: ['system-metrics'] })
+      refetch()
+    } catch {
+      setPurgeResult('Fejl ved sletning.')
+    } finally {
+      setPurging(false)
+    }
+  }
+
+  const hasOrphans = (data?.orphaned_tracks ?? 0) > 0
+  const hasUnindexed = (data?.unindexed_files ?? 0) > 0
+
+  return (
+    <div style={{ marginTop: '32px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+        <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--chrome-bright)', margin: 0 }}>
+          🔍 Diskanalyse
+        </h3>
+        <button
+          className="btn btn-ghost"
+          style={{ fontSize: '0.8rem', padding: '5px 12px', gap: '6px' }}
+          onClick={() => refetch()}
+          disabled={isFetching}
+        >
+          <RefreshCw size={13} className={isFetching ? 'spinning' : ''} />
+          {data ? 'Opdater' : 'Analyser'}
+        </button>
+      </div>
+      <p style={{ fontSize: '0.82rem', color: 'var(--text-dim)', marginBottom: '12px' }}>
+        Sammenligner filer på disken med databasen. Scanner <strong>aldrig</strong> og sletter <strong>aldrig</strong> noget automatisk.
+      </p>
+
+      {isLoading && <p style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>Analyserer…</p>}
+
+      {data && (
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginBottom: '16px' }}>
+          {[
+            { label: 'Filer på disk', value: data.files_on_disk, color: 'var(--neon-teal)' },
+            { label: 'Numre i DB', value: data.tracks_in_db, color: 'var(--neon-primary)' },
+            { label: 'Forældreløse (DB ≠ disk)', value: data.orphaned_tracks, color: data.orphaned_tracks > 0 ? 'var(--neon-amber, #ffaa00)' : 'var(--text-dim)' },
+            { label: 'Ikke-indekserede (disk ≠ DB)', value: data.unindexed_files, color: data.unindexed_files > 0 ? '#7fd4ff' : 'var(--text-dim)' },
+          ].map(s => (
+            <div key={s.label} className="glass-card" style={{ padding: '12px 18px', minWidth: '160px', textAlign: 'center' }}>
+              <div style={{ fontSize: '1.8rem', fontWeight: 700, fontFamily: 'monospace', color: s.color }}>{s.value.toLocaleString()}</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.6px', marginTop: '4px' }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {data && Object.keys(data.by_extension).length > 0 && (
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', flexWrap: 'wrap' }}>
+          {Object.entries(data.by_extension).sort(([, a], [, b]) => b - a).map(([ext, count]) => (
+            <span key={ext} style={{ fontSize: '0.78rem', padding: '3px 10px', borderRadius: '12px', background: 'rgba(255,255,255,0.06)', color: 'var(--text-dim)' }}>
+              {ext}: {count.toLocaleString()}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {data && hasUnindexed && (
+        <div style={{ marginBottom: '12px', padding: '10px 14px', borderRadius: '8px', background: 'rgba(127,212,255,0.06)', border: '1px solid rgba(127,212,255,0.2)' }}>
+          <p style={{ fontSize: '0.82rem', color: '#7fd4ff', marginBottom: '8px', fontWeight: 600 }}>
+            📂 {data.unindexed_files} filer på disk er ikke i databasen — kør "Scan musikmappe" for at indeksere dem.
+          </p>
+          {data.sample_unindexed.length > 0 && (
+            <ul style={{ margin: 0, paddingLeft: '16px' }}>
+              {data.sample_unindexed.slice(0, 8).map(p => (
+                <li key={p} style={{ fontSize: '0.72rem', color: 'var(--text-dim)', fontFamily: 'monospace', marginBottom: '2px', wordBreak: 'break-all' }}>{p}</li>
+              ))}
+              {data.sample_unindexed.length > 8 && <li style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>… og {data.unindexed_files - 8} mere</li>}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {data && hasOrphans && (
+        <div style={{ marginBottom: '12px', padding: '10px 14px', borderRadius: '8px', background: 'rgba(255,170,0,0.06)', border: '1px solid rgba(255,170,0,0.25)' }}>
+          <p style={{ fontSize: '0.82rem', color: 'var(--neon-amber, #ffaa00)', marginBottom: '8px', fontWeight: 600 }}>
+            ⚠ {data.orphaned_tracks} DB-poster peger på filer der ikke eksisterer på disk.
+          </p>
+          {data.sample_orphans.length > 0 && (
+            <ul style={{ margin: 0, paddingLeft: '16px', marginBottom: '8px' }}>
+              {data.sample_orphans.slice(0, 8).map(p => (
+                <li key={p} style={{ fontSize: '0.72rem', color: 'var(--text-dim)', fontFamily: 'monospace', marginBottom: '2px', wordBreak: 'break-all' }}>{p}</li>
+              ))}
+              {data.sample_orphans.length > 8 && <li style={{ fontSize: '0.72rem', color: 'var(--text-dim)' }}>… og {data.orphaned_tracks - 8} mere</li>}
+            </ul>
+          )}
+          {purgeResult && (
+            <p style={{ fontSize: '0.82rem', color: 'var(--neon-teal)', marginBottom: '8px' }}>{purgeResult}</p>
+          )}
+          {!purgeConfirm ? (
+            <button
+              className="btn btn-ghost"
+              style={{ fontSize: '0.78rem', color: 'var(--neon-red, #ff4444)', borderColor: 'rgba(255,68,68,0.3)', gap: '6px' }}
+              onClick={() => setPurgeConfirm(true)}
+              disabled={purging}
+            >
+              <Trash2 size={13} /> Ryd forældreløse poster…
+            </button>
+          ) : (
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.8rem', color: 'var(--neon-amber, #ffaa00)' }}>Sletter {data.orphaned_tracks} poster. Kan ikke fortrydes.</span>
+              <button className="btn btn-ghost" style={{ fontSize: '0.78rem', color: 'var(--neon-red, #ff4444)' }} onClick={purgeOrphans} disabled={purging}>
+                {purging ? 'Sletter…' : 'Ja, ryd'}
+              </button>
+              <button className="btn btn-ghost" style={{ fontSize: '0.78rem' }} onClick={() => setPurgeConfirm(false)}>Annuller</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {data && !hasOrphans && !hasUnindexed && (
+        <p style={{ fontSize: '0.82rem', color: 'var(--neon-teal)' }}>✓ Disk og database er synkroniseret.</p>
       )}
     </div>
   )

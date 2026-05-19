@@ -296,6 +296,8 @@ func (s *Server) Router() http.Handler {
 		r.Post("/api/admin/library/broken-files/repair", s.handleRepairBrokenFiles)
 		r.Delete("/api/admin/library/tracks/{id}", s.handleDeleteTrack)
 		r.Get("/api/admin/missing-artwork", s.handleAdminMissingArtwork)
+		r.Get("/api/admin/library/disk-analysis", s.handleDiskAnalysis)
+		r.Post("/api/admin/library/purge-orphans", s.handlePurgeOrphans)
 		// MusicBrainz / album fixer
 		r.Get("/api/admin/fragmented-albums", s.handleFragmentedAlbums)
 		r.Get("/api/admin/musicbrainz/search", s.handleMusicBrainzSearch)
@@ -2366,6 +2368,39 @@ func (s *Server) handleRepairBrokenFiles(w http.ResponseWriter, r *http.Request)
 	jsonOK(w, map[string]int{"repaired": repaired, "total": len(broken)})
 }
 
+// handleDiskAnalysis compares files on disk to local tracks in the database.
+// Returns counts of files on disk, DB tracks, orphaned DB entries (file missing),
+// and unindexed disk files (not yet in DB). Never modifies anything.
+func (s *Server) handleDiskAnalysis(w http.ResponseWriter, r *http.Request) {
+	result, err := s.scanner.DiskAnalysis()
+	if err != nil {
+		log.Printf("[disk-analysis] error: %v", err)
+		jsonError(w, "failed to analyse disk", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w, result)
+}
+
+// handlePurgeOrphans manually removes local tracks from the database whose
+// file no longer exists on disk. Requires {"confirm": true} in the JSON body
+// as an explicit safety gate — this operation cannot be undone.
+func (s *Server) handlePurgeOrphans(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Confirm bool `json:"confirm"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || !body.Confirm {
+		jsonError(w, "send {\"confirm\": true} to proceed", http.StatusBadRequest)
+		return
+	}
+	n, err := s.scanner.PurgeOrphans()
+	if err != nil {
+		log.Printf("[purge-orphans] error: %v", err)
+		jsonError(w, "purge failed", http.StatusInternalServerError)
+		return
+	}
+	jsonOK(w, map[string]int{"purged": n})
+}
+
 // handleDeleteTrack removes a local or SKÅL-upload track from the database (not from disk).
 // Clears all FK references first so SQLite FK constraints are not violated.
 func (s *Server) handleDeleteTrack(w http.ResponseWriter, r *http.Request) {
@@ -3206,20 +3241,20 @@ func (s *Server) handleSystemMetrics(w http.ResponseWriter, r *http.Request) {
 			"num_cpu":    runtime.NumCPU(),
 		},
 		"database": map[string]any{
-			"tracks":               trackCount,
-			"albums":               albumCount,
-			"artists":              artistCount,
-			"users":                userCount,
-			"rooms":                roomCount,
-			"total_duration_secs":  totalDurationSecs,
+			"tracks":              trackCount,
+			"albums":              albumCount,
+			"artists":             artistCount,
+			"users":               userCount,
+			"rooms":               roomCount,
+			"total_duration_secs": totalDurationSecs,
 		},
 		"bpm": map[string]any{
 			"with_bpm":    bpmWith,
 			"without_bpm": bpmWithout,
 		},
 		"disk": map[string]any{
-			"size_bytes":  libBytes,
-			"file_count":  libCount,
+			"size_bytes": libBytes,
+			"file_count": libCount,
 		},
 		"uptime_seconds": time.Since(s.startTime).Seconds(),
 	})
@@ -3636,10 +3671,10 @@ func (s *Server) handleMergeAlbums(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := map[string]any{
-		"status":      "merged",
-		"winner_id":   winner,
-		"merged":      len(losers),
-		"tag_errors":  tagErrors,
+		"status":       "merged",
+		"winner_id":    winner,
+		"merged":       len(losers),
+		"tag_errors":   tagErrors,
 		"tags_written": req.WriteFiles && len(tagErrors) == 0,
 	}
 	jsonOK(w, resp)
