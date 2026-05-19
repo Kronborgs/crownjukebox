@@ -42,6 +42,7 @@ var supportedExtensions = map[string]bool{
 	".flac": true,
 	".ogg":  true,
 	".m4a":  true,
+	".wma":  true, // transcoded to MP3 on the fly at stream time
 }
 
 func SupportedExtension(ext string) bool {

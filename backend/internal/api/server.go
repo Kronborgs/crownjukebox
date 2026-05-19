@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -952,6 +953,16 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 		s.db.Exec(`DELETE FROM tracks WHERE id = ?`, trackID)
 		log.Printf("[stream] track %s missing file %s — removed from library", trackID, track.FilePath)
 		jsonError(w, "track file not found", http.StatusNotFound)
+		return
+	}
+
+	// WMA is not natively playable in browsers — transcode to MP3 on the fly
+	// via ffmpeg (which is available in the Docker image).
+	if strings.ToLower(filepath.Ext(track.FilePath)) == ".wma" {
+		w.Header().Set("Content-Type", "audio/mpeg")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Cache-Control", "no-store")
+		s.streamTranscoded(w, track.FilePath)
 		return
 	}
 
@@ -3425,7 +3436,27 @@ func audioContentType(path string) string {
 	case len(path) > 4 && path[len(path)-4:] == ".m4a":
 		return "audio/mp4"
 	default:
+		// .mp3, .wma (transcoded), and anything else served as MPEG audio
 		return "audio/mpeg"
+	}
+}
+
+// streamTranscoded pipes a non-browser-native audio file (e.g. WMA) through
+// ffmpeg and writes the resulting MP3 stream directly to the response writer.
+// Seeking is not supported — the audio is streamed from the beginning.
+func (s *Server) streamTranscoded(w http.ResponseWriter, filePath string) {
+	cmd := exec.Command("ffmpeg",
+		"-i", filePath,
+		"-vn",            // drop any video stream
+		"-f", "mp3",
+		"-codec:a", "libmp3lame",
+		"-q:a", "4",      // VBR ~165 kbps — good quality, reasonable bandwidth
+		"pipe:1",
+	)
+	cmd.Stdout = w
+	cmd.Stderr = io.Discard
+	if err := cmd.Run(); err != nil {
+		log.Printf("[stream] ffmpeg transcode error for %s: %v", filePath, err)
 	}
 }
 
