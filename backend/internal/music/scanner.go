@@ -123,6 +123,16 @@ func (s *Scanner) Scan(progress chan<- ScanProgress) error {
 		log.Printf("[scanner] removed %d empty album(s)", n)
 	}
 
+	// Remove artists with no albums and no tracks left (stale after retagging).
+	if res, err := s.db.Exec(`
+		DELETE FROM artists
+		WHERE (SELECT COUNT(*) FROM albums WHERE albums.artist_id = artists.id) = 0
+		  AND (SELECT COUNT(*) FROM tracks WHERE tracks.artist_id = artists.id) = 0`); err != nil {
+		log.Printf("[scanner] cleanup empty artists: %v", err)
+	} else if n, _ := res.RowsAffected(); n > 0 {
+		log.Printf("[scanner] removed %d empty artist(s)", n)
+	}
+
 	// Build/sync one playlist per top-level subdirectory so users can browse
 	// their music by category (e.g. "Aeldre", "Yngre") and use them for autoplay.
 	s.buildFolderPlaylists()
@@ -406,16 +416,20 @@ func (s *Scanner) upsertTrack(albumID, artistID, filePath string, meta Metadata)
 	var existing db.Track
 	err := s.db.Get(&existing, `SELECT * FROM tracks WHERE file_path = ?`, filePath)
 	if err == nil {
-		// Update metadata in case tags changed.
+		// Update all metadata in case tags changed after retagging (e.g. MusicBrainz Picard).
+		// Critically this includes artist_id and album_id — without updating these the
+		// track would stay linked to the old stale artist/album forever.
 		// BPM: prefer the tag value if present; otherwise keep whatever the BPM
 		// analyser already computed — don't overwrite a hard-won value with 0.
 		_, err = s.db.Exec(`
 			UPDATE tracks
-			SET title=?, track_number=?, disc_number=?, duration=?,
+			SET title=?, artist_id=?, album_id=?,
+			    track_number=?, disc_number=?, duration=?,
 			    bpm = CASE WHEN ? > 0 THEN ? ELSE bpm END,
 			    updated_at=?
 			WHERE id=?`,
-			meta.Title, meta.TrackNumber, meta.DiscNumber, meta.Duration,
+			meta.Title, artistID, albumID,
+			meta.TrackNumber, meta.DiscNumber, meta.Duration,
 			meta.BPM, meta.BPM, time.Now(), existing.ID,
 		)
 		return err

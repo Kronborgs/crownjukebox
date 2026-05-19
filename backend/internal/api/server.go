@@ -679,8 +679,8 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		FROM tracks t
 		LEFT JOIN artists ar ON ar.id = t.artist_id
 		LEFT JOIN albums al ON al.id = t.album_id
-		WHERE t.title LIKE ? AND t.source_type != 'party_upload'
-		LIMIT 30`, like)
+		WHERE (t.title LIKE ? OR ar.name LIKE ?) AND t.source_type != 'party_upload'
+		LIMIT 30`, like, like)
 
 	jsonOK(w, map[string]any{
 		"artists": artists,
