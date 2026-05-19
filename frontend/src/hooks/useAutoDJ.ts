@@ -43,6 +43,8 @@ export interface UseAutoDJOptions {
   crossfadeSeconds: number
   /** Whether this device holds the active player role */
   isActivePlayer: boolean
+  /** When true the jukebox is in SKÅL party mode — crossfade must not run. */
+  isPartyMode: boolean
   /** Whether audio is casting to Chromecast (skip crossfade when casting) */
   isCasting: boolean
 
@@ -106,6 +108,7 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
     autoDjEnabled,
     crossfadeSeconds,
     isActivePlayer,
+    isPartyMode,
     isCasting,
     playerARef,
     playerBRef,
@@ -352,6 +355,7 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
       const playerA = playerARef.current
       if (!playerA || cancelled) return
       if (isFadingRef.current) return // Already in a fade
+      if (isPartyMode) return // Never crossfade during SKÅL party mode
 
       // Cooldown after a completed fade: the effect still runs with the OLD
       // currentTrackId for a few frames until React re-renders with the new track.
@@ -414,14 +418,20 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
       cancelAnimationFrame(rafId)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoDjEnabled, isActivePlayer, isCasting, currentTrackId, crossfadeSeconds, startFade])
+  }, [autoDjEnabled, isActivePlayer, isPartyMode, isCasting, currentTrackId, crossfadeSeconds, startFade])
+
+  // Cancel any in-progress (or loading) fade when party mode becomes active.
+  // This stops a crossfade that started just before SKÅL was triggered.
+  useEffect(() => {
+    if (isPartyMode) cancelFade()
+  }, [isPartyMode, cancelFade])
 
   // Cancel any in-progress fade when the current track changes (e.g. manual skip)
   // so we don't end up with two tracks playing.
   const prevTrackIdRef = useRef<string | null>(null)
   useEffect(() => {
     if (prevTrackIdRef.current !== null && prevTrackIdRef.current !== currentTrackId) {
-      if (isFadingRef.current) {
+      if (isFadingRef.current || fadeLoadingRef.current) {
         cancelFade()
       }
     }

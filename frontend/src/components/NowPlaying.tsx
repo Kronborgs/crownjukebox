@@ -172,6 +172,8 @@ export function NowPlaying({ state, refreshState }: Props) {
   // Ref that always holds the latest isActivePlayer value — used inside the
   // position-report interval to immediately stop reporting when another device claims.
   const isActivePlayerRef = useRef(false)
+  // Ref for party mode — used in onFadeComplete callback to avoid stale closure.
+  const isPartyModeRef = useRef(false)
 
   const track = state?.current_track
 
@@ -537,6 +539,9 @@ export function NowPlaying({ state, refreshState }: Props) {
   // We just sync React's audioSrc state so the audioSrc effect won't reload the
   // audio element when track?.id changes via refreshState later.
   const onFadeComplete = useCallback((finishedTrackId: string, _nextTrackId: string, nextSrc: string) => {
+    // Never advance the queue via crossfade during SKÅL party mode.
+    // Party track sequencing is handled entirely by the backend.
+    if (isPartyModeRef.current) return
     resumePositionRef.current = null
     // Record timestamp so onEnded ignores any stale events in the handover window.
     fadeCompletedAtRef.current = performance.now()
@@ -557,6 +562,7 @@ export function NowPlaying({ state, refreshState }: Props) {
     maxTempoAdjustPercent: audioSettings.maxTempoAdjustPercent,
     currentTrackBpm:       track?.bpm ?? 0,
     isActivePlayer,
+    isPartyMode:           !!state?.is_party_mode,
     isCasting:             isCastActive,
     playerARef:            audioRef,
     playerBRef,
@@ -806,6 +812,7 @@ export function NowPlaying({ state, refreshState }: Props) {
   const coverArtId = track?.cover_art_id ?? ''
 
   const isParty = !!state?.is_party_mode
+  isPartyModeRef.current = isParty
 
   // CRITICAL: <audio> must ALWAYS be at the same tree position.
   // Using an early-return with <audio> in a different JSX branch causes React to
