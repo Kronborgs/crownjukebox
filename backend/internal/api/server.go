@@ -3447,10 +3447,10 @@ func audioContentType(path string) string {
 func (s *Server) streamTranscoded(w http.ResponseWriter, filePath string) {
 	cmd := exec.Command("ffmpeg",
 		"-i", filePath,
-		"-vn",            // drop any video stream
+		"-vn", // drop any video stream
 		"-f", "mp3",
 		"-codec:a", "libmp3lame",
-		"-q:a", "4",      // VBR ~165 kbps — good quality, reasonable bandwidth
+		"-q:a", "4", // VBR ~165 kbps — good quality, reasonable bandwidth
 		"pipe:1",
 	)
 	cmd.Stdout = w
