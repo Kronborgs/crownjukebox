@@ -376,7 +376,7 @@ func (s *Scanner) indexFile(filePath, originalFilename string) error {
 	}
 
 	// Upsert album
-	albumID, err := s.upsertAlbum(artistID, meta)
+	albumID, err := s.upsertAlbum(artistID, meta, filePath)
 	if err != nil {
 		return err
 	}
@@ -515,7 +515,7 @@ func (s *Scanner) upsertArtist(name string) (string, error) {
 	return id, nil
 }
 
-func (s *Scanner) upsertAlbum(artistID string, meta Metadata) (string, error) {
+func (s *Scanner) upsertAlbum(artistID string, meta Metadata, filePath string) (string, error) {
 	var existing db.Album
 	err := s.db.Get(&existing, `
 		SELECT * FROM albums WHERE artist_id = ? AND LOWER(title) = LOWER(?) LIMIT 1`,
@@ -525,7 +525,7 @@ func (s *Scanner) upsertAlbum(artistID string, meta Metadata) (string, error) {
 		return existing.ID, nil
 	}
 
-	// Fallback: find an existing album with the same title AND year.
+	// Fallback 1: find an existing album with the same title AND year.
 	// Only applied when we have a year — this handles compilations where each
 	// track has a different AlbumArtist tag. Without a year the match is too
 	// ambiguous: "Greatest Hits" by Guns N' Roses must not merge with
@@ -534,6 +534,28 @@ func (s *Scanner) upsertAlbum(artistID string, meta Metadata) (string, error) {
 	// the regular library.
 	if meta.Year > 0 {
 		err = s.db.Get(&existing, `SELECT * FROM albums WHERE LOWER(title) = LOWER(?) AND year = ? AND source_type != 'party_upload' LIMIT 1`, meta.Album, meta.Year)
+		if err == nil {
+			return existing.ID, nil
+		}
+	}
+
+	// Fallback 2: same directory, same title — compilation / various-artists albums
+	// where individual tracks have no shared AlbumArtist tag.
+	// If any track already in the database lives in the same folder and belongs
+	// to an album with this title, reuse that album instead of creating a new one.
+	// Using the folder boundary (path separator) ensures “Greatest Hits/” and
+	// “Greatest Hits CD2/” are never accidentally merged.
+	if filePath != "" {
+		trackDirPattern := filepath.Dir(filePath) + string(filepath.Separator) + "%"
+		err = s.db.Get(&existing, `
+			SELECT al.* FROM albums al
+			WHERE LOWER(al.title) = LOWER(?)
+			  AND al.source_type != 'party_upload'
+			  AND al.id IN (
+				  SELECT DISTINCT album_id FROM tracks
+				  WHERE file_path LIKE ?
+			  )
+			LIMIT 1`, meta.Album, trackDirPattern)
 		if err == nil {
 			return existing.ID, nil
 		}
