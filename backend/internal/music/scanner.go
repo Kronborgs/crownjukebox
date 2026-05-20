@@ -498,7 +498,7 @@ func (s *Scanner) upsertArtist(name string) (string, error) {
 	}
 
 	var existing db.Artist
-	err := s.db.Get(&existing, `SELECT * FROM artists WHERE name = ? LIMIT 1`, name)
+	err := s.db.Get(&existing, `SELECT * FROM artists WHERE LOWER(name) = LOWER(?) LIMIT 1`, name)
 	if err == nil {
 		return existing.ID, nil
 	}
@@ -518,7 +518,7 @@ func (s *Scanner) upsertArtist(name string) (string, error) {
 func (s *Scanner) upsertAlbum(artistID string, meta Metadata) (string, error) {
 	var existing db.Album
 	err := s.db.Get(&existing, `
-		SELECT * FROM albums WHERE artist_id = ? AND title = ? LIMIT 1`,
+		SELECT * FROM albums WHERE artist_id = ? AND LOWER(title) = LOWER(?) LIMIT 1`,
 		artistID, meta.Album,
 	)
 	if err == nil {
@@ -533,7 +533,7 @@ func (s *Scanner) upsertAlbum(artistID string, meta Metadata) (string, error) {
 	// Exclude party_upload albums to prevent SKÅL tracks from contaminating
 	// the regular library.
 	if meta.Year > 0 {
-		err = s.db.Get(&existing, `SELECT * FROM albums WHERE title = ? AND year = ? AND source_type != 'party_upload' LIMIT 1`, meta.Album, meta.Year)
+		err = s.db.Get(&existing, `SELECT * FROM albums WHERE LOWER(title) = LOWER(?) AND year = ? AND source_type != 'party_upload' LIMIT 1`, meta.Album, meta.Year)
 		if err == nil {
 			return existing.ID, nil
 		}
