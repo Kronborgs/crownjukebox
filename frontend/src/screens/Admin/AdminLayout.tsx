@@ -1556,7 +1556,7 @@ function AlbumFixerPanel() {
                           const unique = [...new Set(
                             g.directories.filter(d => d).map(d => {
                               const parts = d.replace(/\\/g, '/').split('/').filter(Boolean)
-                              return parts.at(-1) ?? d
+                              return parts[parts.length - 1] ?? d
                             })
                           )]
                           const shown = unique.slice(0, 4)
