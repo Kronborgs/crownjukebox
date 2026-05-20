@@ -3557,7 +3557,9 @@ func (s *Server) handleFragmentedAlbums(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Build initial result list.
 	result := make([]FragmentedAlbumGroup, 0, len(rows))
+	allAlbumIDs := make([]string, 0)
 	for _, r := range rows {
 		ids := strings.Split(r.AlbumIDs, "|")
 		arts := strings.Split(r.Artists, ",")
@@ -3568,7 +3570,53 @@ func (s *Server) handleFragmentedAlbums(w http.ResponseWriter, r *http.Request) 
 			AlbumIDs:      ids,
 			Artists:       arts,
 		})
+		allAlbumIDs = append(allAlbumIDs, ids...)
 	}
+
+	// Filter out false positives: album groups where every fragment lives in a
+	// different directory are NOT truly fragmented — they are legitimately
+	// separate albums that coincidentally share a title (e.g. "Greatest Hits"
+	// by nine different artists, "X" by INXS vs Ed Sheeran).
+	// A group is only shown if at least two fragments share the same album folder.
+	if len(allAlbumIDs) > 0 {
+		type albumPath struct {
+			AlbumID  string `db:"album_id"`
+			FilePath string `db:"file_path"`
+		}
+		var apRows []albumPath
+		inQ, inArgs, err2 := sqlx.In(
+			`SELECT album_id, MIN(file_path) AS file_path FROM tracks WHERE album_id IN (?) GROUP BY album_id`,
+			allAlbumIDs,
+		)
+		if err2 == nil {
+			_ = s.db.Select(&apRows, inQ, inArgs...)
+		}
+		dirByAlbum := make(map[string]string, len(apRows))
+		for _, ap := range apRows {
+			dirByAlbum[ap.AlbumID] = filepath.Dir(ap.FilePath)
+		}
+
+		filtered := result[:0]
+		for _, g := range result {
+			seenDirs := make(map[string]bool, len(g.AlbumIDs))
+			sharedDir := false
+			for _, id := range g.AlbumIDs {
+				d := dirByAlbum[id]
+				if d != "" && seenDirs[d] {
+					sharedDir = true
+					break
+				}
+				if d != "" {
+					seenDirs[d] = true
+				}
+			}
+			if sharedDir {
+				filtered = append(filtered, g)
+			}
+		}
+		result = filtered
+	}
+
 	jsonOK(w, result)
 }
 
