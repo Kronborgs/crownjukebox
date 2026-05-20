@@ -3525,6 +3525,7 @@ type FragmentedAlbumGroup struct {
 	TotalTracks   int      `json:"total_tracks"`
 	AlbumIDs      []string `json:"album_ids"`
 	Artists       []string `json:"artists"`
+	Directories   []string `json:"directories"` // parallel to AlbumIDs — parent directory of first track in each fragment
 }
 
 // handleFragmentedAlbums returns local albums where multiple DB rows share the
@@ -3611,6 +3612,12 @@ func (s *Server) handleFragmentedAlbums(w http.ResponseWriter, r *http.Request) 
 				}
 			}
 			if sharedDir {
+				// Attach directory for each album fragment (parallel to AlbumIDs).
+				dirs := make([]string, len(g.AlbumIDs))
+				for j, id := range g.AlbumIDs {
+					dirs[j] = dirByAlbum[id]
+				}
+				g.Directories = dirs
 				filtered = append(filtered, g)
 			}
 		}

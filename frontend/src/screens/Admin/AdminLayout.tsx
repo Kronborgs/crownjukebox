@@ -1550,9 +1550,25 @@ function AlbumFixerPanel() {
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, minWidth: '180px' }}>
                     <p style={{ fontSize: '0.9rem', fontWeight: 700, margin: '0 0 2px' }}>{g.title}</p>
-                    <p style={{ fontSize: '0.72rem', color: 'var(--text-dim)', margin: 0 }}>
+                    <p style={{ fontSize: '0.72rem', color: 'var(--text-dim)', margin: '0 0 4px' }}>
                       {g.fragment_count} dele · {g.total_tracks} numre · {g.artists.slice(0, 3).join(', ')}{g.artists.length > 3 ? '…' : ''}
                     </p>
+                    {g.directories && g.directories.some(d => d) && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                        {g.album_ids.map((id, i) => {
+                          const dir = g.directories?.[i]
+                          if (!dir) return null
+                          const parts = dir.replace(/\\/g, '/').split('/').filter(Boolean)
+                          const label = parts.slice(-2).join(' › ')
+                          return (
+                            <span key={id} style={{ fontSize: '0.66rem', color: 'var(--text-dim)', fontFamily: 'monospace', opacity: 0.7 }}
+                              title={dir}>
+                              📁 {label}
+                            </span>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   <button

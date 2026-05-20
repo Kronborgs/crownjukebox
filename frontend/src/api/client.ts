@@ -262,6 +262,7 @@ export interface FragmentedAlbumGroup {
   total_tracks: number
   album_ids: string[]
   artists: string[]
+  directories?: string[] // parallel to album_ids — parent dir of first track in each fragment
 }
 
 export interface DiskAnalysisResult {
