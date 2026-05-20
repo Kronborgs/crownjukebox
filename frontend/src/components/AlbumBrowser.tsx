@@ -68,7 +68,7 @@ export function AlbumBrowser({ onSearchTab, onQueueTab, slideshowTick = 0 }: { o
 
   const { data: albums = [], isLoading } = useQuery({
     queryKey: ['albums'],
-    queryFn: () => libraryApi.albums(undefined, 1, 500),
+    queryFn: () => libraryApi.albums(undefined, 1, 2000),
     staleTime: 60_000,
   })
 

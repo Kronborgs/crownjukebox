@@ -557,6 +557,9 @@ func (s *Server) handleListAlbums(w http.ResponseWriter, r *http.Request) {
 	artistID := r.URL.Query().Get("artist_id")
 	page := queryInt(r, "page", 1)
 	limit := queryInt(r, "limit", 40)
+	if limit > 5000 {
+		limit = 5000 // hard cap — prevents excessive memory use
+	}
 	offset := (page - 1) * limit
 
 	type AlbumWithArtist struct {
