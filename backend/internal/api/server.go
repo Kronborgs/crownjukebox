@@ -296,9 +296,11 @@ func (s *Server) Router() http.Handler {
 		r.Get("/api/admin/library/broken-files", s.handleListBrokenFiles)
 		r.Post("/api/admin/library/broken-files/repair", s.handleRepairBrokenFiles)
 		r.Delete("/api/admin/library/tracks/{id}", s.handleDeleteTrack)
+		r.Get("/api/admin/library/missing-artwork", s.handleAdminMissingArtwork)
 		r.Get("/api/admin/missing-artwork", s.handleAdminMissingArtwork)
 		r.Get("/api/admin/library/disk-analysis", s.handleDiskAnalysis)
 		r.Post("/api/admin/library/purge-orphans", s.handlePurgeOrphans)
+		r.Get("/api/admin/library/incomplete-metadata", s.handleIncompleteMetadata)
 		// MusicBrainz / album fixer
 		r.Get("/api/admin/fragmented-albums", s.handleFragmentedAlbums)
 		r.Get("/api/admin/musicbrainz/search", s.handleMusicBrainzSearch)
@@ -2413,6 +2415,22 @@ func (s *Server) handlePurgeOrphans(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jsonOK(w, map[string]int{"purged": n})
+}
+
+// handleIncompleteMetadata returns local tracks that are missing one or more
+// key metadata fields (artist, album, duration). Used in the admin library
+// panel so the operator can identify and manually fix or remove problem files.
+func (s *Server) handleIncompleteMetadata(w http.ResponseWriter, r *http.Request) {
+	tracks, err := s.scanner.IncompleteMetadata()
+	if err != nil {
+		log.Printf("[incomplete-metadata] error: %v", err)
+		jsonError(w, "failed to query incomplete metadata", http.StatusInternalServerError)
+		return
+	}
+	if tracks == nil {
+		tracks = []music.IncompleteTrack{}
+	}
+	jsonOK(w, tracks)
 }
 
 // handleDeleteTrack removes a local or SKÅL-upload track from the database (not from disk).

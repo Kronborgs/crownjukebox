@@ -275,6 +275,17 @@ export interface DiskAnalysisResult {
   sample_unindexed: string[]
 }
 
+export interface IncompleteTrack {
+  id: string
+  title: string
+  artist: string
+  album: string
+  duration_secs: number
+  bpm: number
+  file_path: string
+  issues: string[] // 'unknown_artist' | 'unknown_album' | 'missing_duration'
+}
+
 export interface MBReleaseGroup {
   id: string
   title: string
@@ -538,6 +549,7 @@ export const adminApi = {
   missingArtwork:       () => getList<Album>('/api/admin/missing-artwork'),
   diskAnalysis:         () => get<DiskAnalysisResult>('/api/admin/library/disk-analysis'),
   purgeOrphans:         () => post<{ purged: number }>('/api/admin/library/purge-orphans', { confirm: true }),
+  incompleteMetadata:   () => getList<IncompleteTrack>('/api/admin/library/incomplete-metadata'),
 
   // Keyboard bindings
   keyboardBindings:       () => getList<KeyboardBinding>('/api/admin/keyboard-bindings'),

@@ -320,6 +320,87 @@ func (s *Scanner) PurgeOrphans() (int, error) {
 	return len(orphanIDs), nil
 }
 
+// ─── Incomplete metadata report ──────────────────────────────────────────────
+
+// IncompleteTrack describes a local track whose metadata could not be fully
+// resolved by the scanner — the file exists but has one or more "Unknown"
+// values that could not be inferred from tags or folder structure.
+type IncompleteTrack struct {
+	ID       string   `json:"id"`
+	Title    string   `json:"title"`
+	Artist   string   `json:"artist"`
+	Album    string   `json:"album"`
+	Duration int      `json:"duration_secs"`
+	BPM      int      `json:"bpm"`
+	FilePath string   `json:"file_path"`
+	Issues   []string `json:"issues"` // human-readable list of what is missing
+}
+
+// IncompleteMetadata returns local tracks that are missing one or more key
+// metadata fields (artist, album, duration). The results are ordered by
+// file_path so the caller can see which folders are affected.
+func (s *Scanner) IncompleteMetadata() ([]IncompleteTrack, error) {
+	type row struct {
+		ID       string `db:"id"`
+		Title    string `db:"title"`
+		Artist   string `db:"artist_name"`
+		Album    string `db:"album_title"`
+		Duration int    `db:"duration"`
+		BPM      int    `db:"bpm"`
+		FilePath string `db:"file_path"`
+	}
+
+	var rows []row
+	err := s.db.Select(&rows, `
+		SELECT
+			t.id,
+			t.title,
+			ar.name  AS artist_name,
+			al.title AS album_title,
+			t.duration,
+			t.bpm,
+			t.file_path
+		FROM tracks t
+		JOIN artists ar ON ar.id = t.artist_id
+		JOIN albums  al ON al.id = t.album_id
+		WHERE t.source_type = 'local'
+		  AND (
+		        ar.name  IN ('Unknown Artist', '')
+		     OR al.title IN ('Unknown Album',  '')
+		     OR t.duration = 0
+		  )
+		ORDER BY t.file_path ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("query incomplete tracks: %w", err)
+	}
+
+	result := make([]IncompleteTrack, 0, len(rows))
+	for _, r := range rows {
+		issues := []string{}
+		if r.Artist == "Unknown Artist" || r.Artist == "" {
+			issues = append(issues, "unknown_artist")
+		}
+		if r.Album == "Unknown Album" || r.Album == "" {
+			issues = append(issues, "unknown_album")
+		}
+		if r.Duration == 0 {
+			issues = append(issues, "missing_duration")
+		}
+		result = append(result, IncompleteTrack{
+			ID:       r.ID,
+			Title:    r.Title,
+			Artist:   r.Artist,
+			Album:    r.Album,
+			Duration: r.Duration,
+			BPM:      r.BPM,
+			FilePath: r.FilePath,
+			Issues:   issues,
+		})
+	}
+	return result, nil
+}
+
 // IndexFile indexes one specific audio file path.
 func (s *Scanner) IndexFile(filePath string) error {
 	return s.indexFile(filePath, "")
@@ -612,7 +693,7 @@ func (s *Scanner) upsertTrack(albumID, artistID, filePath string, meta Metadata)
 
 // ─── Path-based metadata inference ──────────────────────────────────────────
 
-// inferFromPath fills in missing Album, Artist, TrackNumber, and DiscNumber
+// inferFromPath fills in missing Album, Artist, TrackNumber, DiscNumber and Year
 // from the file's directory hierarchy when embedded tags are absent or generic.
 //
 // Supported folder structures (at any depth below the music root):
@@ -621,11 +702,13 @@ func (s *Scanner) upsertTrack(albumID, artistID, filePath string, meta Metadata)
 //	…/Artist - Album Title/CD1/track.mp3
 //	…/Category/Artist - Album Title/Disc 2/track.mp3
 //	…/Album Title/track.mp3
+//	…/Artist - Discography/1973 - Album Title/track.mp3   ← year-prefix pattern
+//	…/Artist/track.mp3                                     ← flat artist folder
 func inferFromPath(meta *Metadata, filePath string) {
 	dir := filepath.Dir(filePath)
 	folderName := filepath.Base(dir)
 
-	// Detect and strip a disc subfolder (CD1, Disc 2, Disk 1, …).
+	// 1. Detect and strip a disc subfolder (CD1, Disc 2, Disk 1, …).
 	if n := parseDiscFolder(folderName); n > 0 {
 		if meta.DiscNumber <= 1 {
 			meta.DiscNumber = n
@@ -634,25 +717,121 @@ func inferFromPath(meta *Metadata, filePath string) {
 		folderName = filepath.Base(dir)
 	}
 
-	// Fill in Album (and optionally Artist) from the album folder name.
-	if meta.Album == "Unknown Album" || meta.Album == "" {
-		artist, album := splitArtistAlbumFolder(folderName)
-		if album != "" && album != "." {
-			meta.Album = album
+	// 2. Detect a year-prefixed album folder: "1973 - Piano Man", "2005 - Greatest Hits".
+	//    This is common in "Artist - Discography/YYYY - Album/" hierarchies.
+	//    When found, extract the year + album and step up one level to find the artist.
+	if yr, albumFromYear := parseYearAlbumFolder(folderName); yr > 0 {
+		if meta.Year == 0 {
+			meta.Year = yr
 		}
-		if artist != "" && (meta.AlbumArtist == "Unknown Artist" || meta.AlbumArtist == "") {
-			meta.AlbumArtist = artist
-			if meta.Artist == "Unknown Artist" || meta.Artist == "" {
-				meta.Artist = artist
-			}
+		if meta.Album == "Unknown Album" || meta.Album == "" {
+			meta.Album = albumFromYear
+		}
+		// Move up — the parent folder likely carries the artist name.
+		dir = filepath.Dir(dir)
+		folderName = filepath.Base(dir)
+	}
+
+	// 3. Parse the current folder as "Artist - Album" or plain "Name".
+	folderArtist, folderAlbum := splitArtistAlbumFolder(folderName)
+
+	// If the "album" part is a generic suffix (e.g. "Discography", "Anthology"),
+	// discard it so we never store "Discography" as an album title.
+	if isDiscographySuffix(folderAlbum) {
+		folderAlbum = ""
+	}
+
+	// Fill in album when still unknown.
+	if meta.Album == "Unknown Album" || meta.Album == "" {
+		if folderAlbum != "" && folderAlbum != "." {
+			meta.Album = folderAlbum
+		} else if folderArtist == "" && folderName != "" && folderName != "." {
+			// No " - " separator: the plain folder name becomes the album.
+			// (For a flat artist folder like "ABBA/", the folder doubles as both
+			// album grouping and provides the artist via the next block.)
+			meta.Album = folderName
 		}
 	}
 
-	// Infer track number from a leading numeric prefix on the filename,
-	// e.g. "01 Welcome To The Jungle.mp3" or "03 - Paradise City.mp3".
+	// Fill in artist from an explicit "Artist - " prefix in the folder name.
+	// We intentionally do this even when the album was already known from tags,
+	// so that a file whose tag has the album but no artist can still inherit the
+	// artist from a folder like "Aerosmith - Big Ones/".
+	if folderArtist != "" && (meta.AlbumArtist == "Unknown Artist" || meta.AlbumArtist == "") {
+		meta.AlbumArtist = folderArtist
+		if meta.Artist == "Unknown Artist" || meta.Artist == "" {
+			meta.Artist = folderArtist
+		}
+	}
+
+	// For plain (no " - ") folders: use the folder name as artist only when the
+	// artist is still completely unknown and the folder looks like a solo-artist
+	// collection (no explicit artist-album split available anywhere so far).
+	if folderArtist == "" &&
+		(meta.AlbumArtist == "Unknown Artist" || meta.AlbumArtist == "") &&
+		folderName != "" && folderName != "." {
+		meta.AlbumArtist = folderName
+		if meta.Artist == "Unknown Artist" || meta.Artist == "" {
+			meta.Artist = folderName
+		}
+	}
+
+	// Propagate AlbumArtist → Artist when only one of the two is missing.
+	if meta.Artist == "Unknown Artist" || meta.Artist == "" {
+		if meta.AlbumArtist != "Unknown Artist" && meta.AlbumArtist != "" {
+			meta.Artist = meta.AlbumArtist
+		}
+	}
+
+	// 4. Infer track number from a leading numeric prefix on the filename,
+	//    e.g. "01 Welcome To The Jungle.mp3" or "03 - Paradise City.mp3".
 	if meta.TrackNumber == 0 {
 		meta.TrackNumber = parseTrackNumberFromFilename(filepath.Base(filePath))
 	}
+}
+
+// parseYearAlbumFolder detects a folder name that starts with a 4-digit year
+// optionally followed by a separator and the album title.
+//
+//	"1973 - Piano Man"   → (1973, "Piano Man")
+//	"2005 Greatest Hits" → (2005, "Greatest Hits")
+//	"ABBA"               → (0, "")
+//
+// Returns (0, "") when no year prefix is detected.
+func parseYearAlbumFolder(name string) (year int, album string) {
+	name = strings.TrimSpace(name)
+	if len(name) < 4 {
+		return 0, ""
+	}
+	yr, err := strconv.Atoi(name[:4])
+	if err != nil || yr < 1900 || yr > 2100 {
+		return 0, ""
+	}
+	// Must be followed by a space, dash, or underscore — not just a year-like
+	// number in the middle of a word (e.g. "19730s Rock").
+	if len(name) == 4 {
+		return yr, "" // bare year, no album title
+	}
+	sep := name[4]
+	if sep != ' ' && sep != '-' && sep != '_' {
+		return 0, ""
+	}
+	rest := strings.TrimSpace(name[4:])
+	rest = strings.TrimLeft(rest, "- _")
+	rest = strings.TrimSpace(rest)
+	return yr, rest
+}
+
+// isDiscographySuffix reports whether s is a standalone collection/discography
+// label that should not be used as an album title.
+func isDiscographySuffix(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "discography", "anthology", "complete collection",
+		"complete works", "the complete collection",
+		"box set", "collection", "archives":
+		return true
+	}
+	return false
 }
 
 // parseDiscFolder returns n > 0 if the folder name looks like a disc/CD

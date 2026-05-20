@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { adminApi, User, Track, Playlist, KeyboardBinding, setCurrentRoomId, JukeboxSession, FragmentedAlbumGroup, MBReleaseGroup } from '@/api/client'
+import { adminApi, User, Track, Playlist, KeyboardBinding, setCurrentRoomId, JukeboxSession, FragmentedAlbumGroup, MBReleaseGroup, IncompleteTrack } from '@/api/client'
 import { useSession } from '@/hooks/useSession'
 import { useSSE } from '@/hooks/useSSE'
 import { Plus, UserCheck, UserX, Trash2, RefreshCw, Settings, Music2, X, KeyRound, Radio, LayoutDashboard, Mail, PartyPopper, Upload, Star, ChevronUp, ChevronDown, LogOut, Monitor, Smartphone, WifiOff, AlertTriangle, Zap } from 'lucide-react'
@@ -1365,6 +1365,9 @@ function LibraryPanel() {
       {/* ── Disk analysis ── */}
       <DiskAnalysisPanel />
 
+      {/* ── Incomplete metadata ── */}
+      <IncompleteMetadataPanel />
+
       {/* ── Album Fixer ── */}
       <AlbumFixerPanel />
 
@@ -1792,6 +1795,173 @@ function DiskAnalysisPanel() {
 
 // ─── Broken Files panel (embedded inside LibraryPanel) ───────
 
+// ─── Incomplete metadata panel ────────────────────────────────
+
+function IncompleteMetadataPanel() {
+  const qc = useQueryClient()
+  const [open, setOpen] = useState(false)
+  const [tracks, setTracks] = useState<IncompleteTrack[]>([])
+  const [loading, setLoading] = useState(false)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [filterIssue, setFilterIssue] = useState<string>('all')
+
+  async function load() {
+    setLoading(true)
+    try {
+      const data = await adminApi.incompleteMetadata()
+      setTracks(data)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function deleteOne(id: string) {
+    setDeleting(id)
+    try {
+      await adminApi.deleteTrack(id)
+      setTracks(t => t.filter(x => x.id !== id))
+      qc.invalidateQueries({ queryKey: ['system-metrics'] })
+    } finally {
+      setDeleting(null) }
+  }
+
+  const issueLabel: Record<string, string> = {
+    unknown_artist:   'Ukendt kunstner',
+    unknown_album:    'Ukendt album',
+    missing_duration: 'Mangler varighed',
+  }
+
+  const filtered = filterIssue === 'all'
+    ? tracks
+    : tracks.filter(t => t.issues.includes(filterIssue))
+
+  return (
+    <div style={{ marginTop: '28px', marginBottom: '28px' }}>
+      <div
+        style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', userSelect: 'none' }}
+        onClick={() => { setOpen(o => !o); if (!open && tracks.length === 0) load() }}
+      >
+        <h3 style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--neon-amber, #ffaa00)', margin: 0 }}>
+          🔍 Manglende metadata
+          {tracks.length > 0 && (
+            <span style={{ marginLeft: '8px', fontWeight: 400, fontSize: '0.85rem', color: 'var(--text-dim)' }}>
+              — {tracks.length} numre
+            </span>
+          )}
+        </h3>
+        <span style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>{open ? '▲' : '▼'}</span>
+        {open && (
+          <button
+            className="btn btn-ghost"
+            style={{ fontSize: '0.78rem', marginLeft: '4px' }}
+            onClick={e => { e.stopPropagation(); load() }}
+          >
+            <RefreshCw size={13} className={loading ? 'spinning' : ''} /> Opdater
+          </button>
+        )}
+      </div>
+
+      {open && (
+        <div style={{ marginTop: '12px' }}>
+          <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)', marginBottom: '12px' }}>
+            Disse numre er i databasen, men scanneren kunne ikke finde kunstner, album eller varighed —
+            enten mangler tags i filen, eller mappestrukturen matchede ikke kendte mønstre.
+            Du kan slette dem fra biblioteket (filen på disk berøres ikke) eller bruge
+            <strong> Album Fixer</strong> / <strong>MusicBrainz Picard</strong> til at rette tags manuelt.
+          </p>
+
+          {loading && <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>Indlæser…</p>}
+
+          {!loading && tracks.length === 0 && (
+            <p style={{ fontSize: '0.8rem', color: 'var(--neon-teal)' }}>
+              ✓ Alle numre har kunstner, album og varighed
+            </p>
+          )}
+
+          {!loading && tracks.length > 0 && (
+            <>
+              {/* Filter chips */}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                {(['all', 'unknown_artist', 'unknown_album', 'missing_duration'] as const).map(key => (
+                  <button
+                    key={key}
+                    className="btn btn-ghost"
+                    style={{
+                      fontSize: '0.75rem',
+                      padding: '3px 10px',
+                      borderColor: filterIssue === key ? 'var(--neon-primary)' : undefined,
+                      color: filterIssue === key ? 'var(--neon-primary)' : undefined,
+                    }}
+                    onClick={() => setFilterIssue(key)}
+                  >
+                    {key === 'all' ? `Alle (${tracks.length})` : `${issueLabel[key]} (${tracks.filter(t => t.issues.includes(key)).length})`}
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ maxHeight: '400px', overflowY: 'auto', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }}>
+                {filtered.map(track => (
+                  <div key={track.id} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: '10px',
+                    padding: '10px 12px', borderBottom: '1px solid rgba(255,255,255,0.05)',
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {track.title}
+                      </p>
+                      <p style={{ fontSize: '0.78rem', color: 'var(--text-dim)', marginTop: '1px' }}>
+                        <span style={{ color: track.artist === 'Unknown Artist' ? 'var(--neon-amber, #ffaa00)' : 'inherit' }}>
+                          {track.artist}
+                        </span>
+                        {' — '}
+                        <span style={{ color: track.album === 'Unknown Album' ? 'var(--neon-amber, #ffaa00)' : 'inherit' }}>
+                          {track.album}
+                        </span>
+                        {track.duration_secs > 0 && (
+                          <span style={{ marginLeft: '8px', color: 'rgba(255,255,255,0.3)' }}>
+                            {Math.floor(track.duration_secs / 60)}:{String(track.duration_secs % 60).padStart(2, '0')}
+                          </span>
+                        )}
+                      </p>
+                      <p style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.25)', marginTop: '2px', fontFamily: 'monospace', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {track.file_path}
+                      </p>
+                      <div style={{ display: 'flex', gap: '4px', marginTop: '4px', flexWrap: 'wrap' }}>
+                        {track.issues.map(issue => (
+                          <span key={issue} style={{
+                            fontSize: '0.65rem', padding: '1px 6px', borderRadius: '10px',
+                            background: 'rgba(255,170,0,0.15)', color: 'var(--neon-amber, #ffaa00)',
+                            border: '1px solid rgba(255,170,0,0.3)',
+                          }}>
+                            {issueLabel[issue] ?? issue}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <button
+                      className="btn btn-ghost"
+                      style={{ flexShrink: 0, padding: '4px 8px', fontSize: '0.75rem', color: 'var(--neon-red, #ff4444)' }}
+                      onClick={() => deleteOne(track.id)}
+                      disabled={deleting === track.id}
+                      title="Fjern fra bibliotek (filen berøres ikke)"
+                    >
+                      {deleting === track.id ? '…' : <Trash2 size={13} />}
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <p style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.25)', marginTop: '6px' }}>
+                Tip: Kør <strong>Scan musikmappe</strong> igen efter du har rettet tags med f.eks. MusicBrainz Picard — listen opdateres automatisk.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Broken files panel ────────────────────────────────────────
 function BrokenFilesPanel() {
   const qc = useQueryClient()
   const { data: files = [], isLoading, refetch } = useQuery({
