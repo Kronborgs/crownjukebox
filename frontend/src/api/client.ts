@@ -617,7 +617,11 @@ export const adminApi = {
 
   // Album fixer (MusicBrainz)
   fragmentedAlbums: () => getList<FragmentedAlbumGroup>('/api/admin/fragmented-albums'),
-  musicBrainzSearch: (title: string) => getList<MBReleaseGroup>(`/api/admin/musicbrainz/search?title=${encodeURIComponent(title)}`),
+  musicBrainzSearch: (title: string, artist?: string) => {
+    const params = new URLSearchParams({ title })
+    if (artist) params.set('artist', artist)
+    return getList<MBReleaseGroup>(`/api/admin/musicbrainz/search?${params}`)
+  },
   mergeAlbums: (albumIds: string[], albumArtist: string, writeFiles: boolean) =>
     post<MergeAlbumsResult>('/api/admin/merge-albums', { album_ids: albumIds, album_artist: albumArtist, write_files: writeFiles }),
 }

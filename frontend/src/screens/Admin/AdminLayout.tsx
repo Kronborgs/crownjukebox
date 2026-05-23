@@ -1438,6 +1438,29 @@ function LibraryPanel() {
 
 // ─── Album Fixer panel (MusicBrainz) ───────────────────────────
 
+// Returns the artist name extracted from a file-path directory by walking up
+// the path and looking for the first "Artist - Album" folder name.
+// Skips known disc subfolders (CD1, Disc 2, …).
+function extractArtistFromDir(dir: string): string {
+  if (!dir) return ''
+  const parts = dir.replace(/\\/g, '/').split('/').filter(Boolean)
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i]
+    if (/^(?:cd|disc|disk)\s*\d+$/i.test(p)) continue // skip disc folders
+    const sep = p.indexOf(' - ')
+    if (sep > 0) return p.substring(0, sep).trim()
+  }
+  return ''
+}
+
+// Returns a human-readable shortened path, e.g.:
+//   /music/Aerosmith/Aerosmith - Gold/CD2  →  Aerosmith › Aerosmith - Gold › CD2
+function shortDir(dir: string): string {
+  if (!dir) return ''
+  const parts = dir.replace(/\\/g, '/').replace(/^\/music\/?/, '').split('/').filter(Boolean)
+  return parts.slice(-3).join(' › ')
+}
+
 function AlbumFixerPanel() {
   const qc = useQueryClient()
   const [open, setOpen] = useState(false)
@@ -1456,19 +1479,27 @@ function AlbumFixerPanel() {
       const data = await adminApi.fragmentedAlbums()
       setGroups(data)
       const init: Record<string, string> = {}
-      data.forEach(g => { init[g.title] = '' })
+      data.forEach(g => {
+        // Pre-fill artist from the first available directory path
+        const dir = g.directories?.find(d => !!d) ?? ''
+        init[g.title] = extractArtistFromDir(dir)
+      })
       setArtistInput(init)
     } finally {
       setLoading(false)
     }
   }
 
-  async function search(title: string) {
+  async function search(group: FragmentedAlbumGroup) {
+    const title = group.title
     setSearching(s => ({ ...s, [title]: true }))
     try {
-      const results = await adminApi.musicBrainzSearch(title)
+      // Use current artistInput value as hint, or fall back to dir-extracted artist
+      const artistHint = artistInput[title]?.trim()
+        || extractArtistFromDir(group.directories?.find(d => !!d) ?? '')
+      const results = await adminApi.musicBrainzSearch(title, artistHint || undefined)
       setMbResults(r => ({ ...r, [title]: results }))
-      if (results.length > 0 && !artistInput[title]) {
+      if (results.length > 0 && !artistInput[title]?.trim()) {
         setArtistInput(a => ({ ...a, [title]: results[0].artist_name }))
       }
     } finally {
@@ -1554,31 +1585,26 @@ function AlbumFixerPanel() {
                   <div style={{ flex: 1, minWidth: '180px' }}>
                     <p style={{ fontSize: '0.9rem', fontWeight: 700, margin: '0 0 2px' }}>{g.title}</p>
                     <p style={{ fontSize: '0.72rem', color: 'var(--text-dim)', margin: 0 }}>
-                      {g.fragment_count} dele · {g.total_tracks} numre · {(() => {
-                        if (g.directories?.some(d => d)) {
-                          const unique = [...new Set(
-                            g.directories.filter(d => d).map(d => {
-                              const parts = d.replace(/\\/g, '/').split('/').filter(Boolean)
-                              return parts[parts.length - 1] ?? d
-                            })
-                          )]
-                          const shown = unique.slice(0, 4)
-                          const rest = unique.length - shown.length
-                          return (
-                            <span title={g.directories.filter(d => d).join('\n')}>
-                              {shown.join(' · ')}{rest > 0 ? ` · +${rest}` : ''}
-                            </span>
-                          )
-                        }
-                        return <>{g.artists.slice(0, 3).join(', ')}{g.artists.length > 3 ? '…' : ''}</>
-                      })()}
+                      {g.fragment_count} dele · {g.total_tracks} numre
                     </p>
+                    {g.directories?.some(d => d) && (() => {
+                      const unique = [...new Set(g.directories.filter(d => d).map(shortDir))]
+                      return (
+                        <p
+                          style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.3)', margin: '2px 0 0', fontFamily: 'monospace',
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}
+                          title={g.directories.filter(d => d).join('\n')}
+                        >
+                          📁 {unique.join('  ·  ')}
+                        </p>
+                      )
+                    })()}
                   </div>
 
                   <button
                     className="btn btn-ghost"
                     style={{ fontSize: '0.78rem', flexShrink: 0 }}
-                    onClick={() => search(g.title)}
+                    onClick={() => search(g)}
                     disabled={searching[g.title]}
                   >
                     {searching[g.title] ? <RefreshCw size={12} className="spinning" /> : '🔍'} MusicBrainz

@@ -5,9 +5,29 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strings"
 	"sync"
 	"time"
 )
+
+// cdSuffixRe matches trailing " - CD N" / " - Disc N" / " - Disk N" patterns.
+// Used to clean up album titles before sending them to MusicBrainz.
+var cdSuffixRe = regexp.MustCompile(`(?i)\s*[-–]\s*(?:CD|Disc|Disk)\s*\d+\s*$`)
+
+// StripCDSuffix removes a trailing disc-indicator suffix from an album title.
+// Examples:
+//
+//	"Gold - CD 2"          → "Gold"
+//	"A Little South - CD1" → "A Little South"
+//	"Shu-bi-dua - deluxe"  → "Shu-bi-dua - deluxe"  (unchanged)
+func StripCDSuffix(title string) string {
+	cleaned := strings.TrimSpace(cdSuffixRe.ReplaceAllString(title, ""))
+	if cleaned == "" {
+		return title
+	}
+	return cleaned
+}
 
 const apiBase = "https://musicbrainz.org/ws/2"
 
@@ -79,21 +99,39 @@ type searchResponse struct {
 	Count         int            `json:"count"`
 }
 
-// SearchReleaseGroups searches MusicBrainz for release groups by title.
+// SearchReleaseGroups searches MusicBrainz for release groups by title and optional artist.
+// When artist is non-empty the query is narrowed to `artist:"X" AND releasegroup:"Y"`,
+// which dramatically improves precision for generic album titles like "Gold", "Greatest Hits".
+//
+// The title is automatically cleaned: trailing " - CD N" / " - Disc N" suffixes are
+// stripped so "Gold - CD 2" searches as "Gold".
+//
 // It tries two strategies and merges results:
 //  1. Exact phrase search (quoted) — high precision
-//  2. Tokenised/fuzzy search — better recall for titles with numbers, "Uge X", etc.
+//  2. Tokenised/fuzzy search — better recall for titles with numbers
 //
 // Returns up to 8 deduplicated results ordered by relevance score.
-func SearchReleaseGroups(title string) ([]ReleaseGroup, error) {
-	exact, err := searchMB(fmt.Sprintf(`releasegroup:"%s"`, title), 5)
+func SearchReleaseGroups(title, artist string) ([]ReleaseGroup, error) {
+	cleanTitle := StripCDSuffix(title)
+
+	var exactQ, fuzzyQ string
+	if artist != "" {
+		exactQ = fmt.Sprintf(`artist:"%s" AND releasegroup:"%s"`, artist, cleanTitle)
+		fuzzyQ = fmt.Sprintf(`artist:%s AND releasegroup:%s`,
+			url.QueryEscape(artist), url.QueryEscape(cleanTitle))
+	} else {
+		exactQ = fmt.Sprintf(`releasegroup:"%s"`, cleanTitle)
+		fuzzyQ = fmt.Sprintf(`releasegroup:%s`, url.QueryEscape(cleanTitle))
+	}
+
+	exact, err := searchMB(exactQ, 5)
 	if err != nil {
 		return nil, err
 	}
 
 	// Always also do a fuzzy pass so we catch near-matches.
 	rateLimit()
-	fuzzy, err2 := searchMB(fmt.Sprintf(`releasegroup:%s`, url.QueryEscape(title)), 5)
+	fuzzy, err2 := searchMB(fuzzyQ, 5)
 	if err2 == nil {
 		seen := make(map[string]bool, len(exact))
 		for _, r := range exact {

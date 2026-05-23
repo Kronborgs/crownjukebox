@@ -3653,10 +3653,13 @@ func (s *Server) handleMusicBrainzSearch(w http.ResponseWriter, r *http.Request)
 		jsonError(w, "title is required", http.StatusBadRequest)
 		return
 	}
+	// Optional artist hint — significantly narrows the search for generic album
+	// titles like "Gold", "Greatest Hits", "Gold - CD 2".
+	artist := strings.TrimSpace(r.URL.Query().Get("artist"))
 
-	results, err := musicbrainz.SearchReleaseGroups(title)
+	results, err := musicbrainz.SearchReleaseGroups(title, artist)
 	if err != nil {
-		log.Printf("[musicbrainz] search %q: %v", title, err)
+		log.Printf("[musicbrainz] search %q artist=%q: %v", title, artist, err)
 		jsonError(w, "MusicBrainz søgning fejlede", http.StatusBadGateway)
 		return
 	}
