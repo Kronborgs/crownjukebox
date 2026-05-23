@@ -1469,6 +1469,7 @@ function AlbumFixerPanel() {
   const [writeFiles, setWriteFiles] = useState(false)
   const [searching, setSearching] = useState<Record<string, boolean>>({})
   const [mbResults, setMbResults] = useState<Record<string, MBReleaseGroup[]>>({})
+  const [albumInput, setAlbumInput] = useState<Record<string, string>>({})
   const [artistInput, setArtistInput] = useState<Record<string, string>>({})
   const [merging, setMerging] = useState<Record<string, boolean>>({})
   const [mergeMsg, setMergeMsg] = useState<Record<string, string>>({})
@@ -1478,32 +1479,34 @@ function AlbumFixerPanel() {
     try {
       const data = await adminApi.fragmentedAlbums()
       setGroups(data)
-      const init: Record<string, string> = {}
+      const initAlbum: Record<string, string> = {}
+      const initArtist: Record<string, string> = {}
       data.forEach(g => {
-        // Pre-fill artist from the first available directory path
         const dir = g.directories?.find(d => !!d) ?? ''
-        init[g.title] = extractArtistFromDir(dir)
+        initAlbum[g.title] = g.title
+        initArtist[g.title] = extractArtistFromDir(dir)
       })
-      setArtistInput(init)
+      setAlbumInput(initAlbum)
+      setArtistInput(initArtist)
     } finally {
       setLoading(false)
     }
   }
 
   async function search(group: FragmentedAlbumGroup) {
-    const title = group.title
-    setSearching(s => ({ ...s, [title]: true }))
+    const key = group.title
+    const searchTitle = albumInput[key]?.trim() || group.title
+    setSearching(s => ({ ...s, [key]: true }))
     try {
-      // Use current artistInput value as hint, or fall back to dir-extracted artist
-      const artistHint = artistInput[title]?.trim()
+      const artistHint = artistInput[key]?.trim()
         || extractArtistFromDir(group.directories?.find(d => !!d) ?? '')
-      const results = await adminApi.musicBrainzSearch(title, artistHint || undefined)
-      setMbResults(r => ({ ...r, [title]: results }))
-      if (results.length > 0 && !artistInput[title]?.trim()) {
-        setArtistInput(a => ({ ...a, [title]: results[0].artist_name }))
+      const results = await adminApi.musicBrainzSearch(searchTitle, artistHint || undefined)
+      setMbResults(r => ({ ...r, [key]: results }))
+      if (results.length > 0 && !artistInput[key]?.trim()) {
+        setArtistInput(a => ({ ...a, [key]: results[0].artist_name }))
       }
     } finally {
-      setSearching(s => ({ ...s, [title]: false }))
+      setSearching(s => ({ ...s, [key]: false }))
     }
   }
 
@@ -1620,12 +1623,16 @@ function AlbumFixerPanel() {
                         style={{
                           fontSize: '0.75rem',
                           padding: '3px 8px',
-                          borderColor: artistInput[g.title] === r.artist_name ? 'var(--neon-primary)' : undefined,
-                          color: artistInput[g.title] === r.artist_name ? 'var(--neon-primary)' : undefined,
+                          borderColor: (artistInput[g.title] === r.artist_name && albumInput[g.title] === r.title) ? 'var(--neon-primary)' : undefined,
+                          color: (artistInput[g.title] === r.artist_name && albumInput[g.title] === r.title) ? 'var(--neon-primary)' : undefined,
                         }}
-                        onClick={() => setArtistInput(a => ({ ...a, [g.title]: r.artist_name }))}
+                        title={`${r.artist_name || '—'}${r.compilation ? ' (kompilation)' : ''}`}
+                        onClick={() => {
+                          setArtistInput(a => ({ ...a, [g.title]: r.artist_name }))
+                          setAlbumInput(a => ({ ...a, [g.title]: r.title }))
+                        }}
                       >
-                        {r.artist_name || '—'} {r.compilation ? '(kompilation)' : ''} · {r.score}%
+                        {r.title} {r.compilation ? '(kompilation)' : ''} · {r.score}%
                       </button>
                     ))}
                   </div>
@@ -1634,11 +1641,26 @@ function AlbumFixerPanel() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
                   <input
                     type="text"
+                    value={albumInput[g.title] ?? g.title}
+                    onChange={e => setAlbumInput(a => ({ ...a, [g.title]: e.target.value }))}
+                    placeholder="Album titel (søgning)"
+                    style={{
+                      flex: 2, minWidth: '160px',
+                      background: 'rgba(255,255,255,0.06)',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      borderRadius: '6px',
+                      padding: '5px 10px',
+                      color: 'inherit',
+                      fontSize: '0.82rem',
+                    }}
+                  />
+                  <input
+                    type="text"
                     value={artistInput[g.title] ?? ''}
                     onChange={e => setArtistInput(a => ({ ...a, [g.title]: e.target.value }))}
-                    placeholder="Album Kunstner (f.eks. Various Artists)"
+                    placeholder="Kunstner"
                     style={{
-                      flex: 1, minWidth: '180px',
+                      flex: 1, minWidth: '120px',
                       background: 'rgba(255,255,255,0.06)',
                       border: '1px solid rgba(255,255,255,0.15)',
                       borderRadius: '6px',
