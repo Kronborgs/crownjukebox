@@ -1495,12 +1495,29 @@ function AlbumFixerPanel() {
 
   async function search(group: FragmentedAlbumGroup) {
     const key = group.title
-    const searchTitle = albumInput[key]?.trim() || group.title
+    let searchTitle = albumInput[key]?.trim() || group.title
+    let searchArtist = artistInput[key]?.trim()
+      || extractArtistFromDir(group.directories?.find(d => !!d) ?? '')
+
+    // Auto-parse "Artist - Album" shorthand typed into the album field.
+    // Only overrides the artist part if the artist field is currently empty.
+    const sep = searchTitle.indexOf(' - ')
+    if (sep > 0) {
+      const parsedArtist = searchTitle.slice(0, sep).trim()
+      const parsedTitle = searchTitle.slice(sep + 3).trim()
+      if (parsedTitle) {
+        searchTitle = parsedTitle
+        setAlbumInput(a => ({ ...a, [key]: parsedTitle }))
+        if (!artistInput[key]?.trim()) {
+          searchArtist = parsedArtist
+          setArtistInput(a => ({ ...a, [key]: parsedArtist }))
+        }
+      }
+    }
+
     setSearching(s => ({ ...s, [key]: true }))
     try {
-      const artistHint = artistInput[key]?.trim()
-        || extractArtistFromDir(group.directories?.find(d => !!d) ?? '')
-      const results = await adminApi.musicBrainzSearch(searchTitle, artistHint || undefined)
+      const results = await adminApi.musicBrainzSearch(searchTitle, searchArtist || undefined)
       setMbResults(r => ({ ...r, [key]: results }))
       if (results.length > 0 && !artistInput[key]?.trim()) {
         setArtistInput(a => ({ ...a, [key]: results[0].artist_name }))
@@ -1643,7 +1660,7 @@ function AlbumFixerPanel() {
                     type="text"
                     value={albumInput[g.title] ?? g.title}
                     onChange={e => setAlbumInput(a => ({ ...a, [g.title]: e.target.value }))}
-                    placeholder="Album titel (søgning)"
+                    placeholder="Album titel  (eller: Kunstner - Album)"
                     style={{
                       flex: 2, minWidth: '160px',
                       background: 'rgba(255,255,255,0.06)',
