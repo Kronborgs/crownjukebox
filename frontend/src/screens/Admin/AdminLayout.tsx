@@ -1444,11 +1444,25 @@ function LibraryPanel() {
 function extractArtistFromDir(dir: string): string {
   if (!dir) return ''
   const parts = dir.replace(/\\/g, '/').split('/').filter(Boolean)
-  for (let i = parts.length - 1; i >= 0; i--) {
-    const p = parts[i]
-    if (/^(?:cd|disc|disk)\s*\d+$/i.test(p)) continue // skip disc folders
-    const sep = p.indexOf(' - ')
-    if (sep > 0) return p.substring(0, sep).trim()
+
+  // Step 1: skip disc/CD subfolders from the innermost end (CD1, Disc 2, …)
+  let i = parts.length - 1
+  while (i >= 0 && /^(?:cd|disc|disk)\s*\d+$/i.test(parts[i])) i--
+
+  // Step 2: skip the album folder itself
+  i--
+
+  // Step 3: walk outward until we find a useful artist-like segment
+  while (i >= 0) {
+    const seg = parts[i]
+    const sep = seg.indexOf(' - ')
+    const candidate = sep > 0 ? seg.substring(0, sep).trim() : seg
+    // Skip bare years (1900–2099) and common filesystem root names
+    if (
+      /^\d{4}$/.test(candidate) ||
+      /^(?:music|media|audio|library|storage|files?|mnt|srv|home|data|nas)$/i.test(candidate)
+    ) { i--; continue }
+    return candidate
   }
   return ''
 }
@@ -1473,6 +1487,8 @@ function AlbumFixerPanel() {
   const [artistInput, setArtistInput] = useState<Record<string, string>>({})
   const [merging, setMerging] = useState<Record<string, boolean>>({})
   const [mergeMsg, setMergeMsg] = useState<Record<string, string>>({})
+  const [autoSearchRunning, setAutoSearchRunning] = useState(false)
+  const autoSearchCancelRef = useRef(false)
 
   async function load() {
     setLoading(true)
@@ -1546,6 +1562,23 @@ function AlbumFixerPanel() {
     }
   }
 
+  async function searchAll() {
+    if (autoSearchRunning) {
+      autoSearchCancelRef.current = true
+      setAutoSearchRunning(false)
+      return
+    }
+    setAutoSearchRunning(true)
+    autoSearchCancelRef.current = false
+    for (const g of groups) {
+      if (autoSearchCancelRef.current) break
+      if (mbResults[g.title]?.length > 0) continue // already searched
+      await search(g)
+      if (!autoSearchCancelRef.current) await new Promise(r => setTimeout(r, 1200)) // ~1 req/s
+    }
+    setAutoSearchRunning(false)
+  }
+
   return (
     <div style={{ marginTop: '28px', marginBottom: '28px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: open ? '14px' : 0, cursor: 'pointer' }} onClick={() => { setOpen(o => !o); if (!open && groups.length === 0) load() }}>
@@ -1566,6 +1599,16 @@ function AlbumFixerPanel() {
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px', flexWrap: 'wrap' }}>
             <button className="btn btn-ghost" style={{ fontSize: '0.8rem' }} onClick={load} disabled={loading}>
               <RefreshCw size={13} className={loading ? 'spinning' : ''} /> {loading ? 'Henter…' : 'Opdater liste'}
+            </button>
+            <button
+              className="btn btn-ghost"
+              style={{ fontSize: '0.8rem', color: autoSearchRunning ? 'var(--neon-amber)' : 'var(--neon-teal)' }}
+              onClick={searchAll}
+              disabled={groups.length === 0 && !autoSearchRunning}
+              title="Søg alle album på MusicBrainz ét ad gangen (1/sek)">
+              {autoSearchRunning
+                ? <><RefreshCw size={13} className="spinning" /> Stop søgning</>
+                : <>&#128269; Søg alle med MusicBrainz</>}
             </button>
             <button
               className="btn btn-ghost"
