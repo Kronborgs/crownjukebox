@@ -14,13 +14,19 @@ export function usePlayback(canPlay = true) {
   const [state, setState] = useState<PlaybackState | null>(null)
   const tickRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
 
-  // Stable reference — does not depend on any reactive value, so it never needs
-  // to be recreated.  An unstable refreshState would cascade through onFadeComplete
-  // → runFadeLoop → startFade → checkTime causing the checkTime effect to restart
-  // on every render (60 fps when the position RAF is running).
+  // Request-versioning counter: incremented on every refreshState call.
+  // Only the result from the most-recently-started request is applied, so a
+  // slow response that started before a track change cannot overwrite a faster
+  // response that started after the change (stale-response race condition).
+  // Using a ref keeps refreshState dependency-free and therefore stable — an
+  // unstable refreshState would cascade through onFadeComplete → runFadeLoop
+  // → startFade → checkTime, causing the checkTime effect to restart on every
+  // render (60 fps when the position RAF is running).
+  const reqCounterRef = useRef(0)
   const refreshState = useCallback(async () => {
+    const id = ++reqCounterRef.current
     const next = await playbackApi.state()
-    setState(next)
+    if (id === reqCounterRef.current) setState(next)
   }, [])
 
   // Initial fetch — if party mode is stuck from a previous session (page reload / re-login),
