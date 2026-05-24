@@ -38,6 +38,7 @@ export interface Album {
   year: number | null
   genre: string
   cover_art_id: string
+  cover_status?: string
   track_count: number
   // Joined fields
   artist_name?: string
@@ -58,6 +59,7 @@ export interface Track {
   file_path: string
   file_size: number
   cover_art_id: string
+  art_source?: string
   bpm?: number
   is_intro?: boolean
 }
@@ -422,6 +424,7 @@ function normalizeAlbum(raw: any): Album {
     year:         raw.year         ?? raw.Year         ?? null,
     genre:        raw.genre        ?? raw.Genre        ?? '',
     cover_art_id: raw.cover_art_id ?? raw.CoverArtID  ?? '',
+    cover_status: raw.cover_status ?? raw.CoverStatus,
     track_count:  raw.track_count  ?? raw.TrackCount   ?? 0,
     artist_name:  raw.artist_name  ?? raw.ArtistName,
     cover_url:    raw.cover_url    ?? raw.CoverURL,

@@ -130,10 +130,12 @@ func (m *Manager) GetState(ctx context.Context) (*State, error) {
 				t.*,
 				COALESCE(ar.name, '') AS artist,
 				COALESCE(al.title, '') AS album,
-				COALESCE(t.cover_art_id, al.cover_art_id) AS cover_art_id
+				COALESCE(t.cover_art_id, al.cover_art_id) AS cover_art_id,
+				COALESCE(aa.source_type, '') AS art_source
 			FROM tracks t
 			LEFT JOIN artists ar ON ar.id = t.artist_id
 			LEFT JOIN albums al ON al.id = t.album_id
+			LEFT JOIN album_art aa ON aa.id = COALESCE(t.cover_art_id, al.cover_art_id)
 			WHERE t.id = ?`, m.currentTrackID); err == nil {
 			state.CurrentTrack = &t
 		}

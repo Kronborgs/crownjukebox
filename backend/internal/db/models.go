@@ -46,6 +46,7 @@ type Track struct {
 	SourceID    string    `db:"source_id" json:"source_id"`
 	StreamURL   string    `db:"stream_url" json:"stream_url"`
 	CoverArtID  *string   `db:"cover_art_id" json:"cover_art_id"`
+	ArtSource   string    `db:"art_source"   json:"art_source"`
 	BPM         int       `db:"bpm"          json:"bpm"`
 	CreatedAt   time.Time `db:"created_at" json:"created_at"`
 	UpdatedAt   time.Time `db:"updated_at" json:"updated_at"`

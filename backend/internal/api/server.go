@@ -628,10 +628,12 @@ func (s *Server) handleGetAlbumTracks(w http.ResponseWriter, r *http.Request) {
 			t.created_at, t.updated_at,
 			COALESCE(ar.name, '') AS artist,
 			COALESCE(al.title, '') AS album,
-			COALESCE(t.cover_art_id, al.cover_art_id) AS cover_art_id
+			COALESCE(t.cover_art_id, al.cover_art_id) AS cover_art_id,
+			COALESCE(aa.source_type, '') AS art_source
 		FROM tracks t
 		LEFT JOIN artists ar ON ar.id = t.artist_id
 		LEFT JOIN albums al ON al.id = t.album_id
+		LEFT JOIN album_art aa ON aa.id = COALESCE(t.cover_art_id, al.cover_art_id)
 		WHERE t.album_id = ?
 		ORDER BY t.disc_number, t.track_number`, id); err != nil {
 		jsonError(w, "tracks not found", http.StatusNotFound)

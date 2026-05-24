@@ -314,7 +314,7 @@ export function AlbumBrowser({ onSearchTab, onQueueTab, slideshowTick = 0 }: { o
             <ChevronLeft size={20} />
           </button>
           <div style={{ width: '72px', height: '72px', flexShrink: 0 }}>
-            <CoverArt artId={selectedAlbum.cover_art_id} size="small" />
+            <CoverArt artId={selectedAlbum.cover_art_id} size="small" artSource={selectedAlbum.cover_status} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <h2 style={{ fontSize: '1.1rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedAlbum.title}</h2>
@@ -458,7 +458,7 @@ export function AlbumBrowser({ onSearchTab, onQueueTab, slideshowTick = 0 }: { o
                       : '0 4px 20px rgba(0,0,0,0.5)',
                     transition: 'box-shadow 0.15s',
                   }}>
-                    <CoverArt artId={album.cover_art_id} size="medium" alt={album.title} />
+                    <CoverArt artId={album.cover_art_id} size="medium" alt={album.title} artSource={album.cover_status} />
                   </div>
                   <div style={{ padding: '6px 2px' }}>
                     <p style={{ fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

@@ -516,6 +516,11 @@ export function NowPlaying({ state, refreshState }: Props) {
   // console with dozens of identical failed requests before refreshState returns.
   const errorHandlingRef = useRef(false)
 
+  // Tracks whether we already attempted a same-origin fallback for the current
+  // track after a cross-origin directStreamUrl failed. Prevents an infinite retry
+  // loop: first error → try same-origin, second error → advance queue.
+  const directStreamFallbackTriedRef = useRef(false)
+
   // Records performance.now() when a crossfade completes. Used by onEnded to
   // suppress the natural 'ended' event that Player A fires ~0.5 s after the
   // crossfade finishes (Song A was still playing at low gain and may genuinely
@@ -645,6 +650,8 @@ export function NowPlaying({ state, refreshState }: Props) {
       return
     }
     setAudioSrc(resolvedSrc)
+    // Reset fallback flag whenever we load a new src (new track or key bump)
+    directStreamFallbackTriedRef.current = false
     if (audio) {
       audio.src = resolvedSrc
       audio.load()
@@ -763,6 +770,26 @@ export function NowPlaying({ state, refreshState }: Props) {
       // audio element which immediately retries the same bad URL — without this
       // guard that creates a tight loop of 404s until refreshState returns.
       if (errorHandlingRef.current) return
+
+      // If a cross-origin directStreamUrl was used and has not yet been tried as
+      // a same-origin fallback, retry with the relative (same-origin) path first.
+      // This recovers gracefully when direct_stream_url is misconfigured or the
+      // remote server is down (e.g. 502 Bad Gateway with no CORS headers).
+      const rawBase = directStreamUrlRef.current.trim().replace(/\/+$/, '')
+      if (rawBase && !directStreamFallbackTriedRef.current && track?.id) {
+        try {
+          const baseOrigin = new URL(rawBase).origin
+          if (baseOrigin !== window.location.origin) {
+            const token = sessionStorage.getItem('cj_token') ?? ''
+            const fallbackSrc = `/api/playback/stream/${track.id}?token=${encodeURIComponent(token)}`
+            directStreamFallbackTriedRef.current = true
+            audio.src = fallbackSrc
+            audio.load()
+            return
+          }
+        } catch { /* invalid URL — fall through to normal error handling */ }
+      }
+
       errorHandlingRef.current = true
       setAudioKey(k => k + 1)
       if (track?.id) {
@@ -810,6 +837,7 @@ export function NowPlaying({ state, refreshState }: Props) {
   const artistText = track?.artist  ?? ''
   const albumText  = track?.album   ?? ''
   const coverArtId = track?.cover_art_id ?? ''
+  const coverArtSource = track?.art_source
 
   const isParty = !!state?.is_party_mode
   isPartyModeRef.current = isParty
@@ -902,7 +930,7 @@ export function NowPlaying({ state, refreshState }: Props) {
               boxShadow: '0 8px 40px rgba(0,0,0,0.6), 0 0 30px rgba(191,0,255,0.2)',
             }}
           >
-            <CoverArt artId={coverArtId} size="large" alt={titleText} />
+            <CoverArt artId={coverArtId} size="large" alt={titleText} artSource={coverArtSource} />
           </motion.div>
 
           {/* Track info */}

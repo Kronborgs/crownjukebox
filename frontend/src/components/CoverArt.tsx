@@ -11,13 +11,16 @@ interface Props {
   /** px dimensions for the placeholder box */
   width?: number
   height?: number
+  /** 'generated' → skip image load and show animated SVG directly */
+  artSource?: string
 }
 
 /**
  * CoverArt — loads album art with skeleton + retro SVG fallback.
  */
-export function CoverArt({ artId, size = 'medium', alt = 'Album cover', className, style, width, height }: Props) {
-  const src = artId && artId !== 'null' && artId !== ''
+export function CoverArt({ artId, size = 'medium', alt = 'Album cover', className, style, width, height, artSource }: Props) {
+  const isGenerated = artSource === 'generated'
+  const src = !isGenerated && artId && artId !== 'null' && artId !== ''
     ? libraryApi.coverUrl(artId, size)
     : null
 
