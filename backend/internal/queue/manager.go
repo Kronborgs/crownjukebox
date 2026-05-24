@@ -29,7 +29,7 @@ func (m *Manager) GetQueue(ctx context.Context) ([]db.QueueItemRich, error) {
 		SELECT
 			qi.id,
 			qi.track_id,
-			qi.added_by_user_id,
+			COALESCE(qi.added_by_user_id, '') AS added_by_user_id,
 			qi.position,
 			qi.is_autoplay,
 			qi.added_at,
