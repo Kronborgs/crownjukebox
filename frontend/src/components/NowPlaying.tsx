@@ -910,6 +910,37 @@ export function NowPlaying({ state, refreshState }: Props) {
             <LEDScrollingText text={titleText} color="var(--neon-primary)" size="1.3rem" />
             <LEDScrollingText text={artistText} color="var(--neon-teal)" size="1rem" />
             <LEDScrollingText text={albumText} color="var(--text-dim)" size="0.85rem" />
+            <AnimatePresence>
+              {audioSettings.autoDjEnabled && autoDJ.isFading && (
+                <motion.div
+                  key="crossfade-badge"
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.3 }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontSize: '0.7rem',
+                    letterSpacing: '2px',
+                    textTransform: 'uppercase',
+                    color: 'var(--neon-teal)',
+                    opacity: 0.85,
+                  }}
+                >
+                  <span style={{
+                    display: 'inline-block',
+                    width: '6px', height: '6px',
+                    borderRadius: '50%',
+                    background: 'var(--neon-teal)',
+                    boxShadow: '0 0 6px var(--neon-teal)',
+                    animation: 'pulse 1s ease-in-out infinite',
+                  }} />
+                  Crossfader kører
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Progress bar — retro LED segments */}

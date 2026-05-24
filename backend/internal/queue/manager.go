@@ -103,8 +103,10 @@ func (m *Manager) RemoveItem(ctx context.Context, itemID string) error {
 // Returns nil if the queue is empty.
 func (m *Manager) Advance(ctx context.Context) (*db.QueueItem, error) {
 	var item db.QueueItem
-	err := m.db.GetContext(ctx, &item,
-		`SELECT * FROM queue_items WHERE room_id = ? ORDER BY position ASC LIMIT 1`, m.roomID)
+	err := m.db.GetContext(ctx, &item, `
+		SELECT id, room_id, track_id, COALESCE(added_by_user_id, '') AS added_by_user_id,
+		       position, is_autoplay, added_at
+		FROM queue_items WHERE room_id = ? ORDER BY position ASC LIMIT 1`, m.roomID)
 	if err != nil {
 		return nil, nil // empty queue
 	}
