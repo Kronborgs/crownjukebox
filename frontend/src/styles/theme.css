@@ -441,6 +441,21 @@ body {
   box-shadow: var(--glow-primary);
 }
 
+/* ─── Disco placeholder animation ─────────── */
+@keyframes disco-lights {
+  0%   { filter: hue-rotate(0deg)   brightness(1.0); }
+  16%  { filter: hue-rotate(60deg)  brightness(1.35); }
+  33%  { filter: hue-rotate(120deg) brightness(0.85); }
+  50%  { filter: hue-rotate(180deg) brightness(1.25); }
+  66%  { filter: hue-rotate(240deg) brightness(0.9);  }
+  83%  { filter: hue-rotate(300deg) brightness(1.3);  }
+  100% { filter: hue-rotate(360deg) brightness(1.0); }
+}
+
+.disco-placeholder {
+  animation: disco-lights 6s linear infinite;
+}
+
 /* ─── Cover art placeholder ────────────────── */
 .cover-placeholder {
   background: linear-gradient(135deg, var(--wood-dark), var(--bg-base));

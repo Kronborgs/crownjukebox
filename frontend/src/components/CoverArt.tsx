@@ -90,11 +90,13 @@ export function CoverArt({ artId, size = 'medium', alt = 'Album cover', classNam
 }
 
 function PlaceholderCover() {
+  const delayRef = useRef(`-${(Math.random() * 6).toFixed(2)}s`)
   return (
     <svg
       viewBox="0 0 300 300"
       xmlns="http://www.w3.org/2000/svg"
-      style={{ width: '100%', height: '100%', display: 'block' }}
+      className="disco-placeholder"
+      style={{ width: '100%', height: '100%', display: 'block', animationDelay: delayRef.current }}
     >
       <defs>
         <linearGradient id="pgrd" x1="0" y1="0" x2="0" y2="1">
