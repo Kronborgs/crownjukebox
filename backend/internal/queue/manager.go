@@ -262,19 +262,14 @@ func (m *Manager) PeekNext(ctx context.Context) (*db.QueueItemRich, error) {
 	id := uuid.NewString()
 	_, qErr := m.db.ExecContext(ctx, `
 		INSERT INTO queue_items (id, room_id, track_id, added_by_user_id, position, is_autoplay, added_at)
-		VALUES (?, ?, ?, '', ?, 1, ?)`,
+		VALUES (?, ?, ?, NULL, ?, 1, ?)`,
 		id, m.roomID, track.ID, maxPos+1, time.Now())
 	if qErr != nil {
-		// Could not pre-queue — return minimal info so Auto DJ can still preload
-		return &db.QueueItemRich{
-			TrackID:      track.ID,
-			TrackTitle:   track.Title,
-			TrackArtist:  track.Artist,
-			TrackAlbum:   track.Album,
-			DurationSecs: track.Duration,
-			TrackBPM:     track.BPM,
-			IsAutoplay:   true,
-		}, nil
+		// Could not pre-queue — return nil so the Auto DJ does NOT start a
+		// crossfade to a track the backend won't play next (would cause a
+		// display/audio mismatch where TrackEnded → Advance finds nothing and
+		// AutoplayNext picks a different random track).
+		return nil, nil
 	}
 
 	// Re-fetch the full rich item (with all joined fields)

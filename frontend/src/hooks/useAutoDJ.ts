@@ -382,6 +382,10 @@ export function useAutoDJ(options: UseAutoDJOptions): UseAutoDJResult {
           // deck-swap) from re-triggering a fade for the same track a second time,
           // which would fire trackEnded twice and cause a double queue-advance.
           scheduledNextId = null
+          // If the track changed while startFade was loading (cancelled by effect
+          // cleanup), abort the fade we just started so we don't cross-fade to a
+          // track that no longer corresponds to the current playback state.
+          if (cancelled && ok) cancelFade()
           if (!ok) { /* 404 or similar — normal onEnded will handle queue advance */ }
         }
         return
