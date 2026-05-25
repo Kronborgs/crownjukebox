@@ -56,7 +56,7 @@ export function useCast({ streamUrl, title, artist, coverUrl }: UseCastOptions) 
 
     // Hoisted so the cleanup function can reference them regardless of async timing.
     let sessionStateHandler: ((ev: cast.framework.SessionStateEventData) => void) | undefined
-    let castContext: cast.framework.CastContext | undefined
+    let castContext: cast.framework.CastContextInstance | undefined
 
     const initializeCast = (available: boolean) => {
       if (!available || !w.cast || !w.chrome?.cast) return
