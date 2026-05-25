@@ -164,6 +164,16 @@ export function NowPlaying({ state, refreshState }: Props) {
   // Debounce timers for each audio setting — prevents a burst of PUT requests while dragging sliders.
   const audioSyncTimers = useRef<Partial<Record<string, ReturnType<typeof setTimeout>>>>({})
 
+  // Clear all pending audio-sync debounce timers on unmount to prevent queued
+  // API calls from firing against an unmounted component.
+  useEffect(() => {
+    return () => {
+      for (const id of Object.values(audioSyncTimers.current)) {
+        clearTimeout(id)
+      }
+    }
+  }, [])
+
   // Ref that always holds the latest state prop — used inside callbacks/intervals
   // that would otherwise capture a stale closure.
   const stateRef = useRef(state)
@@ -210,31 +220,41 @@ export function NowPlaying({ state, refreshState }: Props) {
   const [remoteConnected, setRemoteConnected] = useState(false)
   useEffect(() => {
     if (isGuest) return
+
+    // Hoisted outside setTimeout so the outer cleanup always has a reference,
+    // regardless of whether the timeout fired before unmount.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let remote: any = null
+    let watchId: number | undefined
+    let onConnect: (() => void) | undefined
+    let onDisconnect: (() => void) | undefined
+
     // Defer slightly so the <audio> element has time to mount
     const tid = setTimeout(() => {
       const audio = audioRef.current
       if (!audio) return
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const remote = (audio as any).remote as any
+      remote = (audio as any).remote as any
       if (!remote?.watchAvailability) return
 
-      let watchId: number | undefined
       remote.watchAvailability((available: boolean) => {
         setRemoteAvailable(available)
       }).then((id: number) => { watchId = id }).catch(() => {})
 
-      const onConnect    = () => setRemoteConnected(true)
-      const onDisconnect = () => setRemoteConnected(false)
+      onConnect    = () => setRemoteConnected(true)
+      onDisconnect = () => setRemoteConnected(false)
       remote.addEventListener('connect', onConnect)
       remote.addEventListener('disconnect', onDisconnect)
+    }, 500)
 
-      return () => {
-        remote.removeEventListener('connect', onConnect)
-        remote.removeEventListener('disconnect', onDisconnect)
+    return () => {
+      clearTimeout(tid)
+      if (remote) {
+        if (onConnect)    remote.removeEventListener('connect', onConnect)
+        if (onDisconnect) remote.removeEventListener('disconnect', onDisconnect)
         if (watchId !== undefined) remote.cancelWatchAvailability(watchId).catch(() => {})
       }
-    }, 500)
-    return () => clearTimeout(tid)
+    }
   }, [isGuest]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const isCastActive  = isCasting || remoteConnected

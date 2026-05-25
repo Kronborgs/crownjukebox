@@ -9,6 +9,9 @@ const (
 	loginMaxAttempts = 10 // requests in window before lockout
 	loginWindow      = 10 * time.Minute
 	loginLockout     = 15 * time.Minute
+	// Hard cap on how many unique IPs the map may hold before new entries are
+	// silently rejected. This prevents unbounded memory growth under a scan/probe.
+	loginMaxEntries = 10_000
 )
 
 // LoginRateLimiter is a simple in-memory per-IP rate limiter for login endpoints.
@@ -17,6 +20,7 @@ const (
 type LoginRateLimiter struct {
 	mu      sync.Mutex
 	entries map[string]*rlEntry
+	stop    chan struct{}
 }
 
 type rlEntry struct {
@@ -26,9 +30,17 @@ type rlEntry struct {
 }
 
 func NewLoginRateLimiter() *LoginRateLimiter {
-	rl := &LoginRateLimiter{entries: make(map[string]*rlEntry)}
+	rl := &LoginRateLimiter{
+		entries: make(map[string]*rlEntry),
+		stop:    make(chan struct{}),
+	}
 	go rl.periodicCleanup()
 	return rl
+}
+
+// Stop shuts down the background cleanup goroutine.
+func (rl *LoginRateLimiter) Stop() {
+	close(rl.stop)
 }
 
 // Check returns (true, 0) if the request is allowed, or (false, retryAfter) if
@@ -40,6 +52,10 @@ func (rl *LoginRateLimiter) Check(ip string) (allowed bool, retryAfter time.Dura
 	now := time.Now()
 	e, ok := rl.entries[ip]
 	if !ok {
+		// Drop the request rather than grow the map beyond the hard cap.
+		if len(rl.entries) >= loginMaxEntries {
+			return false, loginLockout
+		}
 		rl.entries[ip] = &rlEntry{attempts: 1, windowStart: now}
 		return true, 0
 	}
@@ -66,18 +82,23 @@ func (rl *LoginRateLimiter) Check(ip string) (allowed bool, retryAfter time.Dura
 }
 
 func (rl *LoginRateLimiter) periodicCleanup() {
-	ticker := time.NewTicker(10 * time.Minute)
+	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
-	for range ticker.C {
-		rl.mu.Lock()
-		now := time.Now()
-		for ip, e := range rl.entries {
-			expired := now.After(e.windowStart.Add(loginWindow))
-			unlocked := e.lockedUntil.IsZero() || now.After(e.lockedUntil)
-			if expired && unlocked {
-				delete(rl.entries, ip)
+	for {
+		select {
+		case <-rl.stop:
+			return
+		case <-ticker.C:
+			rl.mu.Lock()
+			now := time.Now()
+			for ip, e := range rl.entries {
+				expired := now.After(e.windowStart.Add(loginWindow))
+				unlocked := e.lockedUntil.IsZero() || now.After(e.lockedUntil)
+				if expired && unlocked {
+					delete(rl.entries, ip)
+				}
 			}
+			rl.mu.Unlock()
 		}
-		rl.mu.Unlock()
 	}
 }

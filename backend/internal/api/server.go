@@ -155,6 +155,17 @@ func (s *Server) AuthService() *auth.Service {
 	return s.authSvc
 }
 
+// RoomService returns the room service (used by main for graceful shutdown).
+func (s *Server) RoomService() *rooms.Service {
+	return s.roomSvc
+}
+
+// Stop shuts down background workers owned by the server (rate limiter, etc.).
+func (s *Server) Stop() {
+	s.loginRL.Stop()
+	s.externalStore.Stop()
+}
+
 // Router builds and returns the chi router with all routes.
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
@@ -928,17 +939,31 @@ func (s *Server) handleStream(w http.ResponseWriter, r *http.Request) {
 
 	// For YouTube tracks the file may still be downloading in the background.
 	// Wait up to 5 minutes for it to appear before giving up.
+	// We use a ticker + context-check so the goroutine is released immediately
+	// when the client disconnects instead of blocking for the full 5 minutes.
 	if track.SourceType == "youtube" {
 		deadline := time.Now().Add(5 * time.Minute)
+		pollTicker := time.NewTicker(2 * time.Second)
+		defer pollTicker.Stop()
+		fileReady := false
+	waitLoop:
 		for time.Now().Before(deadline) {
-			if _, statErr := os.Stat(track.FilePath); statErr == nil {
-				break
+			select {
+			case <-r.Context().Done():
+				jsonError(w, "request cancelled", http.StatusServiceUnavailable)
+				return
+			case <-pollTicker.C:
+				if _, statErr := os.Stat(track.FilePath); statErr == nil {
+					fileReady = true
+					break waitLoop
+				}
 			}
-			time.Sleep(2 * time.Second)
 		}
-		if _, statErr := os.Stat(track.FilePath); statErr != nil {
-			jsonError(w, "track file not ready yet", http.StatusServiceUnavailable)
-			return
+		if !fileReady {
+			if _, statErr := os.Stat(track.FilePath); statErr != nil {
+				jsonError(w, "track file not ready yet", http.StatusServiceUnavailable)
+				return
+			}
 		}
 	}
 

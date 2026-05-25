@@ -25,20 +25,28 @@ type Room struct {
 
 // Service manages the set of active rooms and creates them on demand.
 type Service struct {
-	mu    sync.RWMutex
-	db    *sqlx.DB
-	hub   *events.Hub
-	rooms map[string]*Room
+	mu     sync.RWMutex
+	db     *sqlx.DB
+	hub    *events.Hub
+	rooms  map[string]*Room
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // New creates a new RoomService. It does NOT pre-load rooms; they are loaded lazily.
 func New(database *sqlx.DB, hub *events.Hub) *Service {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Service{
-		db:    database,
-		hub:   hub,
-		rooms: make(map[string]*Room),
+		db:     database,
+		hub:    hub,
+		rooms:  make(map[string]*Room),
+		ctx:    ctx,
+		cancel: cancel,
 	}
 }
+
+// Stop cancels the service context, causing any background goroutines to exit.
+func (s *Service) Stop() { s.cancel() }
 
 // Get returns the runtime Room for the given ID, creating it lazily if needed.
 // Returns nil if the room does not exist in the database.
@@ -195,8 +203,11 @@ func (s *Service) buildRoom(info db.Room) *Room {
 	go func() {
 		// Give the room a moment to fully initialise before attempting autoplay.
 		// The library scan runs in the background so tracks should be available.
-		time.Sleep(3 * time.Second)
-		pbMgr.StartIfIdle(context.Background())
+		select {
+		case <-time.After(3 * time.Second):
+			pbMgr.StartIfIdle(s.ctx)
+		case <-s.ctx.Done():
+		}
 	}()
 	return &Room{
 		Info:     info,

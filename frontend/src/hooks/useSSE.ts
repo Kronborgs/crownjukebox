@@ -53,6 +53,8 @@ export function useSSE(
 
     // The backend sends typed SSE events (event: TYPE\ndata: ...).
     // Named events are NOT delivered via onmessage — each type needs its own addEventListener.
+    // Store named handler references so they can be explicitly removed on reconnect,
+    // preventing accumulation of anonymous listeners across reconnection cycles.
     const knownTypes: SSEEventType[] = [
       'now_playing_changed', 'queue_changed', 'playback_state_changed',
       'party_started', 'party_ended', 'user_access_revoked', 'user_access_expired',
@@ -60,16 +62,24 @@ export function useSSE(
       'bpm_scan_progress', 'artwork_updated', 'missing_artwork_found',
       'active_player_changed', 'audio_state_changed',
     ]
+    const namedListeners: Partial<Record<SSEEventType, EventListener>> = {}
     for (const type of knownTypes) {
-      es.addEventListener(type, (ev) => {
+      const handler: EventListener = (ev) => {
         try {
           const data = JSON.parse((ev as MessageEvent).data) as unknown
           handlersRef.current[type]?.(data)
         } catch {}
-      })
+      }
+      namedListeners[type] = handler
+      es.addEventListener(type, handler)
     }
 
     es.onerror = () => {
+      // Remove all named listeners before closing so they can be GC'd.
+      for (const type of knownTypes) {
+        const handler = namedListeners[type]
+        if (handler) es.removeEventListener(type, handler)
+      }
       es.close()
       esRef.current = null
       // Reconnect after 3s

@@ -141,22 +141,35 @@ func (m *Manager) Reorder(ctx context.Context, orderedIDs []string) error {
 }
 
 // AutoplayNext selects a track for autoplay based on the last hour of room history.
+// Genre selection is weighted by how often each genre was manually chosen by users
+// (source = 'USER') — autoplay and party tracks are excluded from this weight so the
+// engine cannot amplify its own genre choices in a feedback loop.
 // When there is no history yet (new room / first login) it falls back to a completely
 // random track so playback never stops unintentionally.
 func (m *Manager) AutoplayNext(ctx context.Context) (*db.Track, error) {
-	// Get genre distribution from last 60 minutes of this room's history
-	var recentGenres []string
-	_ = m.db.SelectContext(ctx, &recentGenres, `
-		SELECT DISTINCT al.genre
+	// genreWeight holds a genre and how many times a user manually played it recently.
+	type genreWeight struct {
+		Genre string `db:"genre"`
+		Count int    `db:"play_count"`
+	}
+
+	// Fetch genre frequencies from the last 60 minutes, counting only USER-chosen tracks.
+	// Restricting to source='USER' prevents autoplay from reinforcing its own genre picks.
+	var genreWeights []genreWeight
+	_ = m.db.SelectContext(ctx, &genreWeights, `
+		SELECT al.genre AS genre, COUNT(*) AS play_count
 		FROM playback_history ph
-		JOIN tracks t ON t.id = ph.track_id
+		JOIN tracks t  ON t.id  = ph.track_id
 		JOIN albums al ON al.id = t.album_id
 		WHERE ph.started_at > datetime('now', '-60 minutes')
 		  AND ph.room_id = ?
-		  AND al.genre != ''
+		  AND al.genre  != ''
+		  AND ph.source  = 'USER'
+		GROUP BY al.genre
+		ORDER BY play_count DESC
 		LIMIT 5`, m.roomID)
 
-	// Get recently played track IDs in this room to avoid repetition
+	// Get recently played track IDs in this room to avoid repetition (all sources).
 	var recentTrackIDs []string
 	_ = m.db.SelectContext(ctx, &recentTrackIDs, `
 		SELECT track_id FROM playback_history
@@ -165,15 +178,30 @@ func (m *Manager) AutoplayNext(ctx context.Context) (*db.Track, error) {
 
 	var track db.Track
 
-	// Try to find a matching genre track first
-	if len(recentGenres) > 0 {
-		genre := recentGenres[rand.Intn(len(recentGenres))]
+	// Weighted-random genre selection: a genre played 3× is 3× as likely to be chosen
+	// as a genre played 1×, matching the current "vibe" of the room.
+	if len(genreWeights) > 0 {
+		totalWeight := 0
+		for _, g := range genreWeights {
+			totalWeight += g.Count
+		}
+		r := rand.Intn(totalWeight)
+		cumulative := 0
+		selectedGenre := genreWeights[0].Genre
+		for _, g := range genreWeights {
+			cumulative += g.Count
+			if r < cumulative {
+				selectedGenre = g.Genre
+				break
+			}
+		}
+
 		if len(recentTrackIDs) > 0 {
 			query, args, err := sqlx.In(`
 				SELECT t.* FROM tracks t
 				JOIN albums al ON al.id = t.album_id
 				WHERE al.genre = ? AND t.id NOT IN (?)
-				ORDER BY RANDOM() LIMIT 1`, genre, recentTrackIDs)
+				ORDER BY RANDOM() LIMIT 1`, selectedGenre, recentTrackIDs)
 			if err == nil {
 				query = m.db.Rebind(query)
 				if err := m.db.GetContext(ctx, &track, query, args...); err == nil {
@@ -185,7 +213,7 @@ func (m *Manager) AutoplayNext(ctx context.Context) (*db.Track, error) {
 				SELECT t.* FROM tracks t
 				JOIN albums al ON al.id = t.album_id
 				WHERE al.genre = ?
-				ORDER BY RANDOM() LIMIT 1`, genre); err == nil {
+				ORDER BY RANDOM() LIMIT 1`, selectedGenre); err == nil {
 				return &track, nil
 			}
 		}

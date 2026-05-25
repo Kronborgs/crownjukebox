@@ -19,8 +19,12 @@ interface Props {
  * CoverArt — loads album art with skeleton + retro SVG fallback.
  */
 export function CoverArt({ artId, size = 'medium', alt = 'Album cover', className, style, width, height, artSource }: Props) {
-  const isGenerated = artSource === 'generated'
-  const src = !isGenerated && artId && artId !== 'null' && artId !== ''
+  // Skip the image request when we already know there's no real art.
+  // 'generated' = auto-created placeholder; 'missing'/'error' = extraction failed.
+  // In all three cases the backend would only return a static servePlaceholder SVG
+  // (HTTP 200), which would prevent the animated PlaceholderCover from ever showing.
+  const skipLoad = artSource === 'generated' || artSource === 'missing' || artSource === 'error'
+  const src = !skipLoad && artId && artId !== 'null' && artId !== ''
     ? libraryApi.coverUrl(artId, size)
     : null
 

@@ -54,34 +54,40 @@ export function useCast({ streamUrl, title, artist, coverUrl }: UseCastOptions) 
   useEffect(() => {
     if (initializedRef.current) return
 
+    // Hoisted so the cleanup function can reference them regardless of async timing.
+    let sessionStateHandler: ((ev: cast.framework.SessionStateEventData) => void) | undefined
+    let castContext: cast.framework.CastContext | undefined
+
     const initializeCast = (available: boolean) => {
       if (!available || !w.cast || !w.chrome?.cast) return
       if (initializedRef.current) return
       initializedRef.current = true
 
-      const castContext = w.cast.framework.CastContext.getInstance()
+      castContext = w.cast.framework.CastContext.getInstance()
       castContext.setOptions({
         receiverApplicationId: CAST_APP_ID,
         autoJoinPolicy: w.chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
       })
 
+      sessionStateHandler = (ev: cast.framework.SessionStateEventData) => {
+        switch (ev.sessionState) {
+          case w.cast!.framework.SessionState.SESSION_STARTED:
+          case w.cast!.framework.SessionState.SESSION_RESUMED: {
+            setCastState('casting')
+            // Read from ref — not from closure — to always get the current track URL.
+            const { streamUrl: url, title: t, artist: a, coverUrl: c } = optsRef.current
+            if (url) _loadMedia(url, t, a, c)
+            break
+          }
+          case w.cast!.framework.SessionState.SESSION_ENDED:
+            setCastState('idle')
+            break
+        }
+      }
+
       castContext.addEventListener(
         w.cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
-        (ev: cast.framework.SessionStateEventData) => {
-          switch (ev.sessionState) {
-            case w.cast!.framework.SessionState.SESSION_STARTED:
-            case w.cast!.framework.SessionState.SESSION_RESUMED: {
-              setCastState('casting')
-              // Read from ref — not from closure — to always get the current track URL.
-              const { streamUrl: url, title: t, artist: a, coverUrl: c } = optsRef.current
-              if (url) _loadMedia(url, t, a, c)
-              break
-            }
-            case w.cast!.framework.SessionState.SESSION_ENDED:
-              setCastState('idle')
-              break
-          }
-        },
+        sessionStateHandler,
       )
 
       setCastState('idle')
@@ -91,11 +97,19 @@ export function useCast({ streamUrl, title, artist, coverUrl }: UseCastOptions) 
     // this React component mounted (async script race). Check if it's already ready.
     if (w.cast?.framework?.CastContext) {
       initializeCast(true)
-      return
+    } else {
+      // SDK not yet loaded — set callback for when it fires.
+      w.__onGCastApiAvailable = initializeCast
     }
 
-    // SDK not yet loaded — set callback for when it fires.
-    w.__onGCastApiAvailable = initializeCast
+    return () => {
+      if (castContext && sessionStateHandler && w.cast) {
+        castContext.removeEventListener(
+          w.cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
+          sessionStateHandler,
+        )
+      }
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // When stream URL changes while casting, reload the track on the receiver.

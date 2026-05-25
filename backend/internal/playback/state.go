@@ -229,12 +229,21 @@ func (m *Manager) Play(ctx context.Context, trackID, userID string) error {
 	m.positionSecs = 0
 	m.updatedAt = time.Now()
 
+	// Determine source: party tracks come from Skål mode, autoplay from the DJ engine,
+	// anything else was explicitly chosen by a user.
+	historySource := "USER"
+	if m.isPartyMode {
+		historySource = "PARTY"
+	} else if nextIsAutoplay {
+		historySource = "AUTOPLAY"
+	}
+
 	// Start new history entry
 	m.historyID = uuid.NewString()
 	_, _ = m.db.ExecContext(ctx, `
-		INSERT INTO playback_history (id, room_id, track_id, played_by_user_id, started_at)
-		VALUES (?, ?, ?, ?, ?)`,
-		m.historyID, m.roomID, trackID, userID, time.Now(),
+		INSERT INTO playback_history (id, room_id, track_id, played_by_user_id, started_at, source)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		m.historyID, m.roomID, trackID, userID, time.Now(), historySource,
 	)
 
 	m.saveState()

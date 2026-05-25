@@ -87,11 +87,14 @@ func main() {
 		}
 	}
 
+	// ─── Background context (cancelled on shutdown) ──────
+	bgCtx, bgCancel := context.WithCancel(context.Background())
+
 	// ─── Background: initial library scan ─────────────────
 	go func() {
 		log.Println("[startup] beginning initial library scan...")
 		scanner := music.NewScanner(database, cfg.MusicDir)
-		if err := scanner.Scan(nil); err != nil {
+		if err := scanner.Scan(bgCtx); err != nil {
 			log.Printf("[startup] scan error: %v", err)
 		} else {
 			log.Println("[startup] library scan complete")
@@ -99,7 +102,7 @@ func main() {
 			// Follow up with artwork extraction
 			extractor := artwork.NewExtractor(database, cfg.ArtworkCacheDir)
 			log.Println("[startup] extracting missing artwork...")
-			if err := extractor.ExtractMissing(nil); err != nil {
+			if err := extractor.ExtractMissing(bgCtx); err != nil {
 				log.Printf("[startup] artwork extraction error: %v", err)
 			} else {
 				log.Println("[startup] artwork extraction complete")
@@ -170,6 +173,11 @@ func main() {
 
 	<-quit
 	log.Println("Shutting down gracefully...")
+
+	// Cancel all background goroutines before stopping the HTTP server.
+	bgCancel()
+	srv.RoomService().Stop()
+	srv.Stop()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

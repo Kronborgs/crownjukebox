@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,7 +23,10 @@ import (
 	"github.com/crownjukebox/crownjukebox/internal/queue"
 )
 
-// activeDownloads tracks video IDs currently being downloading to avoid duplicates.
+// activeDownloadsMu guards the activeDownloads map against concurrent access.
+var activeDownloadsMu sync.Mutex
+
+// activeDownloads tracks video IDs currently being downloaded to avoid duplicates.
 var activeDownloads = make(map[string]bool)
 
 // illegalChars matches characters not allowed in filenames on Windows/Linux.
@@ -131,10 +135,20 @@ func DownloadAndQueue(
 		return AddedSong{}, err
 	}
 
-	if !activeDownloads[videoID] {
+	activeDownloadsMu.Lock()
+	alreadyDownloading := activeDownloads[videoID]
+	if !alreadyDownloading {
 		activeDownloads[videoID] = true
+	}
+	activeDownloadsMu.Unlock()
+
+	if !alreadyDownloading {
 		go func() {
-			defer func() { delete(activeDownloads, videoID) }()
+			defer func() {
+				activeDownloadsMu.Lock()
+				delete(activeDownloads, videoID)
+				activeDownloadsMu.Unlock()
+			}()
 			outTemplate := filepath.Join(externalDir, safeFilename(artistName, info.Title)+".%(ext)s")
 			dlCtx, dlCancel := context.WithTimeout(context.Background(), 10*time.Minute)
 			defer dlCancel()

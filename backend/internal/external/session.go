@@ -40,14 +40,21 @@ type ExternalSession struct {
 type Store struct {
 	mu       sync.Mutex
 	sessions map[string]*ExternalSession
+	stop     chan struct{}
 }
 
 // NewStore creates a Store and starts a background cleanup goroutine.
 func NewStore() *Store {
-	s := &Store{sessions: make(map[string]*ExternalSession)}
+	s := &Store{
+		sessions: make(map[string]*ExternalSession),
+		stop:     make(chan struct{}),
+	}
 	go s.cleanup()
 	return s
 }
+
+// Stop shuts down the background cleanup goroutine.
+func (s *Store) Stop() { close(s.stop) }
 
 // Create registers a new 30-minute session and returns it.
 func (s *Store) Create(roomID, userID string) *ExternalSession {
@@ -91,14 +98,19 @@ func (s *Store) MarkDone(id string, song AddedSong) {
 func (s *Store) cleanup() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
-	for range ticker.C {
-		s.mu.Lock()
-		for id, sess := range s.sessions {
-			if time.Now().After(sess.ExpiresAt) {
-				delete(s.sessions, id)
+	for {
+		select {
+		case <-s.stop:
+			return
+		case <-ticker.C:
+			s.mu.Lock()
+			for id, sess := range s.sessions {
+				if time.Now().After(sess.ExpiresAt) {
+					delete(s.sessions, id)
+				}
 			}
+			s.mu.Unlock()
 		}
-		s.mu.Unlock()
 	}
 }
 
