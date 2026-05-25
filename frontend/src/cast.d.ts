@@ -15,6 +15,7 @@ declare namespace cast {
       requestSession(): Promise<void>
       getCurrentSession(): CastSession | null
       addEventListener(type: string, handler: (ev: SessionStateEventData) => void): void
+      removeEventListener(type: string, handler: (ev: SessionStateEventData) => void): void
     }
 
     interface CastOptions {
