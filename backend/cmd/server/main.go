@@ -94,7 +94,7 @@ func main() {
 	go func() {
 		log.Println("[startup] beginning initial library scan...")
 		scanner := music.NewScanner(database, cfg.MusicDir)
-		if err := scanner.Scan(bgCtx); err != nil {
+		if err := scanner.Scan(nil); err != nil {
 			log.Printf("[startup] scan error: %v", err)
 		} else {
 			log.Println("[startup] library scan complete")
@@ -102,7 +102,7 @@ func main() {
 			// Follow up with artwork extraction
 			extractor := artwork.NewExtractor(database, cfg.ArtworkCacheDir)
 			log.Println("[startup] extracting missing artwork...")
-			if err := extractor.ExtractMissing(bgCtx); err != nil {
+			if err := extractor.ExtractMissing(nil); err != nil {
 				log.Printf("[startup] artwork extraction error: %v", err)
 			} else {
 				log.Println("[startup] artwork extraction complete")
