@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { QRCode } from 'react-qr-code'
 import { authApi } from '@/api/client'
-import { RefreshCw, X } from 'lucide-react'
+import { RefreshCw, X, ExternalLink, Copy, Check } from 'lucide-react'
 
 interface Props {
   onClose: () => void
@@ -11,10 +11,12 @@ export function GuestQRModal({ onClose }: Props) {
   const [loginUrl, setLoginUrl] = useState<string | null>(null)
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState('')
+  const [copied, setCopied]     = useState(false)
 
   async function generate() {
     setLoading(true)
     setError('')
+    setCopied(false)
     try {
       const { login_url } = await authApi.guestLink()
       setLoginUrl(login_url)
@@ -22,6 +24,17 @@ export function GuestQRModal({ onClose }: Props) {
       setError(err instanceof Error ? err.message : 'Kunne ikke generere QR kode')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function copyLink() {
+    if (!loginUrl) return
+    try {
+      await navigator.clipboard.writeText(loginUrl)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setError('Kunne ikke kopiere link')
     }
   }
 
@@ -77,16 +90,30 @@ export function GuestQRModal({ onClose }: Props) {
             <p style={{ color: '#c00', fontSize: '0.85rem' }}>{error}</p>
           )}
           {loginUrl && !loading && (
-            <QRCode value={loginUrl} size={200} />
+            <a
+              href={loginUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Klik for at åbne gæstelink i browser"
+              style={{ lineHeight: 0 }}
+            >
+              <QRCode value={loginUrl} size={200} />
+            </a>
           )}
         </div>
+
+        {loginUrl && !loading && !error && (
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.72rem', marginTop: '-4px' }}>
+            Tip: Klik på QR-koden for at åbne gæstelogin direkte i browser.
+          </p>
+        )}
 
         <p style={{ color: 'var(--text-dim)', fontSize: '0.72rem' }}>
           Gyldigt i 24 timer · Engangsbrug
         </p>
 
         {/* Actions */}
-        <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
+        <div style={{ display: 'grid', gap: '8px', width: '100%', gridTemplateColumns: '1fr 1fr' }}>
           <button
             className="btn btn-ghost"
             onClick={generate}
@@ -95,10 +122,36 @@ export function GuestQRModal({ onClose }: Props) {
           >
             <RefreshCw size={14} /> Ny kode
           </button>
+          <a
+            className="btn btn-ghost"
+            href={loginUrl ?? undefined}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-disabled={!loginUrl || loading}
+            onClick={(e) => {
+              if (!loginUrl || loading) e.preventDefault()
+            }}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+              fontSize: '0.85rem',
+              opacity: loginUrl && !loading ? 1 : 0.45,
+              pointerEvents: loginUrl && !loading ? 'auto' : 'none',
+            }}
+          >
+            <ExternalLink size={14} /> Åbn i browser
+          </a>
+          <button
+            className="btn btn-ghost"
+            onClick={copyLink}
+            disabled={!loginUrl || loading}
+            style={{ gridColumn: '1 / span 2', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.85rem' }}
+          >
+            {copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Link kopieret' : 'Kopiér gæstelink'}
+          </button>
           <button
             className="btn btn-primary"
             onClick={onClose}
-            style={{ flex: 1, fontSize: '0.85rem' }}
+            style={{ gridColumn: '1 / span 2', fontSize: '0.85rem' }}
           >
             Luk
           </button>
