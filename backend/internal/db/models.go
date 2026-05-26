@@ -103,10 +103,11 @@ type User struct {
 	AccessStartsAt   *time.Time `db:"access_starts_at"`
 	AccessExpiresAt  *time.Time `db:"access_expires_at"`
 	CreatedByAdminID *string    `db:"created_by_admin_id"`
-	CreatedAt        time.Time  `db:"created_at"`
-	UpdatedAt        time.Time  `db:"updated_at"`
-	LastSeenAt       *time.Time `db:"last_seen_at"`
-	ForcePinChange   bool       `db:"force_pin_change"`
+	CreatedAt             time.Time  `db:"created_at"`
+	UpdatedAt             time.Time  `db:"updated_at"`
+	LastSeenAt            *time.Time `db:"last_seen_at"`
+	ForcePinChange        bool       `db:"force_pin_change"`
+	IdlePauseAfterHours   *int       `db:"idle_pause_after_hours"`
 }
 
 type Session struct {

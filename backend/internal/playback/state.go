@@ -173,6 +173,38 @@ func (m *Manager) Play(ctx context.Context, trackID, userID string) error {
 			return nil
 		}
 
+		// Idle-pause: if the room owner has idle_pause_after_hours configured and no
+		// non-guest session has been seen within that window, pause instead of
+		// advancing. Party mode is always exempt. Explicit track requests (trackID != "")
+		// never reach this branch so they are also exempt.
+		if !m.isPartyMode {
+			var idlePauseHours *int
+			_ = m.db.GetContext(ctx, &idlePauseHours, `SELECT idle_pause_after_hours FROM users WHERE id = ?`, m.roomID)
+			if idlePauseHours != nil && *idlePauseHours > 0 {
+				threshold := time.Now().Add(-time.Duration(*idlePauseHours) * time.Hour)
+				var recentSessions int
+				_ = m.db.GetContext(ctx, &recentSessions, `
+					SELECT COUNT(*) FROM sessions
+					WHERE user_id = ?
+					  AND is_guest_session = 0
+					  AND revoked_at IS NULL
+					  AND expires_at > CURRENT_TIMESTAMP
+					  AND last_seen_at > ?`, m.roomID, threshold)
+				if recentSessions == 0 {
+					log.Printf("[playback] room=%s pausing — no session active within %d hours", m.roomID, *idlePauseHours)
+					m.isPlaying = false
+					m.updatedAt = time.Now()
+					m.saveState()
+					m.mu.Unlock()
+					m.hub.BroadcastToRoom(m.roomID, events.EventPlaybackStateChanged, map[string]any{
+						"is_playing":    false,
+						"position_secs": m.positionSecs,
+					})
+					return nil
+				}
+			}
+		}
+
 		// Advance from queue
 		item, err := m.queueMgr.Advance(ctx)
 		if err != nil {
@@ -536,16 +568,31 @@ func (m *Manager) StartIfIdle(ctx context.Context) {
 	}
 
 	// Don't auto-start if no owner (non-guest) session is currently active.
-	// The room ID equals the owner's user_id.
+	// If idle_pause_after_hours is configured, require a session seen within
+	// that window; otherwise any valid unexpired session is sufficient.
+	var idlePauseHours *int
+	_ = m.db.GetContext(ctx, &idlePauseHours, `SELECT idle_pause_after_hours FROM users WHERE id = ?`, m.roomID)
+
 	var ownerSessions int
-	_ = m.db.GetContext(ctx, &ownerSessions, `
-		SELECT COUNT(*) FROM sessions
-		WHERE user_id = ?
-		  AND is_guest_session = 0
-		  AND revoked_at IS NULL
-		  AND expires_at > CURRENT_TIMESTAMP`, m.roomID)
+	if idlePauseHours != nil && *idlePauseHours > 0 {
+		threshold := time.Now().Add(-time.Duration(*idlePauseHours) * time.Hour)
+		_ = m.db.GetContext(ctx, &ownerSessions, `
+			SELECT COUNT(*) FROM sessions
+			WHERE user_id = ?
+			  AND is_guest_session = 0
+			  AND revoked_at IS NULL
+			  AND expires_at > CURRENT_TIMESTAMP
+			  AND last_seen_at > ?`, m.roomID, threshold)
+	} else {
+		_ = m.db.GetContext(ctx, &ownerSessions, `
+			SELECT COUNT(*) FROM sessions
+			WHERE user_id = ?
+			  AND is_guest_session = 0
+			  AND revoked_at IS NULL
+			  AND expires_at > CURRENT_TIMESTAMP`, m.roomID)
+	}
 	if ownerSessions == 0 {
-		log.Printf("[playback] room=%s skipping autoplay boot — no owner logged in", m.roomID)
+		log.Printf("[playback] room=%s skipping autoplay boot — no active owner session", m.roomID)
 		return
 	}
 

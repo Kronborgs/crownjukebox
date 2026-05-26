@@ -522,6 +522,11 @@ function UsersPanel() {
     mutationFn: (id: string) => adminApi.deleteUser(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
   })
+  const idleUpdate = useMutation({
+    mutationFn: ({ id, value }: { id: string; value: number | null }) =>
+      adminApi.updateUser(id, value === null ? { clear_idle_pause: true } : { idle_pause_after_hours: value }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
+  })
 
   return (
     <div>
@@ -553,6 +558,20 @@ function UsersPanel() {
                 {user.username} · oprettet {new Date(user.created_at).toLocaleDateString('da-DK')}
                 {user.access_expires_at && ` · udløber ${new Date(user.access_expires_at).toLocaleDateString('da-DK')}`}
               </p>
+              <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Pause ved inaktivitet:</span>
+                <select
+                  style={{ fontSize: '0.75rem', background: 'var(--bg-base, #111)', color: 'var(--text-secondary)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '4px', padding: '2px 6px' }}
+                  value={user.idle_pause_after_hours ?? ''}
+                  onChange={e => idleUpdate.mutate({ id: user.id, value: e.target.value ? Number(e.target.value) : null })}
+                >
+                  <option value="">Ingen (spil altid)</option>
+                  <option value="1">1 time</option>
+                  <option value="2">2 timer</option>
+                  <option value="3">3 timer</option>
+                  <option value="4">4 timer</option>
+                </select>
+              </div>
             </div>
             <div style={{ display: 'flex', gap: '8px' }}>
               <button className="btn btn-ghost btn-icon" style={{ padding: '6px' }} onClick={() => setChangePwUser(user)} title="Skift kodeord">
@@ -674,6 +693,7 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
   const [canSearch, setCanSearch] = useState(true)
   const [canParty, setCanParty] = useState(true)
   const [canViewQueue, setCanViewQueue] = useState(true)
+  const [idlePauseHours, setIdlePauseHours] = useState<number | null>(null)
   const [sendInvite, setSendInvite] = useState(true)
   const [error, setError] = useState('')
   const [inviteInfo, setInviteInfo] = useState('')
@@ -697,6 +717,7 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
         can_search: canSearch,
         can_use_party_button: canParty,
         can_view_queue: canViewQueue,
+        idle_pause_after_hours: idlePauseHours ?? undefined,
         send_invite: !!(email.trim() && sendInvite),
       })
       if (result?.invite_error) {
@@ -784,6 +805,20 @@ function CreateUserModal({ onClose, onCreated }: CreateUserModalProps) {
               />
             </div>
           )}
+          <div style={rowStyle}>
+            <label style={labelStyle}>Automatisk pause ved inaktivitet</label>
+            <select
+              className="input"
+              value={idlePauseHours ?? ''}
+              onChange={e => setIdlePauseHours(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">Ingen (spil altid)</option>
+              <option value="1">1 time</option>
+              <option value="2">2 timer</option>
+              <option value="3">3 timer</option>
+              <option value="4">4 timer</option>
+            </select>
+          </div>
           <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '12px' }}>
             <p style={{ ...labelStyle, marginBottom: '10px', fontWeight: 600 }}>Rettigheder</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>

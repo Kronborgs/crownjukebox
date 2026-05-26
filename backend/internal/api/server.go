@@ -1777,8 +1777,9 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 		CanSearch       bool   `json:"can_search"`
 		CanUseParty     bool   `json:"can_use_party_button"`
 		CanViewQueue    bool   `json:"can_view_queue"`
-		SendInvite      bool   `json:"send_invite"`
-		BaseURL         string `json:"base_url"` // window.location.origin from browser
+		SendInvite            bool   `json:"send_invite"`
+		BaseURL               string `json:"base_url"` // window.location.origin from browser
+		IdlePauseAfterHours   *int   `json:"idle_pause_after_hours"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -1840,13 +1841,22 @@ func (s *Server) handleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
 	tx, _ := s.db.BeginTxx(r.Context(), nil)
 	defer tx.Rollback()
 
+	if req.IdlePauseAfterHours != nil {
+		if *req.IdlePauseAfterHours < 1 || *req.IdlePauseAfterHours > 4 {
+			jsonError(w, "idle_pause_after_hours must be between 1 and 4", http.StatusBadRequest)
+			return
+		}
+		user.IdlePauseAfterHours = req.IdlePauseAfterHours
+	}
+
 	if _, err := tx.ExecContext(r.Context(), `
 		INSERT INTO users (id, display_name, email, username, role, pin_hash, is_active, is_permanent,
-		                   access_expires_at, created_by_admin_id, force_pin_change, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		                   access_expires_at, created_by_admin_id, force_pin_change, idle_pause_after_hours, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		user.ID, user.DisplayName, user.Email, user.Username, user.Role, user.PinHash,
 		user.IsActive, user.IsPermanent, user.AccessExpiresAt, user.CreatedByAdminID,
 		req.Pin != "", // force_pin_change when a PIN was set by admin
+		user.IdlePauseAfterHours,
 		user.CreatedAt, user.UpdatedAt,
 	); err != nil {
 		jsonError(w, "create user failed: "+err.Error(), http.StatusInternalServerError)
@@ -1919,9 +1929,11 @@ func (s *Server) handleAdminGetUser(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var req struct {
-		DisplayName *string `json:"display_name"`
-		IsActive    *bool   `json:"is_active"`
-		IsPermanent *bool   `json:"is_permanent"`
+		DisplayName          *string `json:"display_name"`
+		IsActive             *bool   `json:"is_active"`
+		IsPermanent          *bool   `json:"is_permanent"`
+		IdlePauseAfterHours  *int    `json:"idle_pause_after_hours"`
+		ClearIdlePause       bool    `json:"clear_idle_pause"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonError(w, "invalid request", http.StatusBadRequest)
@@ -1933,6 +1945,16 @@ func (s *Server) handleAdminUpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.IsActive != nil {
 		s.db.Exec(`UPDATE users SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, *req.IsActive, id)
+	}
+	if req.ClearIdlePause {
+		s.db.Exec(`UPDATE users SET idle_pause_after_hours = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, id)
+	} else if req.IdlePauseAfterHours != nil {
+		v := *req.IdlePauseAfterHours
+		if v < 1 || v > 4 {
+			jsonError(w, "idle_pause_after_hours must be between 1 and 4", http.StatusBadRequest)
+			return
+		}
+		s.db.Exec(`UPDATE users SET idle_pause_after_hours = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, v, id)
 	}
 	jsonOK(w, map[string]string{"status": "updated"})
 }
@@ -3536,17 +3558,18 @@ func servePlaceholder(w http.ResponseWriter, size string) {
 
 func userResponse(u db.User) map[string]any {
 	return map[string]any{
-		"id":                u.ID,
-		"display_name":      u.DisplayName,
-		"email":             u.Email,
-		"username":          u.Username,
-		"role":              u.Role,
-		"is_active":         u.IsActive,
-		"is_permanent":      u.IsPermanent,
-		"access_expires_at": u.AccessExpiresAt,
-		"created_at":        u.CreatedAt,
-		"last_seen_at":      u.LastSeenAt,
-		"force_pin_change":  u.ForcePinChange,
+		"id":                    u.ID,
+		"display_name":          u.DisplayName,
+		"email":                 u.Email,
+		"username":              u.Username,
+		"role":                  u.Role,
+		"is_active":             u.IsActive,
+		"is_permanent":          u.IsPermanent,
+		"access_expires_at":     u.AccessExpiresAt,
+		"created_at":            u.CreatedAt,
+		"last_seen_at":          u.LastSeenAt,
+		"force_pin_change":      u.ForcePinChange,
+		"idle_pause_after_hours": u.IdlePauseAfterHours,
 	}
 }
 

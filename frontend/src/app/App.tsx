@@ -48,7 +48,12 @@ function AppRoutes() {
   useEffect(() => {
     setupApi.status()
       .then(({ needs_setup }) => setNeedsSetup(needs_setup))
-      .catch(() => setNeedsSetup(false))
+      .catch(() => {
+        // On network/server error, default to showing setup wizard rather than
+        // the login screen — a fresh DB with no admin would otherwise be stuck
+        // behind a login form the user cannot use.
+        setNeedsSetup(true)
+      })
   }, [])
 
   // Non-admin users always use their own room (room_id = user_id).
