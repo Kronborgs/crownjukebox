@@ -87,9 +87,6 @@ func main() {
 		}
 	}
 
-	// ─── Background context (cancelled on shutdown) ──────
-	bgCtx, bgCancel := context.WithCancel(context.Background())
-
 	// ─── Background: initial library scan ─────────────────
 	go func() {
 		log.Println("[startup] beginning initial library scan...")
@@ -174,8 +171,6 @@ func main() {
 	<-quit
 	log.Println("Shutting down gracefully...")
 
-	// Cancel all background goroutines before stopping the HTTP server.
-	bgCancel()
 	srv.RoomService().Stop()
 	srv.Stop()
 
