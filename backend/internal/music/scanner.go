@@ -597,7 +597,52 @@ func (s *Scanner) upsertArtist(name string) (string, error) {
 }
 
 func (s *Scanner) upsertAlbum(artistID string, meta Metadata, filePath string) (string, error) {
+	albumSourceID := normalizedAlbumSourceID(filePath)
+	albumFolderName := filepath.Base(albumSourceID)
+	if albumFolderName == "." || albumFolderName == string(filepath.Separator) {
+		albumFolderName = meta.Album
+	}
+
 	var existing db.Album
+	if albumSourceID != "" {
+		err := s.db.Get(&existing, `
+			SELECT * FROM albums
+			WHERE artist_id = ?
+			  AND source_type != 'party_upload'
+			  AND source_id = ?
+			LIMIT 1`, artistID, albumSourceID)
+		if err == nil {
+			if existing.Title != albumFolderName || existing.SourceID != albumSourceID {
+				_, _ = s.db.Exec(`
+					UPDATE albums
+					SET title = ?, source_id = ?, updated_at = ?
+					WHERE id = ?`, albumFolderName, albumSourceID, time.Now(), existing.ID)
+			}
+			return existing.ID, nil
+		}
+	}
+
+	if filePath != "" && albumSourceID != "" {
+		trackDirPattern := albumSourceID + string(filepath.Separator) + "%"
+		err := s.db.Get(&existing, `
+			SELECT al.* FROM albums al
+			WHERE al.artist_id = ?
+			  AND al.source_type != 'party_upload'
+			  AND al.id IN (
+				  SELECT DISTINCT album_id FROM tracks
+				  WHERE file_path LIKE ?
+			  )
+			ORDER BY al.track_count DESC, al.created_at ASC
+			LIMIT 1`, artistID, trackDirPattern)
+		if err == nil {
+			_, _ = s.db.Exec(`
+				UPDATE albums
+				SET title = ?, source_id = ?, updated_at = ?
+				WHERE id = ?`, albumFolderName, albumSourceID, time.Now(), existing.ID)
+			return existing.ID, nil
+		}
+	}
+
 	err := s.db.Get(&existing, `
 		SELECT * FROM albums WHERE artist_id = ? AND LOWER(title) = LOWER(?) LIMIT 1`,
 		artistID, meta.Album,
@@ -620,36 +665,14 @@ func (s *Scanner) upsertAlbum(artistID string, meta Metadata, filePath string) (
 		}
 	}
 
-	// Fallback 2: same directory, same title — compilation / various-artists albums
-	// where individual tracks have no shared AlbumArtist tag.
-	// If any track already in the database lives in the same folder and belongs
-	// to an album with this title, reuse that album instead of creating a new one.
-	// Using the folder boundary (path separator) ensures “Greatest Hits/” and
-	// “Greatest Hits CD2/” are never accidentally merged.
-	if filePath != "" {
-		trackDirPattern := filepath.Dir(filePath) + string(filepath.Separator) + "%"
-		err = s.db.Get(&existing, `
-			SELECT al.* FROM albums al
-			WHERE LOWER(al.title) = LOWER(?)
-			  AND al.source_type != 'party_upload'
-			  AND al.id IN (
-				  SELECT DISTINCT album_id FROM tracks
-				  WHERE file_path LIKE ?
-			  )
-			LIMIT 1`, meta.Album, trackDirPattern)
-		if err == nil {
-			return existing.ID, nil
-		}
-	}
-
 	id := uuid.NewString()
 	_, err = s.db.Exec(`
-		INSERT INTO albums (id, artist_id, album_artist_id, title, year, genre, source_type, cover_status, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, 'local', 'missing', ?, ?)`,
-		id, artistID, artistID, meta.Album, meta.Year, meta.Genre, time.Now(), time.Now(),
+		INSERT INTO albums (id, artist_id, album_artist_id, title, year, genre, source_type, source_id, cover_status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, 'local', ?, 'missing', ?, ?)`,
+		id, artistID, artistID, albumFolderName, meta.Year, meta.Genre, albumSourceID, time.Now(), time.Now(),
 	)
 	if err != nil {
-		return "", fmt.Errorf("upsert album %q: %w", meta.Album, err)
+		return "", fmt.Errorf("upsert album %q: %w", albumFolderName, err)
 	}
 	return id, nil
 }
@@ -874,6 +897,20 @@ func parseTrackNumberFromFilename(filename string) int {
 		}
 	}
 	return 0
+}
+
+// normalizedAlbumSourceID returns the stable folder path used to group local
+// tracks into a single album. Disc subfolders are collapsed so CD1/CD2 share
+// the same album root.
+func normalizedAlbumSourceID(filePath string) string {
+	if filePath == "" {
+		return ""
+	}
+	dir := filepath.Dir(filePath)
+	if parseDiscFolder(filepath.Base(dir)) > 0 {
+		dir = filepath.Dir(dir)
+	}
+	return filepath.Clean(dir)
 }
 
 // ─── Folder-based playlist building ─────────────────────────────────────────
