@@ -45,18 +45,6 @@ export function KioskLayout() {
     return () => document.removeEventListener('keydown', handler)
   }, [bumpActivity])
 
-  // Global hotkeys: S → søg, P → SKÅL
-  useEffect(() => {
-    function onGlobalKey(e: KeyboardEvent) {
-      const tgt = e.target as HTMLElement
-      if (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.tagName === 'SELECT') return
-      if (e.code === 'KeyS') { e.preventDefault(); setActiveTab('search') }
-      if (e.code === 'KeyP') { e.preventDefault(); handleCheers() }
-    }
-    document.addEventListener('keydown', onGlobalKey)
-    return () => document.removeEventListener('keydown', onGlobalKey)
-  }, [handleCheers])
-
   // Auto-return to browse when idle on search / queue tab
   useEffect(() => {
     if (activeTab === 'browse') return
@@ -122,6 +110,18 @@ export function KioskLayout() {
       setPartyBusy(false)
     }
   }, [partyBusy, refreshState])
+
+  // Global hotkeys: S → søg, P → SKÅL
+  useEffect(() => {
+    function onGlobalKey(e: KeyboardEvent) {
+      const tgt = e.target as HTMLElement
+      if (tgt.tagName === 'INPUT' || tgt.tagName === 'TEXTAREA' || tgt.tagName === 'SELECT') return
+      if (e.code === 'KeyS') { e.preventDefault(); setActiveTab('search') }
+      if (e.code === 'KeyP') { e.preventDefault(); void handleCheers() }
+    }
+    document.addEventListener('keydown', onGlobalKey)
+    return () => document.removeEventListener('keydown', onGlobalKey)
+  }, [handleCheers])
 
   const tabs: Array<{ id: Tab; icon: React.ReactNode; label: string }> = [
     { id: 'browse', icon: <Disc3 size={18} />,    label: 'Musik' },
