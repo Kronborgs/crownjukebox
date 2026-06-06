@@ -169,7 +169,7 @@ export function SearchScreen() {
             style={{
               background: 'var(--bg-panel)',
               borderTop: '1px solid rgba(191,0,255,0.3)',
-              padding: '12px',
+              padding: '8px 8px 10px',
               flexShrink: 0,
             }}
           >
@@ -183,11 +183,12 @@ export function SearchScreen() {
               </button>
             </div>
             {KEYBOARD_ROWS.map((row, ri) => (
-              <div key={ri} style={{ display: 'flex', gap: '5px', justifyContent: 'center', marginBottom: '5px' }}>
+              <div key={ri} style={{ display: 'flex', gap: '4px', marginBottom: '4px' }}>
                 {row.map(key => (
                   <button
                     key={key}
                     className={`retro-key${key === ' ' ? ' retro-key-wide' : key === '⌫' ? ' retro-key-del' : ''}`}
+                    style={{ flex: key === ' ' ? 2 : key === '⌫' ? 1.5 : 1, minWidth: 0, padding: '0 2px' }}
                     onMouseDown={e => { e.preventDefault(); onKeyPress(key === ' ' ? ' ' : key) }}
                   >
                     {key === ' ' ? '⎵' : key}
