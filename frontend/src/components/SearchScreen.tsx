@@ -1,4 +1,4 @@
-import { useState, useRef, KeyboardEvent } from 'react'
+import { useState, useRef, useEffect, KeyboardEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { libraryApi, SearchResults, queueApi } from '@/api/client'
@@ -22,9 +22,14 @@ const KEYBOARD_ROWS = [
 export function SearchScreen() {
   const qc = useQueryClient()
   const [query, setQuery] = useState('')
-  const [showKeyboard, setShowKeyboard] = useState(false)
+  const [showKeyboard, setShowKeyboard] = useState(true)
   const [addedTrackId, setAddedTrackId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // Focus input and show keyboard as soon as the search tab opens
+  useEffect(() => {
+    inputRef.current?.focus()
+  }, [])
 
   const { data: results } = useQuery<SearchResults>({
     queryKey: ['search', query],
