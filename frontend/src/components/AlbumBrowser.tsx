@@ -415,10 +415,10 @@ export function AlbumBrowser({ onSearchTab, onQueueTab, slideshowTick = 0 }: { o
 
         {/* ── Genvejstaster: sporvisning (sticky bund) ── */}
         <div style={{
-          display: 'flex', gap: '4px 12px', flexWrap: 'wrap', alignItems: 'center',
-          padding: '5px 12px',
-          background: 'rgba(0,0,0,0.55)',
-          borderTop: '2px solid rgba(255,170,0,0.25)',
+          display: 'flex', gap: '6px 16px', flexWrap: 'wrap', alignItems: 'center',
+          padding: '7px 12px',
+          background: 'rgba(0,0,0,0.6)',
+          borderTop: '2px solid rgba(255,170,0,0.35)',
           flexShrink: 0,
         }}>
           {([
@@ -426,21 +426,21 @@ export function AlbumBrowser({ onSearchTab, onQueueTab, slideshowTick = 0 }: { o
             { keys: ['↵'], label: 'Tilføj til kø' },
             { keys: ['⌂', 'Esc'], label: 'Tilbage til albumliste' },
           ] as { keys: string[]; label: string }[]).map(({ keys, label }) => (
-            <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+            <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
               {keys.map(k => (
                 <kbd key={k} style={{
-                  display: 'inline-block', padding: '1px 5px',
-                  fontFamily: '"Courier New", monospace', fontSize: '0.7rem',
-                  background: 'linear-gradient(180deg,#3c3010 0%,#1a1408 100%)',
-                  color: '#ffd060',
-                  border: '1px solid rgba(255,200,50,0.5)',
-                  borderRadius: '3px',
-                  boxShadow: 'inset 0 1px 0 rgba(255,220,100,0.2), 0 0 6px rgba(255,170,0,0.25)',
-                  lineHeight: '1.5', fontWeight: 700,
+                  display: 'inline-block', padding: '3px 8px',
+                  fontFamily: '"Courier New", monospace', fontSize: '0.82rem',
+                  background: 'linear-gradient(180deg,#4a3c14 0%,#221a06 100%)',
+                  color: '#ffe080',
+                  border: '1px solid rgba(255,210,60,0.6)',
+                  borderRadius: '4px',
+                  boxShadow: 'inset 0 1px 0 rgba(255,230,120,0.25), 0 0 8px rgba(255,170,0,0.3)',
+                  lineHeight: '1.4', fontWeight: 700,
                 }}>{k}</kbd>
               ))}
-              <span style={{ fontSize: '0.65rem', color: 'rgba(255,210,100,0.75)', marginLeft: '2px' }}>{label}</span>
-              <span style={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.12)', marginLeft: '4px' }}>·</span>
+              <span style={{ fontSize: '0.78rem', color: 'rgba(255,220,110,0.85)', marginLeft: '3px' }}>{label}</span>
+              <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.15)', marginLeft: '6px' }}>·</span>
             </span>
           ))}
         </div>
@@ -533,12 +533,12 @@ export function AlbumBrowser({ onSearchTab, onQueueTab, slideshowTick = 0 }: { o
 
         {/* ── Genvejstaster (altid synlig over tastatur) ── */}
         <div style={{
-          display: 'flex', gap: '4px 12px', flexWrap: 'wrap', alignItems: 'center',
-          padding: '5px 8px',
-          background: 'rgba(0,0,0,0.55)',
+          display: 'flex', gap: '6px 16px', flexWrap: 'wrap', alignItems: 'center',
+          padding: '7px 10px',
+          background: 'rgba(0,0,0,0.6)',
           borderLeft: '1px solid rgba(255,255,255,0.08)',
           borderRight: '1px solid rgba(255,255,255,0.08)',
-          borderBottom: '2px solid rgba(255,170,0,0.25)',
+          borderBottom: '2px solid rgba(255,170,0,0.35)',
         }}>
           {([
             { keys: ['PgUp', 'PgDn'], label: 'Bogstav' },
@@ -549,21 +549,21 @@ export function AlbumBrowser({ onSearchTab, onQueueTab, slideshowTick = 0 }: { o
             { keys: ['P'], label: 'SKÅL' },
             { keys: ['⎵'], label: 'Afspil/Pause' },
           ] as { keys: string[]; label: string }[]).map(({ keys, label }) => (
-            <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+            <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
               {keys.map(k => (
                 <kbd key={k} style={{
-                  display: 'inline-block', padding: '1px 5px',
-                  fontFamily: '"Courier New", monospace', fontSize: '0.7rem',
-                  background: 'linear-gradient(180deg,#3c3010 0%,#1a1408 100%)',
-                  color: '#ffd060',
-                  border: '1px solid rgba(255,200,50,0.5)',
-                  borderRadius: '3px',
-                  boxShadow: 'inset 0 1px 0 rgba(255,220,100,0.2), 0 0 6px rgba(255,170,0,0.25)',
-                  lineHeight: '1.5', fontWeight: 700,
+                  display: 'inline-block', padding: '3px 8px',
+                  fontFamily: '"Courier New", monospace', fontSize: '0.82rem',
+                  background: 'linear-gradient(180deg,#4a3c14 0%,#221a06 100%)',
+                  color: '#ffe080',
+                  border: '1px solid rgba(255,210,60,0.6)',
+                  borderRadius: '4px',
+                  boxShadow: 'inset 0 1px 0 rgba(255,230,120,0.25), 0 0 8px rgba(255,170,0,0.3)',
+                  lineHeight: '1.4', fontWeight: 700,
                 }}>{k}</kbd>
               ))}
-              <span style={{ fontSize: '0.65rem', color: 'rgba(255,210,100,0.75)', marginLeft: '2px' }}>{label}</span>
-              <span style={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.12)', marginLeft: '4px' }}>·</span>
+              <span style={{ fontSize: '0.78rem', color: 'rgba(255,220,110,0.85)', marginLeft: '3px' }}>{label}</span>
+              <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.15)', marginLeft: '6px' }}>·</span>
             </span>
           ))}
         </div>
