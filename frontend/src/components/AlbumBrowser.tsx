@@ -309,6 +309,34 @@ export function AlbumBrowser({ onSearchTab, onQueueTab, slideshowTick = 0 }: { o
           )}
         </AnimatePresence>
 
+        {/* ── Genvejsbar: sporvisning ── */}
+        <div style={{
+          display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center',
+          padding: '5px 12px', background: 'rgba(0,0,0,0.35)',
+          borderBottom: '1px solid rgba(255,255,255,0.06)',
+        }}>
+          {([
+            { keys: ['↑', '↓'], label: 'Naviger' },
+            { keys: ['↵'], label: 'Tilføj til kø' },
+            { keys: ['⌂', 'Esc'], label: 'Tilbage' },
+          ] as { keys: string[]; label: string }[]).map(({ keys, label }) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.7 }}>
+              {keys.map(k => (
+                <kbd key={k} style={{
+                  display: 'inline-block', padding: '1px 6px',
+                  fontFamily: '"Courier New", monospace', fontSize: '0.72rem',
+                  background: 'linear-gradient(180deg,#3a3f52 0%,#1a1d2a 100%)',
+                  color: 'var(--chrome-bright)', border: '1px solid rgba(255,255,255,0.2)',
+                  borderRadius: '3px', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), 0 1px 3px rgba(0,0,0,0.5)',
+                  lineHeight: '1.4',
+                }}>{k}</kbd>
+              ))}
+              <span style={{ fontSize: '0.67rem', color: 'var(--text-dim)', marginLeft: '1px' }}>{label}</span>
+              <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.15)', marginLeft: '3px' }}>·</span>
+            </div>
+          ))}
+        </div>
+
         <div style={{ display: 'flex', gap: '16px', padding: '16px', background: 'var(--bg-panel)', alignItems: 'center' }}>
           <button className="btn btn-ghost btn-icon" onClick={() => setSelectedAlbum(null)}>
             <ChevronLeft size={20} />
@@ -498,6 +526,37 @@ export function AlbumBrowser({ onSearchTab, onQueueTab, slideshowTick = 0 }: { o
             )}
           </div>
         )}
+
+        {/* ── Genvejsbar: albumgitter ── */}
+        <div style={{
+          display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center',
+          padding: '4px 6px 5px',
+          borderTop: '1px solid rgba(255,255,255,0.05)',
+          background: 'rgba(0,0,0,0.25)',
+        }}>
+          {([
+            { keys: ['↑', '↓', '←', '→'], label: 'Naviger' },
+            { keys: ['↵'], label: 'Åbn album' },
+            { keys: ['⌂', 'Esc'], label: 'Tilbage/Nulstil' },
+            { keys: ['S'], label: 'Søg' },
+            { keys: ['P'], label: 'SKÅL' },
+          ] as { keys: string[]; label: string }[]).map(({ keys, label }) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.65 }}>
+              {keys.map(k => (
+                <kbd key={k} style={{
+                  display: 'inline-block', padding: '1px 5px',
+                  fontFamily: '"Courier New", monospace', fontSize: '0.7rem',
+                  background: 'linear-gradient(180deg,#3a3f52 0%,#1a1d2a 100%)',
+                  color: 'var(--chrome-bright)', border: '1px solid rgba(255,255,255,0.2)',
+                  borderRadius: '3px', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), 0 1px 3px rgba(0,0,0,0.5)',
+                  lineHeight: '1.4',
+                }}>{k}</kbd>
+              ))}
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginLeft: '1px' }}>{label}</span>
+              <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.12)', marginLeft: '3px' }}>·</span>
+            </div>
+          ))}
+        </div>
 
         {/* Søg — full width above keyboard */}
         {onSearchTab && (

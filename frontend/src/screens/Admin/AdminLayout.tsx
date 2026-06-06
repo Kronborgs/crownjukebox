@@ -2651,6 +2651,7 @@ function SettingsPanel() {
     play_pause: 'Space', next_page: 'ArrowRight', prev_page: 'ArrowLeft',
     nav_up: 'ArrowUp', nav_down: 'ArrowDown', select: 'Enter',
     back: 'Escape', search: 'KeyS', party: 'KeyP',
+    back_to_albums: 'Home',
   }
 
   async function saveBindings() {
