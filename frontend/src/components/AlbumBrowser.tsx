@@ -309,34 +309,6 @@ export function AlbumBrowser({ onSearchTab, onQueueTab, slideshowTick = 0 }: { o
           )}
         </AnimatePresence>
 
-        {/* ── Genvejsbar: sporvisning ── */}
-        <div style={{
-          display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center',
-          padding: '5px 12px', background: 'rgba(0,0,0,0.35)',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
-        }}>
-          {([
-            { keys: ['↑', '↓'], label: 'Naviger' },
-            { keys: ['↵'], label: 'Tilføj til kø' },
-            { keys: ['⌂', 'Esc'], label: 'Tilbage' },
-          ] as { keys: string[]; label: string }[]).map(({ keys, label }) => (
-            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.7 }}>
-              {keys.map(k => (
-                <kbd key={k} style={{
-                  display: 'inline-block', padding: '1px 6px',
-                  fontFamily: '"Courier New", monospace', fontSize: '0.72rem',
-                  background: 'linear-gradient(180deg,#3a3f52 0%,#1a1d2a 100%)',
-                  color: 'var(--chrome-bright)', border: '1px solid rgba(255,255,255,0.2)',
-                  borderRadius: '3px', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), 0 1px 3px rgba(0,0,0,0.5)',
-                  lineHeight: '1.4',
-                }}>{k}</kbd>
-              ))}
-              <span style={{ fontSize: '0.67rem', color: 'var(--text-dim)', marginLeft: '1px' }}>{label}</span>
-              <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.15)', marginLeft: '3px' }}>·</span>
-            </div>
-          ))}
-        </div>
-
         <div style={{ display: 'flex', gap: '16px', padding: '16px', background: 'var(--bg-panel)', alignItems: 'center' }}>
           <button className="btn btn-ghost btn-icon" onClick={() => setSelectedAlbum(null)}>
             <ChevronLeft size={20} />
@@ -440,6 +412,38 @@ export function AlbumBrowser({ onSearchTab, onQueueTab, slideshowTick = 0 }: { o
             ))}
           </AnimatePresence>
         </div>
+
+        {/* ── Genvejstaster: sporvisning (sticky bund) ── */}
+        <div style={{
+          display: 'flex', gap: '5px 10px', flexWrap: 'wrap', alignItems: 'center',
+          padding: '5px 12px',
+          background: 'linear-gradient(180deg, rgba(10,8,20,0.85) 0%, rgba(20,15,40,0.95) 100%)',
+          borderTop: '1px solid rgba(191,0,255,0.2)',
+          flexShrink: 0,
+        }}>
+          {([
+            { keys: ['↑', '↓'], label: 'Naviger' },
+            { keys: ['↵'], label: 'Tilføj til kø' },
+            { keys: ['⌂', 'Esc'], label: 'Tilbage til albumliste' },
+          ] as { keys: string[]; label: string }[]).map(({ keys, label }) => (
+            <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+              {keys.map(k => (
+                <kbd key={k} style={{
+                  display: 'inline-block', padding: '1px 6px',
+                  fontFamily: '"Courier New", monospace', fontSize: '0.7rem',
+                  background: 'linear-gradient(180deg,#2a2f45 0%,#0e1018 100%)',
+                  color: '#b0c4ff',
+                  border: '1px solid rgba(130,150,255,0.4)',
+                  borderRadius: '3px',
+                  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12), 0 0 6px rgba(100,120,255,0.15)',
+                  lineHeight: '1.5',
+                }}>{k}</kbd>
+              ))}
+              <span style={{ fontSize: '0.67rem', color: 'rgba(180,200,255,0.7)', marginLeft: '2px' }}>{label}</span>
+              <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.12)', marginLeft: '4px' }}>·</span>
+            </span>
+          ))}
+        </div>
       </div>
     )
   }
@@ -527,37 +531,6 @@ export function AlbumBrowser({ onSearchTab, onQueueTab, slideshowTick = 0 }: { o
           </div>
         )}
 
-        {/* ── Genvejsbar: albumgitter ── */}
-        <div style={{
-          display: 'flex', gap: '5px', flexWrap: 'wrap', alignItems: 'center',
-          padding: '4px 6px 5px',
-          borderTop: '1px solid rgba(255,255,255,0.05)',
-          background: 'rgba(0,0,0,0.25)',
-        }}>
-          {([
-            { keys: ['↑', '↓', '←', '→'], label: 'Naviger' },
-            { keys: ['↵'], label: 'Åbn album' },
-            { keys: ['⌂', 'Esc'], label: 'Tilbage/Nulstil' },
-            { keys: ['S'], label: 'Søg' },
-            { keys: ['P'], label: 'SKÅL' },
-          ] as { keys: string[]; label: string }[]).map(({ keys, label }) => (
-            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '3px', opacity: 0.65 }}>
-              {keys.map(k => (
-                <kbd key={k} style={{
-                  display: 'inline-block', padding: '1px 5px',
-                  fontFamily: '"Courier New", monospace', fontSize: '0.7rem',
-                  background: 'linear-gradient(180deg,#3a3f52 0%,#1a1d2a 100%)',
-                  color: 'var(--chrome-bright)', border: '1px solid rgba(255,255,255,0.2)',
-                  borderRadius: '3px', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15), 0 1px 3px rgba(0,0,0,0.5)',
-                  lineHeight: '1.4',
-                }}>{k}</kbd>
-              ))}
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-dim)', marginLeft: '1px' }}>{label}</span>
-              <span style={{ fontSize: '0.6rem', color: 'rgba(255,255,255,0.12)', marginLeft: '3px' }}>·</span>
-            </div>
-          ))}
-        </div>
-
         {/* Søg — full width above keyboard */}
         {onSearchTab && (
           <button
@@ -622,6 +595,42 @@ export function AlbumBrowser({ onSearchTab, onQueueTab, slideshowTick = 0 }: { o
             {/* Corner screws (top-right + bottom-left via spans; top-left + bottom-right via CSS ::before/::after) */}
             <span className="screw screw-tr" />
             <span className="screw screw-bl" />
+
+            {/* ── Genvejstaster hint ── */}
+            <div style={{
+              display: 'flex', gap: '4px 10px', flexWrap: 'wrap', alignItems: 'center',
+              padding: '3px 4px 6px',
+              borderBottom: '1px solid rgba(255,255,255,0.1)',
+              marginBottom: '2px',
+            }}>
+              {([
+                { keys: ['PgUp', 'PgDn'], label: 'Bogstav' },
+                { keys: ['↑', '↓', '←', '→'], label: 'Naviger' },
+                { keys: ['↵'], label: 'Åbn album' },
+                { keys: ['⌂', 'Esc'], label: 'Tilbage' },
+                { keys: ['S'], label: 'Søg' },
+                { keys: ['P'], label: 'SKÅL' },
+                { keys: ['⎵'], label: 'Afspil/Pause' },
+              ] as { keys: string[]; label: string }[]).map(({ keys, label }) => (
+                <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                  {keys.map(k => (
+                    <kbd key={k} style={{
+                      display: 'inline-block', padding: '0px 5px',
+                      fontFamily: '"Courier New", monospace', fontSize: '0.68rem',
+                      background: 'linear-gradient(180deg,#2a2f45 0%,#0e1018 100%)',
+                      color: '#b0c4ff',
+                      border: '1px solid rgba(130,150,255,0.4)',
+                      borderRadius: '3px',
+                      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12), 0 0 5px rgba(100,120,255,0.2)',
+                      lineHeight: '1.55',
+                    }}>{k}</kbd>
+                  ))}
+                  <span style={{ fontSize: '0.62rem', color: 'rgba(180,200,255,0.65)', marginLeft: '2px' }}>{label}</span>
+                  <span style={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.1)', marginLeft: '4px' }}>·</span>
+                </span>
+              ))}
+            </div>
+
             {/*
               Single CSS grid — all 4 rows share the same column template:
                 repeat(11, 1fr)  →  11 equal-width key columns
